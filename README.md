@@ -33,6 +33,8 @@ Character creation and leveling in PF2E means juggling class tables, compendium 
 - **Enough detail to make the purchase.** Item previews show enriched rules text, Bulk, and hands, and cart quantities accept direct numeric entry for ammunition and other bulk purchases.
 - **Browse speed without weaker Apply checks.** The catalogue reuses lightweight compendium facts and materializes only mounted rows. Preview and Apply still resolve current PF2E documents, prices, world policy, and authority before anything is purchased or written.
 
+Release 0.8.3 is available from the [GitHub release page](https://github.com/bestlux/wayfinder/releases/tag/v0.8.3). Its exact Foundry/PF2E qualification and package evidence are recorded in the [live smoke log](docs/coverage/beta-readiness-smoke.md#2026-08-23-release-083).
+
 ## Installation
 
 Paste this manifest URL into Foundry's **Install Module** dialog:
@@ -59,7 +61,7 @@ Wayfinder evaluates ancestry boosts and fixed ancestry flaws before it calculate
 
 ## Starting Equipment
 
-Starting Equipment is creation-time acquisition, not a persistent shop. A blank level-1 character receives the official 15 gp budget. A higher-level new or replacement character requires a current GM-approved start context, then uses either the permanent-items-plus-currency recipe or the optional lump sum according to world policy. The catalogue shows price, quantity, Bulk, hands, traits, rarity, level, source, and allowance context; the Adventurer's Pack expands into its contained items during Apply.
+Starting Equipment is creation-time acquisition, not a persistent shop. A blank level-1 character receives the official 15 gp budget and can buy common level-0 and level-1 items from GM-approved sources. A higher-level new or replacement character requires a current GM-approved start context, then uses either the permanent-items-plus-currency recipe or the optional lump sum according to world policy; those higher-level currency lanes retain their separate below-target-level restriction. The catalogue shows price, quantity, Bulk, hands, traits, rarity, level, source, and allowance context; the Adventurer's Pack expands into its contained items during Apply.
 
 Before applying, check the review for three trust boundaries:
 

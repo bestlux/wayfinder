@@ -1,9 +1,9 @@
 # UX polish backlog — 0.8.x
 
-> **Implementation status (2026-08-23, 0.8.2 candidate).** The detailed
+> **Implementation status (2026-08-23, released in 0.8.2).** The detailed
 > findings below are retained as the design record for the 0.8.x polish pass,
 > but their present-tense problem statements describe the pre-implementation
-> app. The candidate completes A1, A2, B1–B4, C2, C4, and the equipment-predicate
+> app. Release 0.8.2 completes A1, A2, B1–B4, C2, C4, and the equipment-predicate
 > portion of C3. B5, C1, cross-surface C3, C5, C6, and D1–D4 remain backlog. The
 > equipment catalogue's authoritative current behavior and measured envelope
 > live in `tools/foundry-interaction/equipment-catalogue-profile.json`, not in

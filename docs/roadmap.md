@@ -1,10 +1,10 @@
 # Wayfinder Roadmap
 
-Updated 2026-08-23 for the 0.8.2 Starting Equipment stabilization work. This is the forward-looking product plan; shipped behavior and exact evidence live in the [coverage matrices](coverage/) and [release smoke log](coverage/beta-readiness-smoke.md).
+Updated 2026-08-23 after the 0.8.3 Starting Equipment rules correction. This is the forward-looking product plan; shipped behavior and exact evidence live in the [coverage matrices](coverage/) and [release smoke log](coverage/beta-readiness-smoke.md).
 
 ## Where Wayfinder stands
 
-Release 0.8.0 added reviewed Starting Equipment to Wayfinder's existing guided creation and level-up flow. The 0.8.1 and 0.8.2 stabilization work hardens real-player request, stacking, cold-template, catalogue-reachability, and interaction-performance paths without weakening acquisition authority. The adaptive catalogue retains the complete lightweight matching shelf, mounts a bounded window around the viewport, and keeps preview and Apply on fresh PF2E authority. Wayfinder continues to guide 27 maintained PF2E classes through level 5 along one maintained path, five representative profiles through level 10, and Fighter through level 20. Necromancer and Runesmith base classes remain outside that maintained class matrix.
+Release 0.8.0 added reviewed Starting Equipment to Wayfinder's existing guided creation and level-up flow. Releases 0.8.1 through 0.8.3 stabilize real-player request, stacking, cold-template, catalogue-reachability, interaction-performance, and level-1 item-eligibility paths without weakening acquisition authority. The adaptive catalogue retains the complete lightweight matching shelf, mounts a bounded window around the viewport, and keeps preview and Apply on fresh PF2E authority. A shared recipe-aware item-level boundary now governs catalogue visibility, picker affordability, and prepared acquisition: level-1 characters can spend their 15 gp on common level-0 and level-1 items, while higher-level residual and lump-sum currency retains the below-target-level rule. Wayfinder continues to guide 27 maintained PF2E classes through level 5 along one maintained path, five representative profiles through level 10, and Fighter through level 20. Necromancer and Runesmith base classes remain outside that maintained class matrix.
 
 The common mechanical path now includes ancestry, heritage, background, class, supported class branches and class archetypes, feats, boosts, skills, languages, spells, Free Archetype, Ancestry Paragon and other PF2E campaign feat sections, Gradual Ability Boosts, and creation-time Starting Equipment. Archetype legality is checked against projected draft state where PF2E data is structured. Existing characters can be mapped and their spell progression audited without mutation. Adjacent 0.8.0 player-trust hardening also projects PF2E-prepared fixed ancestry flaws before later ability and skill choices (issue #32).
 
@@ -13,7 +13,7 @@ GMs currently have world settings for Equipment Policy, supplemental Item packs,
 - [#22 — allow temporarily invalid drafts and gate Apply](https://github.com/bestlux/wayfinder/issues/22) supplied the shared readiness and review foundation now used by the 0.8.0 cart. Its remaining scope is broader draft-editing UX and bookkeeping, not an apply-correctness prerequisite.
 - [#7 — class archetypes at level 1](https://github.com/bestlux/wayfinder/issues/7) remains a parallel, profile-by-profile expansion track.
 
-After 0.8.0, the largest remaining product gaps are a satisfying character-completion chapter and high-level caster evidence beyond level 10. The apply path now prepares supported authority and sources before writing, executes named per-actor phases, verifies outcomes, and retains the draft when a phase fails.
+The largest remaining product gaps are a satisfying character-completion chapter and high-level caster evidence beyond level 10. The apply path now prepares supported authority and sources before writing, executes named per-actor phases, verifies outcomes, and retains the draft when a phase fails.
 
 ## Product thesis
 
@@ -85,6 +85,16 @@ Shipped as a narrow live-finding patch: shared partials preload before cold-clie
 Starting Equipment exposes the full matching catalogue through an adaptive stable virtual list rather than a fixed first page. Search, ranking, policy availability, level, type, rarity, source, trait, and Titan Mauler facets operate over the complete lightweight shelf; only mounted or focused rows are projected into the DOM. Item details include enriched rules text, Bulk, and hands, and cart quantities accept direct numeric entry.
 
 The wizard rail now collapses completed levels while reopening invalidated work, scroll positions survive relevant renders, changing picker counts have accessible announcements, and reduced-motion preferences are honored. Catalogue performance has explicit stage timing, visible-gap, stable-host, document-read, recovery, long-task, and adaptive-height gates. Fresh PF2E hydration and authority remain mandatory for preview recovery and Apply.
+
+### 0.8.3 — Level-1 equipment boundary
+
+Starting Equipment now derives catalogue visibility, picker affordability, and prepared acquisition from one recipe-aware item-level policy. Both official level-1 selections resolve to the 15 gp starting-money rule and admit common level-0 and level-1 items, including Healing Potion (Minor) and Elixir of Life (Minor). Higher-level permanent-item residual currency and lump-sum currency continue to admit only items below the character's starting level.
+
+The exact release passed the full 55-execution / 54-scenario coordinator, all Starting Equipment overlays, the focused live level-1 potion proof, package verification, public asset comparison, and Foundry registration. See the [release smoke log](coverage/beta-readiness-smoke.md#2026-08-23-release-083).
+
+### Next 0.8.x — remaining polish
+
+Keep further equipment work evidence-led and bounded: funding-aware affordability filtering, row-level quick-buy, clearer kit-content disclosure, and measured convergence of sorting and filtering across equipment, feat, spell, Language, and Lore surfaces. Item images remain deferred unless a new live profile demonstrates that they preserve the catalogue's interaction, DOM, network, and long-task budgets. Quick Equipment Packages remain a separate, fully reviewed slice rather than an implied partial feature.
 
 ### 0.9.0 — Identity Epilogue and completion
 

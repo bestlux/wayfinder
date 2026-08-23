@@ -1,6 +1,6 @@
 # Starting Equipment and Wealth Architecture
 
-Status: accepted architecture for the planned 0.8.0 release. This document defines the durable product and safety contract; it does not describe behavior shipped in 0.7.3. Provenance lives in [Starting Equipment Rules Assurance](starting-equipment-rules-assurance.md), and sequenced stories and release evidence live in the [0.8.0 implementation plan](../development/starting-equipment-0.8.0.md).
+Status: shipped architecture introduced in 0.8.0 and stabilized through 0.8.3. This document defines the durable product and safety contract. Provenance lives in [Starting Equipment Rules Assurance](starting-equipment-rules-assurance.md), the original delivery record lives in the [0.8.0 implementation plan](../development/starting-equipment-0.8.0.md), and exact current release evidence lives in the [Foundry smoke log](../coverage/beta-readiness-smoke.md).
 
 ## Decision
 
@@ -33,7 +33,7 @@ Cart-legality rules are implemented only with individual GM Core/Player Core cit
 - a baseline weapon or armor consumes one permanent-item allowance, while property runes and precious-material costs are funded separately;
 - residual currency in the permanent-item recipe buys consumables or permanent items below the starting level, with the rest retained as coins;
 - the lump-sum alternative funds common items no higher than one level below the character's starting level; and
-- level-1 characters begin with 15 gp for equipment; source-backed free class grants are not charged against it.
+- level-1 characters begin with 15 gp for equipment and can buy common level-0 and level-1 items from approved sources; source-backed free class grants are not charged against that budget.
 
 PF2E's Automatic Bonus Progression mode and actor override affect eligibility and guidance through the installed system's actual values. They do not select or invent another wealth table. Wayfinder can suppress or warn on potency, striking, resilient, and redundant numerical items without blanket-filtering property runes, consumables, scrolls, or wands.
 

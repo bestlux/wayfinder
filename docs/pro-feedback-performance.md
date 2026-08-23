@@ -2,7 +2,7 @@
 
 > **Status: implemented design input, not a description of the current
 > architecture.** This review was written against the pre-0.8.2 catalogue
-> pipeline. The 0.8.2 candidate adopts its central boundary: a stable catalogue
+> pipeline. Release 0.8.2 adopts its central boundary: a stable catalogue
 > host retains the complete lightweight matching shelf, adaptive fixed-height
 > virtualization projects only mounted rows, and scrolling performs no Foundry
 > render or compendium-document read. Search and facets replace the lightweight
@@ -18,7 +18,9 @@
 > and 1,500 px with zero visible gap. Two rapid full-screen jumps caused zero
 > equipment/full renders and zero document reads. A forced preview-read failure
 > recovered the same focused row with exactly two document reads and zero full
-> renders. Final 0.8.2 package binding is still pending.
+> renders. Exact candidate `2495078a752522688e1bbc54e642ae742c092475`
+> completed package binding and publication on 2026-08-23. Release 0.8.3 does
+> not change the qualified virtual-list architecture or performance envelope.
 
 **Yes: stop treating a scroll-window change as a Foundry render.** Keep ApplicationV2 and Handlebars for the window shell, filters, detail panel, cart, status, and genuine domain-state changes. Inside that shell, mount a stable, imperative virtual-list controller that renders immediately from lightweight browse data.
 

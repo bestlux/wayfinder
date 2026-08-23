@@ -2,6 +2,8 @@
 
 Status: released 2026-08-22. Required functional stories through Wave 4, the WF-080-51 exact-candidate live matrix, WF-080-52 package binding, independent verification, GitHub publication, and Foundry registration are complete.
 
+Post-release stabilization: 0.8.1 completed the cold-partial, request-decline/re-request, and equivalent-stack paths; 0.8.2 shipped the adaptive stable catalogue and workflow polish; 0.8.3 unified the recipe-aware item-level boundary so level-1 starting money admits common level-0 and level-1 items without weakening higher-level restrictions. This plan remains the historical 0.8.0 delivery record; current status and exact evidence live in the [roadmap](../roadmap.md) and [Foundry smoke log](../coverage/beta-readiness-smoke.md).
+
 Architecture and rules contracts:
 
 - [Starting Equipment and Wealth Architecture](../architecture/starting-equipment-and-wealth.md)

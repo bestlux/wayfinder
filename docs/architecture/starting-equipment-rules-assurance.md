@@ -1,6 +1,6 @@
 # Starting Equipment Rules Assurance
 
-Status: accepted assurance contract for the planned 0.8.0 release. This document owns provenance, interpretation, and drift behavior for starting-equipment rules. It deliberately does not duplicate all 20 Character Wealth rows.
+Status: shipped assurance contract introduced in 0.8.0 and maintained through 0.8.3. This document owns provenance, interpretation, and drift behavior for starting-equipment rules. It deliberately does not duplicate all 20 Character Wealth rows. Exact release evidence lives in the [Foundry smoke log](../coverage/beta-readiness-smoke.md).
 
 Related documents:
 
@@ -91,7 +91,7 @@ Initial ledger:
 
 | Rule key | Wayfinder behavior | Primary citation | Classification |
 | --- | --- | --- | --- |
-| `level-1-starting-money` | A level-1 character has 15 gp to spend on equipment; remaining denominations are retained. | Player Core p. 25 | Executable rule |
+| `level-1-starting-money` | A level-1 character has 15 gp to spend on common level-0 and level-1 equipment from approved sources; remaining denominations are retained. | Player Core p. 25 | Executable rule |
 | `higher-level-character-wealth` | A new or replacement higher-level character uses Character Wealth; the items are common and player-selected within GM availability. | GM Core pp. 61, 67; [AoN 2684](https://2e.aonprd.com/Rules.aspx?ID=2684) | Executable rule |
 | `wealth-recipes-are-alternatives` | Permanent items plus currency and lump sum are alternatives and never combine. | GM Core p. 61 | Executable rule |
 | `party-size-is-separate` | Party-size treasure adjustments do not modify an individual new character's Character Wealth recipe. | GM Core p. 61 | Executable boundary |

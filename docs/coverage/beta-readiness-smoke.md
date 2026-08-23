@@ -1,6 +1,6 @@
 # Beta Readiness Foundry Smoke
 
-Last updated: 2026-08-22.
+Last updated: 2026-08-23.
 
 This is the launch-readiness live smoke layer for Wayfinder. It complements unit tests by exercising the built module inside a real Foundry world against live PF2E compendia.
 
@@ -46,6 +46,24 @@ The companion static class audit checks the maintained smoke matrix against the 
 ```powershell
 npm run audit:classes
 ```
+
+## 2026-08-23 Release 0.8.3
+
+The exact 0.8.3 candidate `11ca9d63b7102377be335b69dd214c383c1bb36b` passed the release coordinator against Foundry VTT 14.366 / PF2E 8.4.1 in `testing-world`. Coordinator root `.wayfinder-smoke/wf51-release-coordinator-c71fafb8-b7b9-4bff-baf5-d5c356a0918c` records 55 executions / 54 unique scenarios, the ten acquisition cases, five Wave 3 cases, three Wave 4 cases, English and Chinese experience coverage, seven focused release cases, and the ordered fifteen-row overlay with no failures, candidate drift, or restoration failure.
+
+Completion evidence `c71fafb8-b7b9-4bff-baf5-d5c356a0918c` binds run `b3935960-9326-4776-b3a0-7ab02953bbfb` to served-script manifest SHA-256 `40394aac5e6ef069c720030ff775bbbf40f4b405ae92aec0bc2ef4741ac22fca`, result SHA-256 `f030b85bda81a1d3d2b5ce4de5074eb69f702b505416be3a1b833769a0017d0a`, and summary SHA-256 `4aa8ca4e3579d6804ca2ed3d1afca041b0551e1bceaa4b71567e22b2cd4c4691`.
+
+The release-specific live probe resolved `Compendium.pf2e.equipment-srd.Item.2RuepCemJhrpKKao` as Healing Potion (Minor): Common, level 1, 4 gp / 400 cp. It proved that catalogue, prepared currency-line, and acquisition boundaries all admit item level 1 for a level-1 character. This distinguishes the level-1 15 gp starting-money rule from the higher-level below-target-level residual and lump-sum restrictions.
+
+`npm run check` passed 2,080 tests across 189 files. GitHub Actions run [32655458112](https://github.com/bestlux/wayfinder/actions/runs/32655458112) validated and published [v0.8.3](https://github.com/bestlux/wayfinder/releases/tag/v0.8.3), and Foundry's dry-run validation and package registration succeeded. The public ZIP and qualified local ZIP both have SHA-256 `b1aa772a7bde56707172e0ad94f75dd17e2e4a65ad8b2b99f87f76c23cfbad44`; the latest and version-pinned manifests both report 0.8.3.
+
+## 2026-08-23 Release 0.8.2
+
+The exact 0.8.2 candidate `2495078a752522688e1bbc54e642ae742c092475` completed release qualification at `.wayfinder-smoke/wf51-release-0.8.2-2495078`. Completion evidence `9528c7ed-5928-43cc-a602-469db4d6e1ea` binds served-script manifest SHA-256 `bf3c2536f1cfe4411f669361f5b56d60cb6840b5189563147ecddde7550d09de` and result SHA-256 `d6b549c24543ef0d7e64e1a7ea64f0d756156afcd1fd452eb60d4de32855261a` to that candidate.
+
+Two 840-sample catalogue profiles at production commit `b5e51e7e473193144783b4bde3278a046c6d8ee7` passed with zero failed samples and zero long tasks. Their overall p95 values were 52.8 ms and 53.3 ms; worst action/width p95 values were 66.9 ms and 64.8 ms. The 1,138-row default shelf mounted 29, 35, and 40 rows at 820, 1,200, and 1,500 px, with no visible gaps. Rapid full-screen jumps caused no equipment/full renders or document reads, and forced preview-read recovery performed exactly two reads while preserving focus and avoiding a full render.
+
+GitHub Actions run [32635096529](https://github.com/bestlux/wayfinder/actions/runs/32635096529) published [v0.8.2](https://github.com/bestlux/wayfinder/releases/tag/v0.8.2). The public ZIP SHA-256 is `3a4bf49dd9506896e6c611c6829f2d781373511cfb31d9ee820a2f69583a464e`.
 
 ## 2026-08-22 Release 0.8.1
 

@@ -1,9 +1,9 @@
 # Starting-equipment UX handoff
 
-> **Implementation status (2026-08-23, 0.8.2 candidate).** This handoff records
+> **Implementation status (2026-08-23, released in 0.8.2).** This handoff records
 > the pre-implementation findings that shaped the 0.8.2 catalogue work; its
 > present-tense problem statements and original 12-row/550-element/144-result-
-> element envelope are historical. The candidate replaces the fixed 12-row
+> element envelope are historical. The release replaces the fixed 12-row
 > shelf with an adaptive stable virtual list, ranks and facets the complete
 > lightweight shelf, and projects only mounted rows. Items 1a, 1b, 2, 3a, 4, 6,
 > 7, and 8 are complete; item 3b (funding-aware affordability) and item 5 (row
@@ -13,8 +13,12 @@
 > Two clean 840-sample runs at production commit
 > `b5e51e7e473193144783b4bde3278a046c6d8ee7` passed with zero failed samples
 > and zero long tasks. Their overall p95 values were 52.8 ms and 53.3 ms; their
-> worst action/width p95 values were 66.9 ms and 64.8 ms. Final 0.8.2 version,
-> package, and exact-candidate binding remain release gates.
+> worst action/width p95 values were 66.9 ms and 64.8 ms. Exact candidate
+> `2495078a752522688e1bbc54e642ae742c092475` completed package binding and
+> publication; the public ZIP SHA-256 is
+> `3a4bf49dd9506896e6c611c6829f2d781373511cfb31d9ee820a2f69583a464e`.
+> Release 0.8.3 only corrects the shared item-level policy and does not change
+> this virtual-list envelope.
 
 > Follow-on work after the 0.8.0 visual rebuild of the starting-equipment views
 > (`feat(equipment): rebuild the starting-equipment views on the app's design language`).
@@ -58,11 +62,10 @@ row-template cap and exceeds the observed 135 without weakening the fixed
 12-row hydration window. The latency, image-request, and long-task budgets were
 not relaxed.
 
-**Item 0 is complete as a measurement and frozen-envelope change.** The exact
-post-freeze candidate still requires two full 840-sample equipment runs and the
-WF-080-51 coordinator before release qualification. Future work that changes the
-row or pane structure must rerun that same gate rather than raising these values
-from source reasoning alone.
+**Item 0 is complete as a measurement and frozen-envelope change.** Two full
+840-sample equipment runs and the exact-candidate coordinator passed before
+0.8.2 publication. Future work that changes the row or pane structure must rerun
+that same gate rather than raising these values from source reasoning alone.
 
 ---
 

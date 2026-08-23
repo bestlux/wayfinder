@@ -174,9 +174,7 @@ export function buildStartingEquipmentPane(
         )
       : null;
     const noFundingReason =
-      (record.pricePending
-        ? localize("wayfinder-pf2e.StartingEquipment.Catalogue.CheckingPrice")
-        : unavailableReason) ??
+      (record.pricePending ? localize("wayfinder-pf2e.StartingEquipment.Catalogue.ViewForPrice") : unavailableReason) ??
       (!canBuyWithCurrency && allowanceOptions.length === 0
         ? localize("wayfinder-pf2e.StartingEquipment.Catalogue.NoFunding")
         : null);
@@ -947,7 +945,7 @@ function formatCopper(copper: number, localize: AcquisitionLocalize): string {
 }
 
 function cataloguePriceLabel(record: StartingEquipmentCatalogueRecord, localize: AcquisitionLocalize): string {
-  if (record.pricePending) return localize("wayfinder-pf2e.StartingEquipment.Catalogue.CheckingPrice");
+  if (record.pricePending) return localize("wayfinder-pf2e.StartingEquipment.Catalogue.ViewForPrice");
   const price = formatCopper(record.priceCopper ?? -1, localize);
   const context = record.priceContext;
   if (!context) return price;

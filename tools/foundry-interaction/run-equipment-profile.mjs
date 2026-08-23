@@ -16,7 +16,7 @@ import {
   summarizeEquipmentProfile,
   validateEquipmentBudgets,
   validateEquipmentFixture,
-  validateEquipmentPartialRenderRecoveryProbe,
+  validateEquipmentControllerRecoveryProbe,
   validateEquipmentProfile,
   validateEquipmentResultWindowObservation,
   validateEquipmentScrollProbe,
@@ -109,7 +109,7 @@ async function main() {
   const samples = [];
   const resultWindowObservations = [];
   let scrollProbe = null;
-  let partialRenderRecoveryProbe = null;
+  let controllerRecoveryProbe = null;
   try {
     candidate = inspectCandidate(options.moduleRoot, options.moduleRef);
     failureStage = "driver-provenance";
@@ -254,7 +254,7 @@ async function main() {
       }
     }
 
-    failureStage = "pending-prefetch-scroll";
+    failureStage = "stable-host-scroll";
     const scrollWindowProfile = profile.resultWindowProfiles.find(
       (entry) => entry.id === profile.scrollSampling.resultWindowProfileId,
     );
@@ -262,10 +262,12 @@ async function main() {
     const scrollBrowserViewport = resultWindowBrowserViewport(profile, scrollWindowProfile);
     await playerPage.setViewportSize(scrollBrowserViewport);
     const observedScroll = await playerPage.evaluate(
-      (payload) => globalThis.__wayfinderEquipmentProfile.probePendingPrefetchScroll(payload),
+      (payload) => globalThis.__wayfinderEquipmentProfile.probeStableHostScroll(payload),
       {
-        framesWhilePending: profile.scrollSampling.framesWhilePending,
+        framesAfterScroll: profile.scrollSampling.framesAfterScroll,
         height: scrollWindowProfile.appHeight,
+        rapidFullScreenScrolls: profile.scrollSampling.rapidFullScreenScrolls,
+        resultWindowSizing: profile.resultWindowSizing,
         settleTimeoutMs: profile.settleTimeoutMs,
         width: profile.resultWindowSampling.appWidth,
       },
@@ -273,43 +275,39 @@ async function main() {
     scrollProbe = {
       ...observedScroll,
       browserViewport: scrollBrowserViewport,
-      rapidFullScreenScrollCount: profile.scrollSampling.rapidFullScreenScrollsWhilePending,
+      rapidFullScreenScrollCount: profile.scrollSampling.rapidFullScreenScrolls,
       requestedAppHeight: scrollWindowProfile.appHeight,
       requestedAppWidth: profile.resultWindowSampling.appWidth,
       resultWindowProfileId: scrollWindowProfile.id,
     };
     scrollProbe.failures = validateEquipmentScrollProbe(profile, scrollProbe);
 
-    failureStage = "partial-render-recovery";
+    failureStage = "controller-recovery";
     const recoveryWindowProfile = profile.resultWindowProfiles.find(
-      (entry) => entry.id === profile.partialRenderRecoverySampling.resultWindowProfileId,
+      (entry) => entry.id === profile.controllerRecoverySampling.resultWindowProfileId,
     );
     if (!recoveryWindowProfile) {
-      throw new Error("Equipment profile partial-render recovery sampling names an unknown result-window profile.");
+      throw new Error("Equipment profile controller recovery sampling names an unknown result-window profile.");
     }
     const recoveryBrowserViewport = resultWindowBrowserViewport(profile, recoveryWindowProfile);
     await playerPage.setViewportSize(recoveryBrowserViewport);
     const observedRecovery = await playerPage.evaluate(
-      (payload) => globalThis.__wayfinderEquipmentProfile.probePartialRenderRecovery(payload),
+      (payload) => globalThis.__wayfinderEquipmentProfile.probeControllerRecovery(payload),
       {
-        expectedDefaultShelfValues: profile.expectedDefaultShelfValues,
         height: recoveryWindowProfile.appHeight,
         resultWindowSizing: profile.resultWindowSizing,
         settleTimeoutMs: profile.settleTimeoutMs,
         width: profile.resultWindowSampling.appWidth,
       },
     );
-    partialRenderRecoveryProbe = {
+    controllerRecoveryProbe = {
       ...observedRecovery,
       browserViewport: recoveryBrowserViewport,
       requestedAppHeight: recoveryWindowProfile.appHeight,
       requestedAppWidth: profile.resultWindowSampling.appWidth,
       resultWindowProfileId: recoveryWindowProfile.id,
     };
-    partialRenderRecoveryProbe.failures = validateEquipmentPartialRenderRecoveryProbe(
-      profile,
-      partialRenderRecoveryProbe,
-    );
+    controllerRecoveryProbe.failures = validateEquipmentControllerRecoveryProbe(profile, controllerRecoveryProbe);
 
     failureStage = "sampling";
     const defaultWindow = profile.resultWindowProfiles.find((entry) => entry.id === "default");
@@ -422,7 +420,7 @@ async function main() {
     observedRuntime,
     preflight,
     profile,
-    partialRenderRecoveryProbe,
+    controllerRecoveryProbe,
     routeFailures,
     resultWindowObservations,
     scrollProbe,
@@ -455,7 +453,7 @@ export function buildEquipmentProfileResult({
   observedRuntime,
   preflight,
   profile,
-  partialRenderRecoveryProbe = null,
+  controllerRecoveryProbe = null,
   routeFailures,
   resultWindowObservations = [],
   scrollProbe = null,
@@ -471,7 +469,7 @@ export function buildEquipmentProfileResult({
     requireQualificationSamples: !developmentOverride,
     resultWindowObservations,
     scrollProbe,
-    partialRenderRecoveryProbe,
+    controllerRecoveryProbe,
   });
   const failed = Boolean(orchestrationFailure) || cleanupFailures.length > 0 || routeFailures.length > 0;
   const failure =
@@ -527,7 +525,7 @@ export function buildEquipmentProfileResult({
     servedModuleFiles: servedFiles,
     resultWindowObservations,
     scrollProbe,
-    partialRenderRecoveryProbe,
+    controllerRecoveryProbe,
     samples,
     summary,
     qualification,

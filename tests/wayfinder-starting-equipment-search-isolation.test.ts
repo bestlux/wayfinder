@@ -87,6 +87,10 @@ describe("starting equipment search isolation", () => {
     expect(stableCatalogue).toContain("this.#resizeObserver?.observe(this.#viewport);");
     expect(appShell).toContain("#mountEquipmentStableCatalogue(root, context.equipmentRenderSession);");
     expect(appShell).toContain("this.#equipmentStableCatalogue.controller.setProjection({");
+    const mountStart = appShell.indexOf("  #mountEquipmentStableCatalogue(");
+    const mountEnd = appShell.indexOf("  #equipmentResultWindowState(", mountStart);
+    const mount = appShell.slice(mountStart, mountEnd);
+    expect(mount.indexOf("controller.setProjection({")).toBeLessThan(mount.indexOf("controller.restoreScrollTop("));
   });
 
   it("keeps the equipment search control outside all replaceable application parts", () => {

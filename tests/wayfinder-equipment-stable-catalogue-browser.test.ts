@@ -162,6 +162,98 @@ browserIt("mounts real rows synchronously across jumps and pins the focused row"
   }
 });
 
+browserIt("keeps long localized rows bounded across narrow layouts, text zoom, and restored scroll", async () => {
+  const browser = await chromium.launch({ executablePath: chromePath, headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1200, height: 900 } });
+    await page.setContent(responsiveFixture());
+    await page.addScriptTag({ content: stableCatalogueScript });
+
+    const evidence = await page.evaluate(async () => {
+      const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      const stage = document.querySelector<HTMLElement>("[data-responsive-stage]")!;
+      const viewport = document.querySelector<HTMLElement>("[data-stable-list]")!;
+      const canvas = document.querySelector<HTMLElement>("[data-stable-canvas]")!;
+      const rows = Array.from({ length: 200 }, (_, index) => ({
+        stepId: "starting-equipment-level-1",
+        sourceUuid: `Compendium.pf2e.equipment-srd.Item.localized-${index}`,
+        name:
+          index % 2 === 0
+            ? `超长的中文装备名称用于验证在放大和狭窄布局中不会被无声裁切 ${index}`
+            : `An extraordinarily long localized equipment name for narrow and magnified layouts ${index}`,
+        previewAriaLabel: `查看超长的中文装备名称 ${index}`,
+        previewFocusId: `localized-preview:${index}`,
+        levelLabel: `等级 ${index % 21}`,
+        rarity: "uncommon",
+        rarityLabel: "罕见",
+        itemType: "equipment",
+        itemTypeLabel: "装备",
+        typeIcon: "fa-box",
+        sourceLabel:
+          index % 2 === 0
+            ? "极其冗长的规则书与补充资料来源名称"
+            : "An Extremely Long Rules Source and Supplemental Publication Name",
+        unavailableReason:
+          index % 2 === 0
+            ? "此物品需要游戏主持人批准一个同样非常长的例外理由"
+            : "This item requires Game Master approval for a deliberately long exception reason",
+        priceLabel: "查看以核对准确价格",
+        canAdd: false,
+        previewing: false,
+      }));
+      const controller = new window.EquipmentStableCatalogue({ viewport, canvas });
+      const projection = { key: "localized", rows };
+      controller.setProjection(projection);
+      await nextFrame();
+      await nextFrame();
+
+      const geometry = () => {
+        const mounted = [...viewport.querySelectorAll<HTMLElement>("[role='listitem']")];
+        const buttons = mounted.map((row) => row.querySelector<HTMLElement>("button")!);
+        return {
+          canvasHeight: Number.parseFloat(canvas.style.height),
+          rowHeight: mounted[0]?.getBoundingClientRect().height ?? 0,
+          rowsBounded: buttons.every((button) => button.scrollHeight <= button.clientHeight),
+          pricesBounded: mounted.every((row) => {
+            const price = row.querySelector<HTMLElement>(".equipment-result-price")!;
+            return getComputedStyle(price).overflowWrap === "anywhere" && price.scrollHeight <= price.clientHeight;
+          }),
+        };
+      };
+
+      const at980 = geometry();
+      stage.style.width = "760px";
+      await nextFrame();
+      await nextFrame();
+      controller.setProjection(projection);
+      const at760 = geometry();
+
+      document.documentElement.style.fontSize = "32px";
+      controller.setProjection(projection);
+      const at200Percent = geometry();
+      const restoredTarget = 80 * at200Percent.rowHeight;
+      controller.restoreScrollTop(restoredTarget);
+      const restoredIndex = Math.floor(viewport.scrollTop / at200Percent.rowHeight);
+      const restoredHasDestination = Boolean(viewport.querySelector(`[data-result-index='${restoredIndex}']`));
+      const restoredScrollTop = viewport.scrollTop;
+      controller.dispose();
+      return { at980, at760, at200Percent, restoredHasDestination, restoredIndex, restoredScrollTop };
+    });
+
+    expect(evidence.at980).toMatchObject({ rowHeight: 72, rowsBounded: true, pricesBounded: true });
+    expect(evidence.at980.canvasHeight).toBe(200 * 72);
+    expect(evidence.at760).toMatchObject({ rowHeight: 80, rowsBounded: true, pricesBounded: true });
+    expect(evidence.at760.canvasHeight).toBe(200 * 80);
+    expect(evidence.at200Percent).toMatchObject({ rowHeight: 160, rowsBounded: true, pricesBounded: true });
+    expect(evidence.at200Percent.canvasHeight).toBe(200 * 160);
+    expect(evidence.restoredIndex).toBe(80);
+    expect(evidence.restoredHasDestination).toBe(true);
+    expect(evidence.restoredScrollTop).toBe(80 * 160);
+  } finally {
+    await browser.close();
+  }
+});
+
 function fixture(): string {
   return `<style>${productionStyles}
     .wayfinder-app, .wayfinder-app * { box-sizing: border-box; }
@@ -173,6 +265,21 @@ function fixture(): string {
     </div>
     <button type="button" data-stable-page="previous">Previous</button>
     <button type="button" data-stable-page="next">Next</button>
+  </div>`;
+}
+
+function responsiveFixture(): string {
+  return `<style>${productionStyles}
+    .wayfinder-app, .wayfinder-app * { box-sizing: border-box; }
+    .wayfinder-stage { container: wayfinder-stage / inline-size; width:980px; }
+    .wayfinder-app .equipment-result-list { flex:none; width:100%; height:480px; }
+  </style>
+  <div class="wayfinder-stage" data-responsive-stage>
+    <div class="wayfinder-app">
+      <div class="equipment-result-list" role="list" tabindex="-1" data-stable-list>
+        <div class="equipment-stable-catalogue-canvas" role="presentation" data-stable-canvas></div>
+      </div>
+    </div>
   </div>`;
 }
 

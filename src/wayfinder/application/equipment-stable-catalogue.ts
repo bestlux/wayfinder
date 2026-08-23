@@ -13,6 +13,7 @@ export interface EquipmentStableCatalogueRow {
   readonly sourceLabel: string;
   readonly unavailableReason: string | null;
   readonly priceLabel: string;
+  readonly pricePending?: boolean;
   readonly canAdd: boolean;
   readonly previewing: boolean;
 }
@@ -54,6 +55,7 @@ interface MountedEquipmentRow {
 const DEFAULT_ROW_HEIGHT_PX = 64;
 const DEFAULT_ROWS_BEHIND = 12;
 const DEFAULT_ROWS_AHEAD = 24;
+const ROW_HEIGHT_CUSTOM_PROPERTY = "--wayfinder-equipment-result-row-height";
 
 /**
  * A fixed-height catalogue renderer whose viewport and canvas survive scroll changes.
@@ -65,7 +67,8 @@ const DEFAULT_ROWS_AHEAD = 24;
 export class EquipmentStableCatalogue {
   readonly #viewport: HTMLElement;
   readonly #canvas: HTMLElement;
-  readonly #rowHeightPx: number;
+  #rowHeightPx: number;
+  readonly #rowHeightFromCss: boolean;
   readonly #rowsBehind: number;
   readonly #rowsAhead: number;
   readonly #resizeObserver: ResizeObserver | null;
@@ -84,7 +87,10 @@ export class EquipmentStableCatalogue {
   constructor(options: EquipmentStableCatalogueOptions) {
     this.#viewport = options.viewport;
     this.#canvas = options.canvas;
-    this.#rowHeightPx = positiveInteger(options.rowHeightPx, DEFAULT_ROW_HEIGHT_PX);
+    this.#rowHeightFromCss = options.rowHeightPx === undefined;
+    this.#rowHeightPx = this.#rowHeightFromCss
+      ? measuredCssRowHeight(this.#canvas, DEFAULT_ROW_HEIGHT_PX)
+      : positiveInteger(options.rowHeightPx, DEFAULT_ROW_HEIGHT_PX);
     this.#rowsBehind = nonNegativeInteger(options.rowsBehind, DEFAULT_ROWS_BEHIND);
     this.#rowsAhead = nonNegativeInteger(options.rowsAhead, DEFAULT_ROWS_AHEAD);
     this.#previousPageButton = options.previousPageButton ?? null;
@@ -104,6 +110,7 @@ export class EquipmentStableCatalogue {
 
   setProjection(projection: EquipmentStableCatalogueProjection): void {
     this.#assertActive();
+    this.#refreshRowHeight();
     const indexBySourceUuid = new Map<string, number>();
     projection.rows.forEach((row, index) => {
       if (!row.sourceUuid || indexBySourceUuid.has(row.sourceUuid)) {
@@ -125,6 +132,17 @@ export class EquipmentStableCatalogue {
 
     const maximumScrollTop = Math.max(0, projection.rows.length * this.#rowHeightPx - this.#viewport.clientHeight);
     if (this.#viewport.scrollTop > maximumScrollTop) this.#viewport.scrollTop = maximumScrollTop;
+    this.#lastScrollTop = this.#viewport.scrollTop;
+    this.#mountedRange = { start: 0, end: 0 };
+    this.#bindRange(this.#emergencyRange(this.#visibleRange()));
+    this.#scheduleFrame();
+  }
+
+  restoreScrollTop(scrollTop: number): void {
+    this.#assertActive();
+    const totalHeight = (this.#projection?.rows.length ?? 0) * this.#rowHeightPx;
+    const maximumScrollTop = Math.max(0, totalHeight - this.#viewport.clientHeight);
+    this.#viewport.scrollTop = clamp(Number.isFinite(scrollTop) ? scrollTop : 0, 0, maximumScrollTop);
     this.#lastScrollTop = this.#viewport.scrollTop;
     this.#mountedRange = { start: 0, end: 0 };
     this.#bindRange(this.#emergencyRange(this.#visibleRange()));
@@ -169,6 +187,7 @@ export class EquipmentStableCatalogue {
 
   #onResize = (): void => {
     if (!this.#projection || this.#disposed) return;
+    this.#refreshRowHeight();
     const visible = this.#visibleRange();
     if (!containsRange(this.#mountedRange, visible)) this.#bindRange(this.#emergencyRange(visible));
     this.#scheduleFrame();
@@ -321,6 +340,19 @@ export class EquipmentStableCatalogue {
   #assertActive(): void {
     if (this.#disposed) throw new Error("Cannot update a disposed stable equipment catalogue.");
   }
+
+  #refreshRowHeight(): void {
+    if (!this.#rowHeightFromCss) return;
+    const next = measuredCssRowHeight(this.#canvas, DEFAULT_ROW_HEIGHT_PX);
+    if (Math.abs(next - this.#rowHeightPx) < 0.5) return;
+    const prior = this.#rowHeightPx;
+    const anchor = prior > 0 ? this.#viewport.scrollTop / prior : 0;
+    this.#rowHeightPx = next;
+    this.#canvas.style.height = `${(this.#projection?.rows.length ?? 0) * next}px`;
+    this.#viewport.scrollTop = anchor * next;
+    this.#lastScrollTop = this.#viewport.scrollTop;
+    this.#mountedRange = { start: 0, end: 0 };
+  }
 }
 
 function createMountedRow(document: Document, row: EquipmentStableCatalogueRow, index: number): MountedEquipmentRow {
@@ -370,6 +402,7 @@ function patchMountedRow(mounted: MountedEquipmentRow, row: EquipmentStableCatal
   mounted.row = row;
   mounted.root.classList.toggle("is-previewing", row.previewing);
   mounted.root.classList.toggle("is-blocked", !row.canAdd);
+  mounted.root.dataset.pricePending = row.pricePending ? "true" : "false";
   mounted.button.ariaLabel = row.previewAriaLabel;
   mounted.button.setAttribute("aria-pressed", row.previewing ? "true" : "false");
   mounted.button.dataset.filterRarity = row.rarity;
@@ -402,4 +435,13 @@ function nonNegativeInteger(value: number | undefined, fallback: number): number
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
+}
+
+function measuredCssRowHeight(canvas: HTMLElement, fallback: number): number {
+  const probe = canvas.ownerDocument.createElement("div");
+  probe.style.cssText = `position:absolute;visibility:hidden;pointer-events:none;height:var(${ROW_HEIGHT_CUSTOM_PROPERTY}, ${fallback}px)`;
+  canvas.append(probe);
+  const measured = probe.getBoundingClientRect().height;
+  probe.remove();
+  return Number.isFinite(measured) && measured > 0 ? measured : fallback;
 }

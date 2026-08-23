@@ -627,6 +627,8 @@
 /* ── Result list ───────────────────────────────────────── */
 
 .wayfinder-app .equipment-result-list {
+  --wayfinder-equipment-result-row-height: 4rem;
+
   position: relative;
   display: flex;
   flex-direction: column;
@@ -660,6 +662,24 @@
   box-sizing: border-box;
   contain: layout paint style;
   overflow: hidden;
+}
+
+.wayfinder-app .equipment-stable-result-row .equipment-result {
+  height: 100%;
+  overflow: hidden;
+}
+
+.wayfinder-app .equipment-stable-result-row .equipment-result-name,
+.wayfinder-app .equipment-stable-result-row .equipment-result-meta {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+
+.wayfinder-app .equipment-stable-result-row .equipment-result-price {
+  max-width: min(9rem, 36cqi);
+  overflow-wrap: anywhere;
 }
 
 .wayfinder-app .equipment-result-spacer {
@@ -1548,6 +1568,10 @@
 }
 
 @container wayfinder-stage (max-width: 980px) {
+  .wayfinder-app .equipment-result-list {
+    --wayfinder-equipment-result-row-height: 4.5rem;
+  }
+
   .wayfinder-app .equipment-workspace {
     grid-template-columns: minmax(0, 1.25fr) minmax(14rem, 0.75fr);
   }
@@ -1558,6 +1582,10 @@
 }
 
 @container wayfinder-stage (max-width: 760px) {
+  .wayfinder-app .equipment-result-list {
+    --wayfinder-equipment-result-row-height: 5rem;
+  }
+
   .wayfinder-app .equipment-workspace {
     grid-template-columns: 1fr;
     grid-template-rows: 18rem auto auto;

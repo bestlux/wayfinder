@@ -11,7 +11,6 @@ let actorId = null;
 let counters = null;
 let configured = false;
 let documentReadGate = null;
-let partialRenderRejectionGate = null;
 let readyDraftSnapshot = null;
 
 globalThis.__wayfinderEquipmentProfile = {
@@ -79,189 +78,104 @@ globalThis.__wayfinderEquipmentProfile = {
         Math.abs(window.actualAppHeight - height) <= 2 &&
         Math.abs(window.actualAppWidth - width) <= 2 &&
         window.mountedResultCount === expectedMountedRows &&
-        window.resultLimit === expectedMountedRows &&
-        window.resultOffset === 0 &&
-        window.resultEnd === expectedMountedRows
+        window.firstMountedResultIndex === 0 &&
+        window.lastMountedResultIndex === expectedMountedRows - 1 &&
+        window.mountedIndexesContiguous &&
+        window.stableHost &&
+        window.maxVisibleGapPx <= 2
       );
     }, settleTimeoutMs);
     await frames(2);
     return resultWindowSnapshot();
   },
 
-  async probePendingPrefetchScroll({ framesWhilePending, height, settleTimeoutMs, width }) {
-    await this.resize({ height, width });
+  async probeStableHostScroll({ framesAfterScroll, height, rapidFullScreenScrolls, resultWindowSizing, settleTimeoutMs, width }) {
+    await this.inspectResultWindow({ height, resultWindowSizing, settleTimeoutMs, width });
     const initial = resultWindowSnapshot();
-    const runtime = await import(
-      "/modules/wayfinder-pf2e/scripts/wayfinder/application/equipment-acquisition-runtime-service.js"
-    );
-    runtime.invalidateFoundryEquipmentCataloguePack(PACK_ID);
-    const documentReadsBeforeNavigation = { ...counters.documentReads };
-    const gate = holdEquipmentDocumentReads();
-    try {
-      let navigationAttemptsBeforePending = 0;
-      let firstTargetScrollTop = currentResultList().scrollTop;
-      while (counters.pendingEquipmentPackDocument === 0) {
-        const prior = resultWindowSnapshot();
-        if (prior.resultEnd >= prior.totalResultCount) {
-          throw new Error("Equipment profile could not find a genuinely prepared browse window.");
-        }
-        const list = currentResultList();
-        const measuredRowHeight =
-          prior.measuredRowHeightPx ??
-          [...list.querySelectorAll("[data-result-index]")].find((row) => row.clientHeight > 0)?.clientHeight ??
-          48;
-        const maxScrollTop = Math.max(0, list.scrollHeight - list.clientHeight);
-        firstTargetScrollTop = Math.min(
-          maxScrollTop,
-          Math.max(
-            list.scrollTop + list.clientHeight,
-            (prior.resultEnd - 2) * measuredRowHeight - list.clientHeight,
-          ),
-        );
-        navigationAttemptsBeforePending += 1;
-        scrollResultList(firstTargetScrollTop);
-        await waitUntil(
-          () =>
-            counters.pendingEquipmentPackDocument > 0 ||
-            resultWindowSnapshot().resultOffset !== prior.resultOffset,
-          settleTimeoutMs,
-        );
-      }
-      const firstObservedScrollTop = currentResultList().scrollTop;
-      const pendingBeforeRapidScroll = counters.pendingEquipmentPackDocument;
-      const pendingSourceUuids = Object.entries(counters.documentReads)
-        .flatMap(([key, count]) => {
-          const previous = documentReadsBeforeNavigation[key] ?? 0;
-          const [packId, documentId] = key.split("|");
-          return packId === PACK_ID && count > previous && documentId
-            ? [`Compendium.${PACK_ID}.Item.${documentId}`]
-            : [];
-        })
-        .sort((left, right) => left.localeCompare(right));
-      const pendingTargetList = currentResultList();
-      const requestedScrollDeltaPx = pendingTargetList.clientHeight;
-      const rapidTargetScrollTop = Math.min(
-        Math.max(0, pendingTargetList.scrollHeight - pendingTargetList.clientHeight),
-        pendingTargetList.scrollTop + requestedScrollDeltaPx,
-      );
-      scrollResultList(rapidTargetScrollTop);
-      const rapidObservedScrollTop = currentResultList().scrollTop;
-      const shelvesWhilePending = [];
-      for (let frame = 0; frame < framesWhilePending; frame += 1) {
-        await frames(1);
-        shelvesWhilePending.push(visibleShelfSnapshot());
-      }
-      const pendingAfterRapidScroll = counters.pendingEquipmentPackDocument;
-      gate.release();
-      await waitUntil(() => counters.pendingEquipmentPackDocument === 0, settleTimeoutMs);
-      await waitUntil(() => {
-        const settled = resultWindowSnapshot();
-        return settled.resultOffset > initial.resultOffset && visibleShelfSnapshot().visibleResultCount > 0;
-      }, settleTimeoutMs);
-      await frames(2);
-      return {
-        schemaVersion: 3,
-        initialWindow: initial,
-        firstTargetScrollTop,
-        firstObservedScrollTop,
-        navigationAttemptsBeforePending,
-        pendingSourceUuids,
-        rapidTargetScrollTop,
-        rapidObservedScrollTop,
-        requestedScrollDeltaPx,
-        observedScrollDeltaPx: rapidObservedScrollTop - firstObservedScrollTop,
-        pendingBeforeRapidScroll,
-        pendingAfterRapidScroll,
-        maxPendingDocumentReads: counters.maxPendingEquipmentPackDocument,
-        shelvesWhilePending,
-        pendingAfterSettle: counters.pendingEquipmentPackDocument,
-        settledWindow: resultWindowSnapshot(),
-        settledShelf: visibleShelfSnapshot(),
-      };
-    } finally {
-      gate.release();
+    const list = currentResultList();
+    const stableHost = list;
+    const documentReadsBefore = counters.equipmentPackDocument;
+    const equipmentRendersBefore = counters.equipmentRender;
+    const fullRendersBefore = counters.fullRender;
+    const initialScrollTop = list.scrollTop;
+    const maxScrollTop = Math.max(0, list.scrollHeight - list.clientHeight);
+    for (let jump = 0; jump < rapidFullScreenScrolls; jump += 1) {
+      scrollResultList(Math.min(maxScrollTop, currentResultList().scrollTop + currentResultList().clientHeight));
     }
+    const immediateShelf = visibleShelfSnapshot();
+    const observedScrollTop = currentResultList().scrollTop;
+    const shelvesAfterScroll = [];
+    for (let frame = 0; frame < framesAfterScroll; frame += 1) {
+      await frames(1);
+      shelvesAfterScroll.push(visibleShelfSnapshot());
+    }
+    return {
+      schemaVersion: 3,
+      initialWindow: initial,
+      destinationWindow: resultWindowSnapshot(),
+      immediateShelf,
+      shelvesAfterScroll,
+      requestedScrollDeltaPx: Math.min(maxScrollTop, initialScrollTop + list.clientHeight * rapidFullScreenScrolls) - initialScrollTop,
+      observedScrollDeltaPx: observedScrollTop - initialScrollTop,
+      stableHostPreserved: currentResultList() === stableHost,
+      packDocumentReadCount: counters.equipmentPackDocument - documentReadsBefore,
+      equipmentRenderCallCount: counters.equipmentRender - equipmentRendersBefore,
+      fullRenderCallCount: counters.fullRender - fullRendersBefore,
+    };
   },
 
-  async probePartialRenderRecovery({ expectedDefaultShelfValues, height, resultWindowSizing, settleTimeoutMs, width }) {
+  async probeControllerRecovery({ height, resultWindowSizing, settleTimeoutMs, width }) {
     await this.inspectResultWindow({
       height,
       resultWindowSizing,
       settleTimeoutMs,
       width,
     });
-    const initialState = resultListStateSnapshot();
-    if (!sameStrings(initialState.window.mountedResultValues, expectedDefaultShelfValues)) {
-      throw new Error("Equipment partial-render recovery probe did not start from the exact default shelf.");
-    }
-    const initialFocusTarget = currentResultList().querySelector("[data-equipment-item]");
-    if (!initialFocusTarget) throw new Error("Equipment partial-render recovery probe could not focus a committed row.");
-    initialFocusTarget.focus({ preventScroll: true });
-
-    const rejection = holdNextEquipmentWindowRenderRejection();
+    const stableHost = currentResultList();
+    const target = await findUnresolvedPriceRow(settleTimeoutMs);
+    const targetSourceUuid = resultSourceUuid(target);
+    target.focus({ preventScroll: true });
+    const initialState = controllerRecoveryStateSnapshot(stableHost, targetSourceUuid);
+    const gate = holdEquipmentDocumentReads();
     const fullRendersBefore = counters.fullRender;
     const equipmentRendersBefore = counters.equipmentRender;
+    const documentReadsBefore = counters.equipmentPackDocument;
     try {
-      const next = currentRoot().querySelector(".equipment-window-fallback.next");
-      if (!next) throw new Error("Equipment partial-render recovery probe could not resolve the next-window control.");
-      next.click();
+      target.click();
+      await waitUntil(() => counters.pendingEquipmentPackDocument > 0, settleTimeoutMs);
+      const enrichmentPendingState = controllerRecoveryStateSnapshot(stableHost, targetSourceUuid);
+      gate.reject();
+      await waitUntil(() => counters.pendingEquipmentPackDocument === 0, settleTimeoutMs);
+      await frames(2);
+      const failedState = controllerRecoveryStateSnapshot(stableHost, targetSourceUuid);
+      const failedAttemptEquipmentRenderCount = counters.equipmentRender - equipmentRendersBefore;
+      const retryTarget = resultForSourceUuid(targetSourceUuid);
+      if (!retryTarget) throw new Error("Equipment controller recovery lost the failed preview row.");
+      const equipmentRendersBeforeRetry = counters.equipmentRender;
+      retryTarget.click();
       await waitUntil(
-        () => rejection.intercepted && currentResultList().getAttribute("aria-busy") === "true",
+        () =>
+          visiblePreviewUuid() === targetSourceUuid &&
+          !controllerRecoveryStateSnapshot(stableHost, targetSourceUuid).targetPricePending,
         settleTimeoutMs,
       );
-      const rejectionPendingState = resultListStateSnapshot();
-      rejection.reject();
-      await waitUntil(() => {
-        const state = resultListStateSnapshot();
-        return (
-          state.ariaBusy === false &&
-          state.skeletonHidden === true &&
-          state.skeletonCount === 0 &&
-          sameStrings(state.window.mountedResultValues, expectedDefaultShelfValues) &&
-          state.focusedSourceUuid === expectedDefaultShelfValues[0]
-        );
-      }, settleTimeoutMs);
-      const recoveredState = resultListStateSnapshot();
-      const retryList = currentResultList();
-      retryList.focus({ preventScroll: true });
-      const retryRowHeight = recoveredState.window.measuredRowHeightPx ?? 48;
-      const retryScrollTop = Math.min(
-        Math.max(0, retryList.scrollHeight - retryList.clientHeight),
-        Math.max(
-          retryList.clientHeight,
-          (recoveredState.window.resultEnd - 2) * retryRowHeight - retryList.clientHeight,
-        ),
-      );
-      scrollResultList(retryScrollTop);
-      try {
-        await waitUntil(() => {
-          const state = resultListStateSnapshot();
-          return (
-            state.window.resultOffset > initialState.window.resultOffset &&
-            state.ariaBusy === false &&
-            state.skeletonHidden === true &&
-            state.skeletonCount === 0
-          );
-        }, settleTimeoutMs);
-      } catch (error) {
-        throw new Error(
-          `Equipment partial-render retry did not settle: ${JSON.stringify(resultListStateSnapshot())}`,
-          { cause: error },
-        );
-      }
+      await frames(2);
       return {
         schemaVersion: 3,
-        forcedRejectionCount: rejection.intercepted ? 1 : 0,
-        forcedRejectionStage: rejection.stage,
-        recoveryFullRenderCount: counters.fullRender - fullRendersBefore,
-        successfulRetryEquipmentRenderCount: counters.equipmentRender - equipmentRendersBefore - 1,
+        targetSourceUuid,
+        forcedEnrichmentFailureCount: 1,
+        forcedFailureStage: "pack-document-read",
+        failedAttemptEquipmentRenderCount,
+        successfulRetryEquipmentRenderCount: counters.equipmentRender - equipmentRendersBeforeRetry,
+        fullRenderCallCount: counters.fullRender - fullRendersBefore,
+        packDocumentReadCount: counters.equipmentPackDocument - documentReadsBefore,
         initialState,
-        rejectionPendingState,
-        recoveredState,
-        retryState: resultListStateSnapshot(),
+        enrichmentPendingState,
+        failedState,
+        retryState: controllerRecoveryStateSnapshot(stableHost, targetSourceUuid),
       };
     } finally {
-      rejection.reject();
+      gate.release();
     }
   },
 
@@ -347,7 +261,7 @@ globalThis.__wayfinderEquipmentProfile = {
             root.querySelector(SEARCH_SELECTOR)?.disabled === false &&
             root.querySelectorAll("[data-equipment-source-diagnostic]").length === 0 &&
             !root.querySelector(".equipment-catalogue-state") &&
-            sameStrings(visibleResultValues(), expectedDefaultShelfValues)
+            startsWithStrings(visibleResultValues(), expectedDefaultShelfValues)
           );
         };
         semantic = ready;
@@ -691,7 +605,7 @@ function finishSample(sample, semanticPassed, previewSplit, actionOutcome) {
   const search = root.querySelector(SEARCH_SELECTOR);
   const resultList = root.querySelector(".equipment-result-list");
   const mountedResults = [...(resultList?.querySelectorAll("[data-result-index]") ?? [])];
-  const resultOffset = Number(resultList?.dataset.resultOffset ?? 0);
+  const mountedIndexes = mountedResults.map((result) => Number(result.dataset.resultIndex));
   const urls = new Set([...sample.imageUrlsAtStart, ...imageUrls(root)]);
   const images = performance
     .getEntriesByType("resource")
@@ -735,8 +649,14 @@ function finishSample(sample, semanticPassed, previewSplit, actionOutcome) {
     measuredRowHeightPx: measuredRowHeight(mountedResults),
     resultDomElementCount: resultList?.querySelectorAll("*").length ?? 0,
     mountedResultCount: mountedResults.length,
-    resultOffset,
-    resultEnd: resultOffset + mountedResults.length,
+    totalResultCount: Number(resultList?.dataset.totalResults ?? 0),
+    scrollTop: resultList?.scrollTop ?? 0,
+    firstMountedResultIndex: mountedIndexes[0] ?? -1,
+    lastMountedResultIndex: mountedIndexes.at(-1) ?? -1,
+    mountedIndexesContiguous: mountedIndexes.every((value, index) => index === 0 || value === mountedIndexes[index - 1] + 1),
+    stableHost: Boolean(resultList?.classList.contains("is-stable-catalogue") && resultList.querySelector("[data-equipment-stable-canvas]")),
+    canvasHeightPx: Number.parseFloat(resultList?.querySelector("[data-equipment-stable-canvas]")?.style.height ?? "0"),
+    maxVisibleGapPx: resultList ? visibleShelfSnapshot().maxVisibleGapPx : null,
     firstMountedSourceUuid: mountedResults[0]?.dataset.sourceUuid ?? null,
     lastMountedSourceUuid: mountedResults.at(-1)?.dataset.sourceUuid ?? null,
     leadingSpacerPx: Number.parseFloat(resultList?.querySelector("[data-equipment-leading-spacer]")?.style.height ?? "0"),
@@ -791,15 +711,6 @@ async function instrumentAppPrototype() {
     const context = await prepare.apply(this, args);
     if (this.actor?.id === actorId) {
       counters[context?.wayfinderRenderScope === "equipment" ? "equipmentPrepareContext" : "fullPrepareContext"] += 1;
-      if (
-        partialRenderRejectionGate &&
-        context?.wayfinderRenderScope === "equipment" &&
-        context?.equipmentRequest?.intent === "window"
-      ) {
-        partialRenderRejectionGate.intercepted = true;
-        partialRenderRejectionGate.stage = "post-context-preparation";
-        return partialRenderRejectionGate.promise;
-      }
     }
     return context;
   };
@@ -885,7 +796,9 @@ function resultWindowSnapshot() {
   const root = currentRoot();
   const resultList = currentResultList();
   const mountedResults = [...resultList.querySelectorAll("[data-result-index]")];
-  const resultOffset = Number(resultList.dataset.resultOffset ?? 0);
+  const mountedIndexes = mountedResults.map((result) => Number(result.dataset.resultIndex));
+  const stableCanvas = resultList.querySelector("[data-equipment-stable-canvas]");
+  const shelf = visibleShelfSnapshot();
   return {
     schemaVersion: 3,
     ...appGeometry(),
@@ -893,33 +806,18 @@ function resultWindowSnapshot() {
     listClientHeight: resultList.clientHeight,
     measuredRowHeightPx: measuredRowHeight(mountedResults),
     totalResultCount: Number(resultList.dataset.totalResults ?? 0),
-    resultLimit: Number(
-      root.querySelector(".equipment-catalogue-projection")?.dataset.wayfinderResultLimit ?? mountedResults.length,
-    ),
+    scrollTop: resultList.scrollTop,
     mountedResultCount: mountedResults.length,
-    resultOffset,
-    resultEnd: resultOffset + mountedResults.length,
-    firstMountedResultIndex: Number(mountedResults[0]?.dataset.resultIndex ?? -1),
-    lastMountedResultIndex: Number(mountedResults.at(-1)?.dataset.resultIndex ?? -1),
+    firstMountedResultIndex: mountedIndexes[0] ?? -1,
+    lastMountedResultIndex: mountedIndexes.at(-1) ?? -1,
+    mountedIndexesContiguous: mountedIndexes.every((value, index) => index === 0 || value === mountedIndexes[index - 1] + 1),
     firstMountedSourceUuid: mountedResults[0]?.dataset.sourceUuid ?? null,
     lastMountedSourceUuid: mountedResults.at(-1)?.dataset.sourceUuid ?? null,
     mountedResultValues: mountedResults.map((result) => result.dataset.sourceUuid ?? ""),
-    leadingSpacerPx: spacerHeight(resultList, "[data-equipment-leading-spacer]"),
-    trailingSpacerPx: spacerHeight(resultList, "[data-equipment-trailing-spacer]"),
+    stableHost: resultList.classList.contains("is-stable-catalogue") && Boolean(stableCanvas),
+    canvasHeightPx: Number.parseFloat(stableCanvas?.style.height ?? "0"),
+    maxVisibleGapPx: shelf.maxVisibleGapPx,
     resultDomElementCount: resultList.querySelectorAll("*").length,
-  };
-}
-
-function resultListStateSnapshot() {
-  const list = currentResultList();
-  const band = list.querySelector("[data-equipment-skeleton-band]");
-  const focused = list.ownerDocument.activeElement;
-  return {
-    window: resultWindowSnapshot(),
-    ariaBusy: list.getAttribute("aria-busy") === "true",
-    skeletonHidden: band?.hidden === true,
-    skeletonCount: band?.querySelectorAll("[data-equipment-result-skeleton]").length ?? 0,
-    focusedSourceUuid: focused?.closest?.("[data-result-index]")?.dataset.sourceUuid ?? null,
   };
 }
 
@@ -933,13 +831,12 @@ function measuredRowHeight(rows) {
 
 function expectedMountedRowsForGeometry(sizing, geometry) {
   if (!sizing || !geometry?.listClientHeight || !geometry?.measuredRowHeightPx) return null;
-  const visibleRows = Math.ceil(geometry.listClientHeight / geometry.measuredRowHeightPx);
-  const target = Math.max(
-    sizing.baselineMountedRows,
-    Math.ceil(visibleRows * sizing.viewportMultiplier),
-    visibleRows + sizing.overscanRows,
-  );
-  return Math.min(sizing.maximumMountedRows, Math.ceil(target / sizing.hydrationChunkRows) * sizing.hydrationChunkRows);
+  const visibleRows = Math.ceil(geometry.listClientHeight / geometry.measuredRowHeightPx) + 1;
+  const firstVisible = Math.max(0, Math.floor((geometry.scrollTop ?? 0) / geometry.measuredRowHeightPx));
+  const total = Number.isInteger(geometry.totalResultCount) ? geometry.totalResultCount : Number.POSITIVE_INFINITY;
+  const start = Math.max(0, firstVisible - sizing.rowsBehind);
+  const end = Math.min(total, firstVisible + visibleRows + sizing.rowsAhead);
+  return Math.min(sizing.maximumMountedRows, Math.max(0, end - start));
 }
 
 function appGeometry() {
@@ -953,50 +850,34 @@ function currentResultList() {
   return list;
 }
 
-function spacerHeight(resultList, selector) {
-  return Number.parseFloat(resultList.querySelector(selector)?.style.height ?? "0");
-}
-
 function holdEquipmentDocumentReads() {
   if (documentReadGate) throw new Error("Equipment profile document-read gate is already active.");
-  let release;
-  const promise = new Promise((resolve) => {
-    release = resolve;
+  let releasePromise;
+  let rejectPromise;
+  let settled = false;
+  const promise = new Promise((resolve, reject) => {
+    releasePromise = resolve;
+    rejectPromise = reject;
   });
   const gate = {
     promise,
     release() {
+      if (settled) return;
+      settled = true;
       if (documentReadGate === gate) documentReadGate = null;
-      release();
+      releasePromise();
+    },
+    reject() {
+      if (settled) return;
+      settled = true;
+      if (documentReadGate === gate) documentReadGate = null;
+      const error = new Error("Forced equipment document-read rejection for live controller recovery qualification.");
+      error.name = "WayfinderEquipmentProfileForcedDocumentError";
+      rejectPromise(error);
     },
   };
   counters.maxPendingEquipmentPackDocument = counters.pendingEquipmentPackDocument;
   documentReadGate = gate;
-  return gate;
-}
-
-function holdNextEquipmentWindowRenderRejection() {
-  if (partialRenderRejectionGate) {
-    throw new Error("Equipment profile partial-render rejection is already armed.");
-  }
-  let rejectPromise;
-  let settled = false;
-  const gate = {
-    intercepted: false,
-    stage: null,
-    promise: new Promise((_, reject) => {
-      rejectPromise = reject;
-    }),
-    reject() {
-      if (settled) return;
-      settled = true;
-      if (partialRenderRejectionGate === gate) partialRenderRejectionGate = null;
-      const error = new Error("Forced equipment partial-render rejection for live recovery qualification.");
-      error.name = "WayfinderEquipmentProfileForcedRenderError";
-      rejectPromise(error);
-    },
-  };
-  partialRenderRejectionGate = gate;
   return gate;
 }
 
@@ -1056,6 +937,39 @@ function resultSourceUuid(result) {
 
 function resultForSourceUuid(sourceUuid) {
   return [...currentRoot().querySelectorAll(RESULT_SELECTOR)].find((result) => resultSourceUuid(result) === sourceUuid) ?? null;
+}
+
+async function findUnresolvedPriceRow(settleTimeoutMs) {
+  const list = currentResultList();
+  const findMounted = () =>
+    [...list.querySelectorAll("[data-result-index][data-price-pending='true']")]
+      .map((root) => root.querySelector(RESULT_SELECTOR))
+      .find(Boolean) ?? null;
+  let target = findMounted();
+  while (!target) {
+    const maximum = Math.max(0, list.scrollHeight - list.clientHeight);
+    if (list.scrollTop >= maximum) {
+      throw new Error("Equipment controller recovery could not find a genuine unresolved price row.");
+    }
+    scrollResultList(Math.min(maximum, list.scrollTop + list.clientHeight));
+    await frames(1);
+    target = findMounted();
+  }
+  await waitUntil(() => Boolean(resultForSourceUuid(resultSourceUuid(target))), settleTimeoutMs);
+  return target;
+}
+
+function controllerRecoveryStateSnapshot(stableHost, sourceUuid) {
+  const row = resultForSourceUuid(sourceUuid);
+  const root = row?.closest("[data-result-index]");
+  return {
+    window: resultWindowSnapshot(),
+    stableHostPreserved: currentResultList() === stableHost,
+    pendingDocumentReads: counters.pendingEquipmentPackDocument,
+    focusedSourceUuid: document.activeElement?.closest?.("[data-source-uuid]")?.dataset.sourceUuid ?? null,
+    visiblePreviewSourceUuid: visiblePreviewUuid(),
+    targetPricePending: root?.dataset.pricePending === "true",
+  };
 }
 
 function selectedCurrencyAdd(sourceUuid) {
@@ -1118,6 +1032,10 @@ function imageUrls(root) {
 
 function sameStrings(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function startsWithStrings(values, frozenPrefix) {
+  return values.length > 0 && sameStrings(values, frozenPrefix.slice(0, values.length));
 }
 
 

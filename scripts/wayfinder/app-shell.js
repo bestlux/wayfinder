@@ -1612,7 +1612,9 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 onPreview: (row, button) => {
                     this.#rememberInteractiveState();
                     this.#pendingEquipmentFocusIds = [row.previewFocusId];
-                    if (this.#equipmentPreviewByStepId.get(row.stepId) === row.sourceUuid) {
+                    const renderedPreviewSourceUuid = root.querySelector("[data-equipment-preview]")?.dataset.equipmentPreview;
+                    if (this.#equipmentPreviewByStepId.get(row.stepId) === row.sourceUuid &&
+                        renderedPreviewSourceUuid === row.sourceUuid) {
                         this.#pendingEquipmentFocusIds = null;
                         return;
                     }
@@ -1627,6 +1629,10 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             key: `${session.identity.sourceRevision}:${session.viewRevision}:${session.pane.catalogue.search}`,
             rows: session.pane.catalogue.items.map((item) => ({ ...item, stepId: session.pane.stepId })),
         });
+        const scrollId = viewport.dataset.wayfinderScrollId;
+        const savedScrollTop = scrollId ? this.#scrollById.get(scrollId) : undefined;
+        if (savedScrollTop !== undefined)
+            this.#equipmentStableCatalogue.controller.restoreScrollTop(savedScrollTop);
     }
     #equipmentResultWindowState(stepId) {
         let state = this.#equipmentResultWindowStateByStepId.get(stepId);

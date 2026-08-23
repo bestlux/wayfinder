@@ -26,10 +26,8 @@ const FROZEN_RESULT_WINDOW_PROFILES = [
   { id: "tall", appHeight: 1500 },
 ];
 const FROZEN_RESULT_WINDOW_SIZING = {
-  baselineMountedRows: 36,
-  viewportMultiplier: 3,
-  overscanRows: 24,
-  hydrationChunkRows: 12,
+  rowsBehind: 12,
+  rowsAhead: 24,
   maximumMountedRows: 144,
 };
 const FROZEN_RESULT_WINDOW_SAMPLING = {
@@ -39,26 +37,26 @@ const FROZEN_RESULT_WINDOW_SAMPLING = {
 };
 const FROZEN_SCROLL_SAMPLING = {
   resultWindowProfileId: "tall",
-  rapidFullScreenScrollsWhilePending: 1,
-  framesWhilePending: 3,
+  rapidFullScreenScrolls: 2,
+  framesAfterScroll: 3,
   maxVisibleGapPx: 2,
 };
-const FROZEN_PARTIAL_RENDER_RECOVERY_SAMPLING = {
+const FROZEN_CONTROLLER_RECOVERY_SAMPLING = {
   resultWindowProfileId: "default",
-  forcedRejections: 1,
+  forcedEnrichmentFailures: 1,
 };
 const FROZEN_SAMPLING_SEMANTICS = {
   performance:
     "Each required action is sampled at every app width using the default 820px result-window profile and the frozen 1440x1000 browser viewport; warmup and measured depths apply per action-width cell, the exact default policy-available usefulness-ranked shelf is required, and mounted rows are derived from positive live list geometry.",
   resultWindows:
-    "One settled default policy-available shelf layout observation is recorded per result-window profile at 1240px app width; these probes are not timing samples, browser height is max(1000px, app height plus 100px), mounted rows are max(36, three viewport heights, visible rows plus 24) rounded to 12 and capped at 144, the tall probe adds one full-screen scroll while a prior prefetch is held pending, and the default-height probe forces one real partial-render rejection followed by recovery and retry.",
+    "One settled default policy-available shelf layout observation is recorded per result-window profile at 1240px app width; these probes are not timing samples, browser height is max(1000px, app height plus 100px), direct rows cover the visible range plus 12 rows behind and 24 ahead with a 144-row hard ceiling, the tall probe performs two rapid full-screen jumps with zero Foundry renders or pack-document reads, and the default-height probe forces one genuine preview-enrichment failure followed by same-row recovery.",
 };
 const FROZEN_BUDGETS = Object.freeze({
   maxP95MsPerActionWidth: 75,
   maxDomElementCount: 850,
   maxResultDomElementCount: 434,
   maxMountedResultCount: 144,
-  maxDefaultMountedResultCount: 36,
+  maxSettledMountedResultCount: 64,
   maxResultDomElementsPerMountedRow: 12,
   maxResultChromeDomElementCount: 2,
   maxAdaptiveResultDomElementCount: 1730,
@@ -205,19 +203,18 @@ export function validateEquipmentProfile(profile) {
     failures.push("Equipment profile must freeze the default, expanded, and tall application heights.");
   }
   if (stableJson(profile?.resultWindowSizing) !== stableJson(FROZEN_RESULT_WINDOW_SIZING)) {
-    failures.push("Equipment profile must freeze the adaptive 36-to-144-row result-window formula.");
+    failures.push("Equipment profile must freeze the stable 12-behind/24-ahead row window.");
   }
   if (stableJson(profile?.resultWindowSampling) !== stableJson(FROZEN_RESULT_WINDOW_SAMPLING)) {
     failures.push("Equipment profile must probe every result-window profile once at 1240px with 100px viewport padding.");
   }
   if (stableJson(profile?.scrollSampling) !== stableJson(FROZEN_SCROLL_SAMPLING)) {
-    failures.push("Equipment profile must freeze one pending-prefetch full-screen scroll probe at the tall height.");
+    failures.push("Equipment profile must freeze two render-free full-screen scroll jumps at the tall height.");
   }
   if (
-    stableJson(profile?.partialRenderRecoverySampling) !==
-    stableJson(FROZEN_PARTIAL_RENDER_RECOVERY_SAMPLING)
+    stableJson(profile?.controllerRecoverySampling) !== stableJson(FROZEN_CONTROLLER_RECOVERY_SAMPLING)
   ) {
-    failures.push("Equipment profile must freeze one real partial-render rejection, recovery, and retry probe.");
+    failures.push("Equipment profile must freeze one genuine preview-enrichment failure and same-row retry probe.");
   }
   if (stableJson(profile?.samplingSemantics) !== stableJson(FROZEN_SAMPLING_SEMANTICS)) {
     failures.push("Equipment profile sampling semantics must distinguish default-height timing samples from layout probes.");
@@ -242,10 +239,7 @@ export function validateEquipmentProfile(profile) {
     failures.push("Equipment profile final identity drifted from the frozen Spray Pellets source.");
   }
   if (stableJson(profile?.expectedDefaultShelfValues) !== stableJson(FROZEN_DEFAULT_SHELF_VALUES)) {
-    failures.push("Equipment profile default-shelf identities drifted from the frozen 36-row usefulness ranking.");
-  }
-  if (profile?.expectedDefaultShelfValues?.length !== profile?.resultWindowSizing?.baselineMountedRows) {
-    failures.push("Equipment profile must bind every baseline mounted row to an exact default-shelf identity.");
+    failures.push("Equipment profile default-shelf identities drifted from the frozen usefulness-ranking prefix.");
   }
   if (stableJson(profile?.expectedRuntime) !== stableJson(FROZEN_RUNTIME)) {
     failures.push("Equipment profile runtime must remain Foundry 14.366 and PF2E 8.4.1.");
@@ -283,7 +277,7 @@ export function validateEquipmentProfile(profile) {
     "maxDomElementCount",
     "maxResultDomElementCount",
     "maxMountedResultCount",
-    "maxDefaultMountedResultCount",
+    "maxSettledMountedResultCount",
     "maxResultDomElementsPerMountedRow",
     "maxResultChromeDomElementCount",
     "maxAdaptiveResultDomElementCount",
@@ -294,7 +288,7 @@ export function validateEquipmentProfile(profile) {
     if (!nonnegativeFinite(budgets?.[key])) failures.push(`Equipment profile budget ${key} must be finite and nonnegative.`);
   }
   if (stableJson(budgets) !== stableJson(FROZEN_BUDGETS)) {
-    failures.push("Equipment profile must preserve the adaptive 12/24/36-row measured envelope.");
+    failures.push("Equipment profile must preserve the stable direct-row measured envelope.");
   }
   if (profile?.expectedCatalogueCounts !== null && !validCatalogueCounts(profile.expectedCatalogueCounts)) {
     failures.push(
@@ -387,7 +381,7 @@ export function validateEquipmentSample(sample, profile) {
     (outcome?.searchDisabled !== false ||
       outcome?.diagnosticCount !== 0 ||
       outcome?.catalogueStatePresent !== false ||
-      !sameStrings(outcome?.visibleResultValues ?? [], profile.expectedDefaultShelfValues))
+      !startsWithStrings(outcome?.visibleResultValues ?? [], profile.expectedDefaultShelfValues))
   ) {
     failures.push(`${sample.actionId} did not record the exact enabled, healthy default shelf.`);
   }
@@ -424,8 +418,13 @@ export function validateEquipmentSample(sample, profile) {
   for (const key of ["domElementCount", "resultDomElementCount", "imageRequestCount"]) {
     if (!nonnegativeInteger(sample[key])) failures.push(`Sample ${key} is missing or invalid.`);
   }
-  for (const key of ["mountedResultCount", "resultOffset", "resultEnd"]) {
+  for (const key of ["mountedResultCount", "totalResultCount"]) {
     if (!nonnegativeInteger(sample[key])) failures.push(`Sample ${key} is missing or invalid.`);
+  }
+  if (sample.mountedResultCount > 0) {
+    for (const key of ["firstMountedResultIndex", "lastMountedResultIndex"]) {
+      if (!nonnegativeInteger(sample[key])) failures.push(`Sample ${key} is missing or invalid.`);
+    }
   }
   if (
     CATALOGUE_VIEWPORT_ACTIONS.has(sample.actionId) &&
@@ -442,12 +441,23 @@ export function validateEquipmentSample(sample, profile) {
       (["cold-open", "warm-reopen"].includes(sample.actionId) &&
         expectedMountedRows !== null &&
         sample.mountedResultCount !== expectedMountedRows) ||
-      sample.mountedResultCount > profile.budgets.maxDefaultMountedResultCount
+      sample.mountedResultCount > profile.budgets.maxSettledMountedResultCount
     ) {
       failures.push("Default-height timing sample did not preserve its geometry-derived mounted-row budget.");
     }
     if (sample.mountedResultCount > profile.budgets.maxMountedResultCount) {
       failures.push(`Sample mounted ${sample.mountedResultCount} results; limit ${profile.budgets.maxMountedResultCount}.`);
+    }
+    if (
+      sample.mountedResultCount > 0 &&
+      (sample.stableHost !== true ||
+        sample.mountedIndexesContiguous !== true ||
+        !nonnegativeFinite(sample.canvasHeightPx) ||
+        !nearlyEqual(sample.canvasHeightPx, sample.totalResultCount * sample.measuredRowHeightPx) ||
+        !nonnegativeFinite(sample.maxVisibleGapPx) ||
+        sample.maxVisibleGapPx > profile.scrollSampling.maxVisibleGapPx)
+    ) {
+      failures.push("Timing sample did not preserve the stable catalogue host, canvas, and visible coverage.");
     }
     const resultDomLimit =
       sample.mountedResultCount * profile.budgets.maxResultDomElementsPerMountedRow +
@@ -545,14 +555,12 @@ export function validateEquipmentResultWindowObservation(observation, profile) {
   }
   if (
     observation?.mountedResultCount !== expectedMountedRows ||
-    observation?.resultLimit !== expectedMountedRows ||
-    observation?.resultOffset !== 0 ||
-    observation?.resultEnd !== expectedMountedRows ||
     observation?.firstMountedResultIndex !== 0 ||
-    observation?.lastMountedResultIndex !== expectedMountedRows - 1
+    observation?.lastMountedResultIndex !== expectedMountedRows - 1 ||
+    observation?.mountedIndexesContiguous !== true
   ) {
     failures.push(
-      `${windowProfile.id} result-window observation did not mount the geometry-derived 0-${expectedMountedRows - 1} window.`,
+      `${windowProfile.id} stable catalogue did not mount the geometry-derived contiguous 0-${expectedMountedRows - 1} range.`,
     );
   }
   if (observation?.totalResultCount !== profile.expectedCatalogueCounts?.defaultShelf) {
@@ -563,20 +571,23 @@ export function validateEquipmentResultWindowObservation(observation, profile) {
     !Array.isArray(values) ||
     values.length !== expectedMountedRows ||
     values.some((value) => !nonempty(value)) ||
-    !sameStrings(
-      values?.slice(0, profile.expectedDefaultShelfValues.length) ?? [],
-      profile.expectedDefaultShelfValues,
-    ) ||
+    !sameStrings(values?.slice(0, Math.min(values.length, profile.expectedDefaultShelfValues.length)) ?? [],
+      profile.expectedDefaultShelfValues.slice(0, Math.min(values?.length ?? 0, profile.expectedDefaultShelfValues.length))) ||
     observation?.firstMountedSourceUuid !== values?.[0] ||
     observation?.lastMountedSourceUuid !== values?.at(-1)
   ) {
     failures.push(`${windowProfile.id} result-window mounted identities were incomplete or drifted.`);
   }
-  if (!nonnegativeFinite(observation?.leadingSpacerPx) || !nearlyEqual(observation.leadingSpacerPx, 0)) {
-    failures.push(`${windowProfile.id} result-window leading spacer was not the exact top-of-list zero.`);
-  }
-  if (!nonnegativeFinite(observation?.trailingSpacerPx) || observation.trailingSpacerPx <= 0) {
-    failures.push(`${windowProfile.id} result-window trailing spacer did not preserve the unmounted catalogue extent.`);
+  const expectedCanvasHeight = observation?.totalResultCount * observation?.measuredRowHeightPx;
+  if (
+    observation?.stableHost !== true ||
+    !nonnegativeFinite(observation?.canvasHeightPx) ||
+    !nonnegativeFinite(expectedCanvasHeight) ||
+    !nearlyEqual(observation.canvasHeightPx, expectedCanvasHeight) ||
+    !nonnegativeFinite(observation?.maxVisibleGapPx) ||
+    observation.maxVisibleGapPx > profile.scrollSampling.maxVisibleGapPx
+  ) {
+    failures.push(`${windowProfile.id} stable catalogue host did not preserve its exact canvas and visible coverage.`);
   }
   const resultDomLimit =
     expectedMountedRows * profile.budgets.maxResultDomElementsPerMountedRow +
@@ -640,179 +651,137 @@ export function validateEquipmentScrollProbe(profile, probe) {
   const windowProfile = profile.resultWindowProfiles?.find(
     (entry) => entry.id === profile.scrollSampling?.resultWindowProfileId,
   );
-  if (probe?.schemaVersion !== 3) failures.push("Equipment pending-prefetch scroll probe requires schemaVersion 3.");
+  if (probe?.schemaVersion !== 3) failures.push("Equipment stable-host scroll probe requires schemaVersion 3.");
   if (!windowProfile || probe?.resultWindowProfileId !== windowProfile.id) {
-    failures.push("Equipment pending-prefetch scroll probe used the wrong result-window profile.");
+    failures.push("Equipment stable-host scroll probe used the wrong result-window profile.");
     return failures;
   }
   if (stableJson(probe?.browserViewport) !== stableJson(resultWindowBrowserViewport(profile, windowProfile))) {
-    failures.push("Equipment pending-prefetch scroll probe used the wrong browser viewport.");
+    failures.push("Equipment stable-host scroll probe used the wrong browser viewport.");
   }
   if (
     probe?.requestedAppWidth !== profile.resultWindowSampling.appWidth ||
     probe?.requestedAppHeight !== windowProfile.appHeight
   ) {
-    failures.push("Equipment pending-prefetch scroll probe used the wrong application size.");
+    failures.push("Equipment stable-host scroll probe used the wrong application size.");
   }
   if (
     !nonnegativeFinite(probe?.requestedScrollDeltaPx) ||
     probe.requestedScrollDeltaPx <= 0 ||
     !nonnegativeFinite(probe?.observedScrollDeltaPx) ||
     probe.observedScrollDeltaPx + 2 < probe.requestedScrollDeltaPx ||
-    probe?.rapidFullScreenScrollCount !== profile.scrollSampling.rapidFullScreenScrollsWhilePending
+    probe?.rapidFullScreenScrollCount !== profile.scrollSampling.rapidFullScreenScrolls
   ) {
-    failures.push("Equipment pending-prefetch probe did not perform the exact full-screen scroll while pending.");
+    failures.push("Equipment stable-host probe did not perform the exact rapid full-screen jumps.");
   }
   if (
-    !nonnegativeInteger(probe?.navigationAttemptsBeforePending) ||
-    probe.navigationAttemptsBeforePending < 1 ||
-    !Array.isArray(probe?.pendingSourceUuids) ||
-    probe.pendingSourceUuids.length < 1 ||
-    probe.pendingSourceUuids.some(
-      (sourceUuid) => !/^Compendium\.pf2e\.equipment-srd\.Item\.[^.]+$/.test(sourceUuid),
-    ) ||
-    new Set(probe.pendingSourceUuids).size !== probe.pendingSourceUuids.length ||
-    !nonnegativeInteger(probe?.pendingBeforeRapidScroll) ||
-    probe.pendingBeforeRapidScroll < 1 ||
-    !nonnegativeInteger(probe?.pendingAfterRapidScroll) ||
-    probe.pendingAfterRapidScroll < 1 ||
-    !nonnegativeInteger(probe?.maxPendingDocumentReads) ||
-    probe.maxPendingDocumentReads < probe.pendingBeforeRapidScroll ||
-    probe?.pendingAfterSettle !== 0
+    probe?.stableHostPreserved !== true ||
+    probe?.packDocumentReadCount !== 0 ||
+    probe?.equipmentRenderCallCount !== 0 ||
+    probe?.fullRenderCallCount !== 0
   ) {
-    failures.push(
-      "Equipment scroll probe did not select a genuine prepared-item window, keep its prefetch pending through rapid scroll, and settle.",
-    );
+    failures.push("Equipment scroll caused document I/O, a Foundry render, or replacement of the stable host.");
   }
   if (
     probe?.initialWindow?.mountedResultCount !== expectedEquipmentMountedRows(profile, probe?.initialWindow) ||
-    !nonnegativeInteger(probe?.initialWindow?.resultOffset) ||
-    !nonnegativeInteger(probe?.settledWindow?.resultOffset) ||
-    probe.settledWindow.resultOffset <= probe.initialWindow.resultOffset
+    probe?.destinationWindow?.mountedResultCount !== expectedEquipmentMountedRows(profile, probe?.destinationWindow) ||
+    !nonnegativeInteger(probe?.initialWindow?.firstMountedResultIndex) ||
+    !nonnegativeInteger(probe?.destinationWindow?.firstMountedResultIndex) ||
+    probe.destinationWindow.firstMountedResultIndex <= probe.initialWindow.firstMountedResultIndex ||
+    probe.destinationWindow.mountedIndexesContiguous !== true
   ) {
-    failures.push("Equipment scroll probe did not advance from the declared mounted window.");
+    failures.push("Equipment scroll probe did not synchronously advance to its adaptive direct-row range.");
   }
-  const rawPendingShelves = probe?.shelvesWhilePending;
-  const pendingShelves = Array.isArray(rawPendingShelves) ? rawPendingShelves : [];
-  const shelves = [...pendingShelves, probe?.settledShelf].filter(Boolean);
+  const rawShelves = probe?.shelvesAfterScroll;
+  const shelves = [probe?.immediateShelf, ...(Array.isArray(rawShelves) ? rawShelves : [])].filter(Boolean);
   if (
-    !Array.isArray(rawPendingShelves) ||
-    pendingShelves.length !== profile.scrollSampling.framesWhilePending ||
+    !Array.isArray(rawShelves) ||
+    rawShelves.length !== profile.scrollSampling.framesAfterScroll ||
     shelves.some(
       (shelf) =>
         !nonnegativeFinite(shelf?.viewportHeight) ||
         shelf.viewportHeight <= 0 ||
         !nonnegativeInteger(shelf?.visibleResultCount) ||
-        !nonnegativeInteger(shelf?.visibleSkeletonCount) ||
-        shelf.visibleResultCount + shelf.visibleSkeletonCount < 1 ||
+        shelf.visibleResultCount < 1 ||
+        shelf.visibleSkeletonCount !== 0 ||
         !nonnegativeFinite(shelf?.maxVisibleGapPx) ||
         shelf.maxVisibleGapPx > profile.scrollSampling.maxVisibleGapPx ||
-        shelf.skeletonContractValid !== true,
+        shelf.pendingDocumentReads !== 0,
     )
   ) {
-    failures.push("Equipment scroll probe exposed an empty shelf or visible result gap.");
-  }
-  if (
-    !Array.isArray(probe?.shelvesWhilePending) ||
-    probe.shelvesWhilePending.some((shelf) => shelf?.pendingDocumentReads < 1) ||
-    probe?.settledShelf?.pendingDocumentReads !== 0
-  ) {
-    failures.push("Equipment scroll shelf observations did not remain bound to pending and settled prefetch state.");
+    failures.push("Equipment stable-host scroll exposed a blank frame, non-real coverage, or visible gap.");
   }
   return failures;
 }
 
-export function validateEquipmentPartialRenderRecoveryProbe(profile, probe) {
+export function validateEquipmentControllerRecoveryProbe(profile, probe) {
   const failures = [];
   const windowProfile = profile.resultWindowProfiles?.find(
-    (entry) => entry.id === profile.partialRenderRecoverySampling?.resultWindowProfileId,
+    (entry) => entry.id === profile.controllerRecoverySampling?.resultWindowProfileId,
   );
-  if (probe?.schemaVersion !== 3) failures.push("Equipment partial-render recovery probe requires schemaVersion 3.");
+  if (probe?.schemaVersion !== 3) failures.push("Equipment controller recovery probe requires schemaVersion 3.");
   if (!windowProfile || probe?.resultWindowProfileId !== windowProfile.id) {
-    failures.push("Equipment partial-render recovery probe used the wrong result-window profile.");
+    failures.push("Equipment controller recovery probe used the wrong result-window profile.");
     return failures;
   }
   if (stableJson(probe?.browserViewport) !== stableJson(resultWindowBrowserViewport(profile, windowProfile))) {
-    failures.push("Equipment partial-render recovery probe used the wrong browser viewport.");
+    failures.push("Equipment controller recovery probe used the wrong browser viewport.");
   }
   if (
     probe?.requestedAppWidth !== profile.resultWindowSampling.appWidth ||
     probe?.requestedAppHeight !== windowProfile.appHeight
   ) {
-    failures.push("Equipment partial-render recovery probe used the wrong application size.");
+    failures.push("Equipment controller recovery probe used the wrong application size.");
   }
   if (
-    probe?.forcedRejectionCount !== profile.partialRenderRecoverySampling.forcedRejections ||
-    probe?.forcedRejectionStage !== "post-context-preparation" ||
-    probe?.recoveryFullRenderCount !== 1 ||
-    probe?.successfulRetryEquipmentRenderCount !== 1
+    probe?.forcedEnrichmentFailureCount !== profile.controllerRecoverySampling.forcedEnrichmentFailures ||
+    probe?.forcedFailureStage !== "pack-document-read" ||
+    probe?.failedAttemptEquipmentRenderCount !== 1 ||
+    probe?.successfulRetryEquipmentRenderCount !== 1 ||
+    probe?.fullRenderCallCount !== 0 ||
+    probe?.packDocumentReadCount !== 2
   ) {
-    failures.push(
-      "Equipment partial-render recovery probe did not force exactly one post-context rejection, full recovery, and retry render.",
-    );
+    failures.push("Equipment controller recovery did not force one enrichment failure and one exact same-row retry.");
   }
   const initial = probe?.initialState;
-  const pending = probe?.rejectionPendingState;
-  const recovered = probe?.recoveredState;
+  const pending = probe?.enrichmentPendingState;
+  const recovered = probe?.failedState;
   const retry = probe?.retryState;
-  const initialValues = initial?.window?.mountedResultValues;
   if (
-    !Array.isArray(initialValues) ||
-    initialValues.length !== expectedEquipmentMountedRows(profile, initial?.window) ||
-    initial?.window?.resultOffset !== 0 ||
+    !nonempty(probe?.targetSourceUuid) ||
+    initial?.stableHostPreserved !== true ||
     initial?.window?.totalResultCount !== profile.expectedCatalogueCounts?.defaultShelf ||
-    !sameStrings(initialValues, profile.expectedDefaultShelfValues)
+    initial?.targetPricePending !== true ||
+    initial?.visiblePreviewSourceUuid === probe.targetSourceUuid
   ) {
-    failures.push("Equipment partial-render recovery probe did not start from the exact committed default shelf.");
+    failures.push("Equipment controller recovery did not start from a genuine unresolved preview row.");
   }
   if (
-    pending?.ariaBusy !== true ||
-    typeof pending?.skeletonHidden !== "boolean" ||
-    !nonnegativeInteger(pending?.skeletonCount) ||
-    (pending.skeletonHidden ? pending.skeletonCount !== 0 : pending.skeletonCount < 1) ||
-    !sameStrings(pending?.window?.mountedResultValues ?? [], initialValues ?? []) ||
-    pending?.window?.resultOffset !== initial?.window?.resultOffset ||
-    pending?.focusedSourceUuid !== initialValues?.[0]
+    pending?.stableHostPreserved !== true ||
+    pending?.pendingDocumentReads < 1 ||
+    pending?.focusedSourceUuid !== probe.targetSourceUuid ||
+    pending?.visiblePreviewSourceUuid === probe.targetSourceUuid
   ) {
-    failures.push("Rejected equipment partial render did not preserve committed rows and focus in a coherent busy state.");
+    failures.push("Pending preview enrichment did not preserve the stable host, focus, and prior detail.");
   }
   if (
-    recovered?.ariaBusy !== false ||
-    recovered?.skeletonHidden !== true ||
-    recovered?.skeletonCount !== 0 ||
-    !sameStrings(recovered?.window?.mountedResultValues ?? [], initialValues ?? []) ||
-    recovered?.window?.resultOffset !== initial?.window?.resultOffset ||
-    recovered?.focusedSourceUuid !== initialValues?.[0]
+    recovered?.stableHostPreserved !== true ||
+    recovered?.pendingDocumentReads !== 0 ||
+    recovered?.targetPricePending !== true ||
+    recovered?.focusedSourceUuid !== probe.targetSourceUuid ||
+    recovered?.visiblePreviewSourceUuid === probe.targetSourceUuid
   ) {
-    failures.push("Equipment partial-render recovery did not restore the committed shelf, focus, and idle state.");
+    failures.push("Failed preview enrichment did not leave a retryable focused row on the stable host.");
   }
-  const retryValues = retry?.window?.mountedResultValues;
-  const expectedRetryOffset = profile.resultWindowSizing?.hydrationChunkRows;
-  const expectedRetryRows = expectedEquipmentMountedRows(profile, retry?.window);
-  const frozenRetryValues = profile.expectedDefaultShelfValues.slice(
-    expectedRetryOffset,
-    Math.min(profile.expectedDefaultShelfValues.length, expectedRetryOffset + (expectedRetryRows ?? 0)),
-  );
   if (
-    retry?.ariaBusy !== false ||
-    retry?.skeletonHidden !== true ||
-    retry?.skeletonCount !== 0 ||
-    !Array.isArray(retryValues) ||
-    expectedRetryRows === null ||
-    retryValues.length !== expectedRetryRows ||
-    retry?.window?.totalResultCount !== profile.expectedCatalogueCounts?.defaultShelf ||
-    retry?.window?.resultLimit !== expectedRetryRows ||
-    retry?.window?.mountedResultCount !== expectedRetryRows ||
-    retry?.window?.resultOffset !== expectedRetryOffset ||
-    retry?.window?.resultEnd !== expectedRetryOffset + expectedRetryRows ||
-    retry?.window?.firstMountedResultIndex !== expectedRetryOffset ||
-    retry?.window?.lastMountedResultIndex !== expectedRetryOffset + expectedRetryRows - 1 ||
-    retry?.window?.firstMountedSourceUuid !== retryValues[0] ||
-    retry?.window?.lastMountedSourceUuid !== retryValues.at(-1) ||
-    retryValues.some((value) => !nonempty(value)) ||
-    !sameStrings(retryValues.slice(0, frozenRetryValues.length), frozenRetryValues)
+    retry?.stableHostPreserved !== true ||
+    retry?.pendingDocumentReads !== 0 ||
+    retry?.targetPricePending !== false ||
+    retry?.focusedSourceUuid !== probe.targetSourceUuid ||
+    retry?.visiblePreviewSourceUuid !== probe.targetSourceUuid ||
+    retry?.window?.mountedIndexesContiguous !== true
   ) {
-    failures.push("Equipment partial-render retry did not preserve its exact advanced window and clear loading state.");
+    failures.push("Same-row preview retry did not converge to exact price and visible detail on the stable host.");
   }
   return failures;
 }
@@ -831,17 +800,13 @@ export function expectedEquipmentMountedRows(profile, geometry) {
   const listHeight = geometry?.listClientHeight;
   const rowHeight = geometry?.measuredRowHeightPx;
   if (!nonnegativeFinite(listHeight) || listHeight <= 0 || !nonnegativeFinite(rowHeight) || rowHeight <= 0) return null;
-  const visibleRows = Math.ceil(listHeight / rowHeight);
+  const visibleRows = Math.ceil(listHeight / rowHeight) + 1;
   const sizing = profile.resultWindowSizing;
-  const target = Math.max(
-    sizing.baselineMountedRows,
-    Math.ceil(visibleRows * sizing.viewportMultiplier),
-    visibleRows + sizing.overscanRows,
-  );
-  return Math.min(
-    sizing.maximumMountedRows,
-    Math.ceil(target / sizing.hydrationChunkRows) * sizing.hydrationChunkRows,
-  );
+  const firstVisible = Math.max(0, Math.floor((geometry?.scrollTop ?? 0) / rowHeight));
+  const total = nonnegativeInteger(geometry?.totalResultCount) ? geometry.totalResultCount : Number.POSITIVE_INFINITY;
+  const start = Math.max(0, firstVisible - sizing.rowsBehind);
+  const end = Math.min(total, firstVisible + visibleRows + sizing.rowsAhead);
+  return Math.min(sizing.maximumMountedRows, Math.max(0, end - start));
 }
 
 function validateSampleTiming(sample, profile) {
@@ -1051,8 +1016,8 @@ export function validateEquipmentBudgets(profile, summary, options = {}) {
     ? validateEquipmentResultWindows(profile, options.resultWindowObservations)
     : [];
   if (options.scrollProbe !== undefined) failures.push(...validateEquipmentScrollProbe(profile, options.scrollProbe));
-  if (options.partialRenderRecoveryProbe !== undefined) {
-    failures.push(...validateEquipmentPartialRenderRecoveryProbe(profile, options.partialRenderRecoveryProbe));
+  if (options.controllerRecoveryProbe !== undefined) {
+    failures.push(...validateEquipmentControllerRecoveryProbe(profile, options.controllerRecoveryProbe));
   }
   const required = options.requireQualificationSamples === false ? null : profile.measuredSamplesPerActionWidth;
   for (const row of summary.byActionWidth ?? []) {
@@ -1091,7 +1056,7 @@ export function compactEquipmentEvidence(result) {
       resultWindowSizing: result.profile.resultWindowSizing,
       resultWindowSampling: result.profile.resultWindowSampling,
       scrollSampling: result.profile.scrollSampling,
-      partialRenderRecoverySampling: result.profile.partialRenderRecoverySampling,
+      controllerRecoverySampling: result.profile.controllerRecoverySampling,
       sampleDepth: {
         warmup: result.profile.warmupSamplesPerActionWidth,
         measured: result.profile.measuredSamplesPerActionWidth,
@@ -1116,7 +1081,7 @@ export function compactEquipmentEvidence(result) {
     runIds: [result.runId],
     resultWindowObservations: result.resultWindowObservations,
     scrollProbe: result.scrollProbe,
-    partialRenderRecoveryProbe: result.partialRenderRecoveryProbe,
+    controllerRecoveryProbe: result.controllerRecoveryProbe,
     byActionWidth: result.summary.byActionWidth,
   };
 }
@@ -1226,20 +1191,17 @@ function deriveQualifiedRun(result, label) {
   }
   const scrollFailures = validateEquipmentScrollProbe(profile, result?.scrollProbe);
   if (stableJson(result?.scrollProbe?.failures ?? []) !== stableJson(scrollFailures)) {
-    failures.push(`${label} stored failures disagree with derived validation for the pending-prefetch scroll probe.`);
+    failures.push(`${label} stored failures disagree with derived validation for the stable-host scroll probe.`);
   }
-  const recoveryFailures = validateEquipmentPartialRenderRecoveryProbe(
-    profile,
-    result?.partialRenderRecoveryProbe,
-  );
-  if (stableJson(result?.partialRenderRecoveryProbe?.failures ?? []) !== stableJson(recoveryFailures)) {
-    failures.push(`${label} stored failures disagree with derived validation for the partial-render recovery probe.`);
+  const recoveryFailures = validateEquipmentControllerRecoveryProbe(profile, result?.controllerRecoveryProbe);
+  if (stableJson(result?.controllerRecoveryProbe?.failures ?? []) !== stableJson(recoveryFailures)) {
+    failures.push(`${label} stored failures disagree with derived validation for the controller recovery probe.`);
   }
   const summary = summarizeEquipmentProfile(profile, samples);
   const qualification = validateEquipmentBudgets(profile, summary, {
     resultWindowObservations: observations,
     scrollProbe: result?.scrollProbe,
-    partialRenderRecoveryProbe: result?.partialRenderRecoveryProbe,
+    controllerRecoveryProbe: result?.controllerRecoveryProbe,
   });
   if (stableJson(result?.summary) !== stableJson(summary)) failures.push(`${label} stored summary disagrees with raw samples.`);
   if (stableJson(result?.qualification) !== stableJson(qualification)) {
@@ -1373,6 +1335,10 @@ function validRunInterval(startedAt, finishedAt) {
 
 function sameStrings(left, right) {
   return stableJson(left) === stableJson(right);
+}
+
+function startsWithStrings(values, frozenPrefix) {
+  return Array.isArray(values) && values.length > 0 && sameStrings(values, frozenPrefix.slice(0, values.length));
 }
 
 function stableJson(value) {

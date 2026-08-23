@@ -82,9 +82,7 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
                 ? "wayfinder-pf2e.StartingEquipment.Catalogue.ExceptionRequired"
                 : "wayfinder-pf2e.StartingEquipment.Catalogue.ItemUnavailable")
             : null;
-        const noFundingReason = (record.pricePending
-            ? localize("wayfinder-pf2e.StartingEquipment.Catalogue.CheckingPrice")
-            : unavailableReason) ??
+        const noFundingReason = (record.pricePending ? localize("wayfinder-pf2e.StartingEquipment.Catalogue.ViewForPrice") : unavailableReason) ??
             (!canBuyWithCurrency && allowanceOptions.length === 0
                 ? localize("wayfinder-pf2e.StartingEquipment.Catalogue.NoFunding")
                 : null);
@@ -770,7 +768,7 @@ function formatCopper(copper, localize) {
 }
 function cataloguePriceLabel(record, localize) {
     if (record.pricePending)
-        return localize("wayfinder-pf2e.StartingEquipment.Catalogue.CheckingPrice");
+        return localize("wayfinder-pf2e.StartingEquipment.Catalogue.ViewForPrice");
     const price = formatCopper(record.priceCopper ?? -1, localize);
     const context = record.priceContext;
     if (!context)

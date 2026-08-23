@@ -16,10 +16,8 @@
     { "id": "tall", "appHeight": 1500 }
   ],
   "resultWindowSizing": {
-    "baselineMountedRows": 36,
-    "viewportMultiplier": 3,
-    "overscanRows": 24,
-    "hydrationChunkRows": 12,
+    "rowsBehind": 12,
+    "rowsAhead": 24,
     "maximumMountedRows": 144
   },
   "resultWindowSampling": {
@@ -29,17 +27,17 @@
   },
   "scrollSampling": {
     "resultWindowProfileId": "tall",
-    "rapidFullScreenScrollsWhilePending": 1,
-    "framesWhilePending": 3,
+    "rapidFullScreenScrolls": 2,
+    "framesAfterScroll": 3,
     "maxVisibleGapPx": 2
   },
-  "partialRenderRecoverySampling": {
+  "controllerRecoverySampling": {
     "resultWindowProfileId": "default",
-    "forcedRejections": 1
+    "forcedEnrichmentFailures": 1
   },
   "samplingSemantics": {
     "performance": "Each required action is sampled at every app width using the default 820px result-window profile and the frozen 1440x1000 browser viewport; warmup and measured depths apply per action-width cell, the exact default policy-available usefulness-ranked shelf is required, and mounted rows are derived from positive live list geometry.",
-    "resultWindows": "One settled default policy-available shelf layout observation is recorded per result-window profile at 1240px app width; these probes are not timing samples, browser height is max(1000px, app height plus 100px), mounted rows are max(36, three viewport heights, visible rows plus 24) rounded to 12 and capped at 144, the tall probe adds one full-screen scroll while a prior prefetch is held pending, and the default-height probe forces one real partial-render rejection followed by recovery and retry."
+    "resultWindows": "One settled default policy-available shelf layout observation is recorded per result-window profile at 1240px app width; these probes are not timing samples, browser height is max(1000px, app height plus 100px), direct rows cover the visible range plus 12 rows behind and 24 ahead with a 144-row hard ceiling, the tall probe performs two rapid full-screen jumps with zero Foundry renders or pack-document reads, and the default-height probe forces one genuine preview-enrichment failure followed by same-row recovery."
   },
   "querySequence": ["s", "sp", "spr", "spra", "spray pellets"],
   "expectedFinalResultValues": ["Compendium.pf2e.equipment-srd.Item.qaAQnuLVia6vS1LU"],
@@ -184,7 +182,7 @@
     "maxDomElementCount": 850,
     "maxResultDomElementCount": 434,
     "maxMountedResultCount": 144,
-    "maxDefaultMountedResultCount": 36,
+    "maxSettledMountedResultCount": 64,
     "maxResultDomElementsPerMountedRow": 12,
     "maxResultChromeDomElementCount": 2,
     "maxAdaptiveResultDomElementCount": 1730,

@@ -114,15 +114,9 @@ describe("minimal equipment catalogue", () => {
     service.invalidatePack(PACK_ID);
     const unchanged = await service.project(context());
 
-    expect((reads.get("stable-a") ?? 0) - (firstReads.get("stable-a") ?? 0)).toBeLessThan(
-      firstReads.get("stable-a") ?? 0
-    );
-    expect((reads.get("stable-b") ?? 0) - (firstReads.get("stable-b") ?? 0)).toBeLessThan(
-      firstReads.get("stable-b") ?? 0
-    );
-    expect((reads.get("duplicate-a") ?? 0) - (firstReads.get("duplicate-a") ?? 0)).toBeLessThan(
-      firstReads.get("duplicate-a") ?? 0
-    );
+    expect(reads.get("stable-a")).toBe(firstReads.get("stable-a"));
+    expect(reads.get("stable-b")).toBe(firstReads.get("stable-b"));
+    expect(reads.get("duplicate-a")).toBe(firstReads.get("duplicate-a"));
     expect(reads.get("corrupt")).toBeGreaterThan(firstReads.get("corrupt") ?? 0);
     expect(unchanged.diagnostics).toEqual(first.diagnostics);
     const unchangedReads = new Map(reads);
@@ -149,14 +143,107 @@ describe("minimal equipment catalogue", () => {
     expect(reconciled.diagnostics.map(({ code }) => code)).toEqual(["equipment-source-identity-corrupt"]);
   });
 
-  it("renormalizes a stable Foundry index object when a relevant field mutates in place", async () => {
-    const entry = dagger({ name: "Before expansion", img: "icons/before.webp" });
+  it("reuses every unchanged stable identity without property reads across a production-sized invalidation", async () => {
+    let unchangedPropertyReads = 0;
+    let replacementPropertyReads = 0;
+    let createdPropertyReads = 0;
+    let corruptPropertyReads = 0;
+    const tracked = (source: Record<string, unknown>, onRead: () => void): Record<string, unknown> =>
+      new Proxy(source, {
+        get(target, property, receiver) {
+          onRead();
+          return Reflect.get(target, property, receiver);
+        },
+      });
+    const unchanged = Array.from({ length: 5_854 }, (_, index) =>
+      tracked(dagger({ _id: `stable-${index}`, name: `Stable ${index}` }), () => {
+        unchangedPropertyReads += 1;
+      })
+    );
+    const replacedOriginal = dagger({ _id: "replacement", name: "Replacement before" });
+    const corrupt = tracked(dagger({ _id: undefined }), () => {
+      corruptPropertyReads += 1;
+    });
+    let entries = [...unchanged, replacedOriginal, corrupt];
+    const completions: EquipmentProfileStageCompletion[] = [];
     const service = createEquipmentCatalogueService({
       packs: new Map([
         [
           PACK_ID,
           {
             indexEntryIdentity: "stable-replacement" as const,
+            documentName: "Item",
+            getIndex: vi.fn(async () => entries),
+            getDocument: vi.fn(async () => null),
+          },
+        ],
+      ]),
+      equipmentPackIds: [PACK_ID],
+    });
+    const restore = registerEquipmentProfileStageObserver({
+      start: ({ id }) => `sample-${id}`,
+      complete: (event) => completions.push(event),
+    });
+
+    try {
+      const first = await service.project(context());
+      expect(first.entries).toHaveLength(5_855);
+      expect(unchangedPropertyReads).toBeGreaterThan(0);
+      unchangedPropertyReads = 0;
+      corruptPropertyReads = 0;
+
+      const replacement = tracked(dagger({ _id: "replacement", name: "Replacement after" }), () => {
+        replacementPropertyReads += 1;
+      });
+      const created = tracked(dagger({ _id: "created", name: "Created" }), () => {
+        createdPropertyReads += 1;
+      });
+      entries = [...unchanged.slice(1).reverse(), replacement, created, corrupt];
+      service.invalidatePack(PACK_ID);
+      const reconciled = await service.project(context());
+
+      expect(unchangedPropertyReads).toBe(0);
+      expect(replacementPropertyReads).toBeGreaterThan(0);
+      expect(createdPropertyReads).toBeGreaterThan(0);
+      expect(corruptPropertyReads).toBeGreaterThan(0);
+      expect(reconciled.entries).toHaveLength(5_855);
+      expect(reconciled.entries.some(({ documentId }) => documentId === "stable-0")).toBe(false);
+      expect(reconciled.entries.find(({ documentId }) => documentId === "replacement")?.name).toBe("Replacement after");
+      expect(reconciled.entries.some(({ documentId }) => documentId === "created")).toBe(true);
+      expect(reconciled.diagnostics.map(({ code }) => code)).toEqual(["equipment-source-identity-corrupt"]);
+
+      expect(
+        completions.filter(({ stage }) => stage === "catalogue-normalization").map(({ details }) => details)
+      ).toEqual([
+        {
+          packId: PACK_ID,
+          entryCount: 5_856,
+          normalizedCount: 5_856,
+          reusedNormalizationCount: 0,
+          candidateCount: 5_855,
+          diagnosticCount: 1,
+        },
+        {
+          packId: PACK_ID,
+          entryCount: 5_856,
+          normalizedCount: 3,
+          reusedNormalizationCount: 5_853,
+          candidateCount: 5_855,
+          diagnosticCount: 1,
+        },
+      ]);
+    } finally {
+      restore();
+    }
+  });
+
+  it("renormalizes a generic index object when a relevant field mutates in place", async () => {
+    const entry = dagger({ name: "Before expansion", img: "icons/before.webp" });
+    const service = createEquipmentCatalogueService({
+      packs: new Map([
+        [
+          PACK_ID,
+          {
             documentName: "Item",
             getIndex: vi.fn(async () => [entry]),
             getDocument: vi.fn(async () => null),
@@ -180,7 +267,7 @@ describe("minimal equipment catalogue", () => {
     });
   });
 
-  it("invalidates indexed pricing when Foundry mutates grade, temporary, or ItemAlteration facts in place", async () => {
+  it("invalidates indexed pricing when a generic adapter mutates pricing facts in place", async () => {
     const entry = dagger({
       system: {
         grade: "commercial",
@@ -196,7 +283,6 @@ describe("minimal equipment catalogue", () => {
         [
           PACK_ID,
           {
-            indexEntryIdentity: "stable-replacement" as const,
             indexedBrowsePricing: "pf2e-physical-source-v1" as const,
             documentName: "Item",
             getIndex: vi.fn(async () => [entry]),

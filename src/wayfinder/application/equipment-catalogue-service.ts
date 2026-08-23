@@ -233,7 +233,6 @@ interface PackProjectionResult {
 
 interface CachedPackNormalization {
   readonly candidate: CachedProjectionCandidate;
-  readonly witness: string;
 }
 
 type PackNormalizationSnapshot = WeakMap<Readonly<Record<string, unknown>>, CachedPackNormalization>;
@@ -939,11 +938,14 @@ async function loadPackProjection(
       for (let index = 0; index < entries.length; index += 1) {
         const entry = entries[index];
         const cached = isRecord(entry) ? normalizationSnapshot?.get(entry) : undefined;
-        const witness = isRecord(entry) ? indexNormalizationWitness(entry) : null;
-        if (cached && witness !== null && cached.witness === witness) {
+        if (cached) {
           candidates.push(cached.candidate);
           continue;
         }
+        // Generic adapters make no replacement-identity guarantee, so retain the exact
+        // recursive mutation read before full normalization. The stable Foundry adapter
+        // deliberately skips it: an identical entry object is the cache contract.
+        if (normalizationSnapshot === null && isRecord(entry)) indexNormalizationWitness(entry);
         const normalized = normalizeIndexEntry(
           entry,
           packId,
@@ -953,8 +955,8 @@ async function loadPackProjection(
         if ("diagnostic" in normalized) diagnostics.push(normalized.diagnostic);
         else {
           candidates.push(normalized.candidate);
-          if (isRecord(entry) && witness !== null) {
-            normalizationSnapshot?.set(entry, Object.freeze({ candidate: normalized.candidate, witness }));
+          if (isRecord(entry)) {
+            normalizationSnapshot?.set(entry, Object.freeze({ candidate: normalized.candidate }));
           }
         }
         normalizationWork += 1;

@@ -29,7 +29,7 @@ const productionEquipmentStyles = readFileSync(resolve("styles/wayfinder/startin
 const productionCatalogueTemplate = readFileSync(
   resolve("templates/wayfinder/starting-equipment-catalogue.hbs"),
   "utf8"
-);
+).concat(readFileSync(resolve("templates/wayfinder/starting-equipment-catalogue-host.hbs"), "utf8"));
 const resultWindowScript = readFileSync(resolve("scripts/wayfinder/starting-equipment-result-window.js"), "utf8")
   .replaceAll("export ", "")
   .concat("\nwindow.STARTING_EQUIPMENT_RESULT_WINDOW = STARTING_EQUIPMENT_RESULT_WINDOW;");

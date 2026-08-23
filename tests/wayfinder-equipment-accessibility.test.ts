@@ -110,6 +110,7 @@ function equipmentTemplateCorpus(): string {
     "starting-equipment-status",
     "starting-equipment-state",
     "starting-equipment-catalogue",
+    "starting-equipment-catalogue-host",
     "starting-equipment-detail",
     "starting-equipment-cart",
   ]

@@ -14,6 +14,7 @@ export const WAYFINDER_TEMPLATE_PATHS = [
     `modules/${MODULE_ID}/templates/wayfinder/starting-equipment-policy.hbs`,
     `modules/${MODULE_ID}/templates/wayfinder/starting-equipment-state.hbs`,
     `modules/${MODULE_ID}/templates/wayfinder/starting-equipment-catalogue.hbs`,
+    `modules/${MODULE_ID}/templates/wayfinder/starting-equipment-catalogue-host.hbs`,
     `modules/${MODULE_ID}/templates/wayfinder/starting-equipment-detail.hbs`,
     `modules/${MODULE_ID}/templates/wayfinder/starting-equipment-cart.hbs`,
     `modules/${MODULE_ID}/templates/wayfinder/starting-equipment-status.hbs`,

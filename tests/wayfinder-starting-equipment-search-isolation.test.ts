@@ -87,11 +87,12 @@ describe("starting equipment search isolation", () => {
     expect(stableCatalogue).toContain("this.#resizeObserver?.observe(this.#viewport);");
     expect(appShell).toContain('"mounted-row-projection"');
     expect(appShell).toContain("() => this.#mountEquipmentStableCatalogue(root, context.equipmentRenderSession)");
-    expect(appShell).toContain("this.#equipmentStableCatalogue.controller.setProjection({");
+    expect(appShell).toContain("this.#equipmentStableCatalogue.update({");
     const mountStart = appShell.indexOf("  #mountEquipmentStableCatalogue(");
     const mountEnd = appShell.indexOf("  #equipmentResultWindowState(", mountStart);
     const mount = appShell.slice(mountStart, mountEnd);
-    expect(mount.indexOf("controller.setProjection({")).toBeLessThan(mount.indexOf("controller.restoreScrollTop("));
+    expect(mount).toContain("projection: {");
+    expect(mount).toContain("restoreScrollTop: this.#scrollById.get(scrollId)");
   });
 
   it("keeps the equipment search control outside all replaceable application parts", () => {
@@ -101,6 +102,19 @@ describe("starting equipment search isolation", () => {
     expect(pane).toContain("data-wayfinder-equipment-search");
     expect(catalogue).not.toContain("data-wayfinder-equipment-search");
     expect(catalogue).toContain('data-application-part="equipment-catalogue"');
+  });
+
+  it("keeps the stable catalogue host outside all replaceable application parts", () => {
+    const pane = readFileSync(resolve("templates/wayfinder/starting-equipment-pane.hbs"), "utf8");
+    const catalogue = readFileSync(resolve("templates/wayfinder/starting-equipment-catalogue.hbs"), "utf8");
+    const host = readFileSync(resolve("templates/wayfinder/starting-equipment-catalogue-host.hbs"), "utf8");
+
+    expect(pane.indexOf("starting-equipment-catalogue.hbs")).toBeLessThan(
+      pane.indexOf("starting-equipment-catalogue-host.hbs")
+    );
+    expect(catalogue).not.toContain("data-equipment-stable-host");
+    expect(host).toContain("data-equipment-stable-host");
+    expect(host).not.toContain("data-application-part");
   });
 
   it("fails closed before replacing stale or mismatched equipment parts", () => {

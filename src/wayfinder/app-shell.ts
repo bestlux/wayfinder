@@ -128,7 +128,7 @@ import {
   createEquipmentSearchScheduler,
   scheduleEquipmentSearchInput,
 } from "./application/equipment-search-input-service.js";
-import { EquipmentStableCatalogue } from "./application/equipment-stable-catalogue.js";
+import { EquipmentStableCatalogueHost } from "./application/equipment-stable-catalogue-host.js";
 import {
   clearEquipmentResultSkeletonBand,
   coverEquipmentResultViewport,
@@ -413,8 +413,27 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   #equipmentResultWindowStateByStepId = new Map<string, StartingEquipmentResultWindowLoadState>();
   #equipmentCriteriaRevisionByStepId = new Map<string, number>();
   #equipmentResultMeasurementsByStepId = new Map<string, EquipmentResultMeasurements>();
-  #equipmentStableCatalogue: { readonly viewport: HTMLElement; readonly controller: EquipmentStableCatalogue } | null =
-    null;
+  #equipmentStableCatalogue = new EquipmentStableCatalogueHost({
+    onPreview: (row, button, stepId) => {
+      this.#rememberInteractiveState();
+      this.#pendingEquipmentFocusIds = [row.previewFocusId];
+      const root = this.element;
+      const renderedPreviewSourceUuid =
+        root instanceof HTMLElement
+          ? root.querySelector<HTMLElement>("[data-equipment-preview]")?.dataset.equipmentPreview
+          : undefined;
+      if (
+        this.#equipmentPreviewByStepId.get(stepId) === row.sourceUuid &&
+        renderedPreviewSourceUuid === row.sourceUuid
+      ) {
+        this.#pendingEquipmentFocusIds = null;
+        return;
+      }
+      this.#equipmentPreviewByStepId.set(stepId, row.sourceUuid);
+      button.setAttribute("aria-pressed", "true");
+      this.#renderStartingEquipmentPartial(stepId, "preview");
+    },
+  });
   #pendingEquipmentWindowEdgeFocus: "first" | "last" | null = null;
   #pendingEquipmentListFocusStepId: string | null = null;
   #equipmentWindowAnnouncementPending = false;
@@ -1069,8 +1088,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
 
   _tearDown(options: unknown): void {
     try {
-      this.#equipmentStableCatalogue?.controller.dispose();
-      this.#equipmentStableCatalogue = null;
+      this.#equipmentStableCatalogue.dispose();
       super._tearDown(options);
     } finally {
       this.#finalizeClosedState();
@@ -1130,8 +1148,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   }
 
   #finalizeClosedState(): void {
-    this.#equipmentStableCatalogue?.controller.dispose();
-    this.#equipmentStableCatalogue = null;
+    this.#equipmentStableCatalogue.dispose();
     this.#pickerSearchScheduler.dispose();
     this.#equipmentSearchScheduler.dispose();
     this.#equipmentRenderSession = null;
@@ -2159,54 +2176,30 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   }
 
   #mountEquipmentStableCatalogue(root: HTMLElement, session: StartingEquipmentRenderSession | null): void {
-    const viewport = root.querySelector<HTMLElement>("[data-wayfinder-equipment-virtual-list]");
-    const canvas = viewport?.querySelector<HTMLElement>("[data-equipment-stable-canvas]") ?? null;
-    if (!session || !viewport || !canvas || viewport.dataset.stepId !== session.pane.stepId) {
-      this.#equipmentStableCatalogue?.controller.dispose();
-      this.#equipmentStableCatalogue = null;
+    if (!session) {
+      this.#equipmentStableCatalogue.dispose();
       return;
     }
-
-    if (this.#equipmentStableCatalogue?.viewport !== viewport) {
-      this.#equipmentStableCatalogue?.controller.dispose();
-      const catalogueRoot = viewport.closest<HTMLElement>("[data-application-part='equipment-catalogue']");
-      const controller = new EquipmentStableCatalogue({
-        viewport,
-        canvas,
-        previousPageButton:
-          catalogueRoot?.querySelector<HTMLButtonElement>("[data-equipment-stable-page='previous']") ?? null,
-        nextPageButton: catalogueRoot?.querySelector<HTMLButtonElement>("[data-equipment-stable-page='next']") ?? null,
-        onPreview: (row, button, stepId) => {
-          this.#rememberInteractiveState();
-          this.#pendingEquipmentFocusIds = [row.previewFocusId];
-          const renderedPreviewSourceUuid =
-            root.querySelector<HTMLElement>("[data-equipment-preview]")?.dataset.equipmentPreview;
-          if (
-            this.#equipmentPreviewByStepId.get(stepId) === row.sourceUuid &&
-            renderedPreviewSourceUuid === row.sourceUuid
-          ) {
-            this.#pendingEquipmentFocusIds = null;
-            return;
-          }
-          this.#equipmentPreviewByStepId.set(stepId, row.sourceUuid);
-          button.setAttribute("aria-pressed", "true");
-          this.#renderStartingEquipmentPartial(stepId, "preview");
-        },
-      });
-      this.#equipmentStableCatalogue = { viewport, controller };
-    }
-
     const rowSource = startingEquipmentCatalogueRowSource(session.pane);
-    this.#equipmentStableCatalogue.controller.setProjection({
-      key: `${session.identity.sourceRevision}:${session.viewRevision}:${session.pane.catalogue.search}`,
-      orderKey: session.pane.catalogue.rowOrderKey,
-      stepId: session.pane.stepId,
-      sourceUuids: rowSource.sourceUuids,
-      rowAt: (index) => rowSource.rowAt(index),
+    const scrollId = `${session.pane.stepId}:equipment-results`;
+    this.#equipmentStableCatalogue.update({
+      root,
+      projection: {
+        key: `${session.identity.sourceRevision}:${session.viewRevision}:${session.pane.catalogue.search}`,
+        orderKey: session.pane.catalogue.rowOrderKey,
+        stepId: session.pane.stepId,
+        renderedQuery: session.pane.catalogue.search,
+        totalResultCount: session.pane.catalogue.totalResultCount,
+        resultOffset: session.pane.catalogue.resultOffset,
+        resultLimit: session.pane.catalogue.resultLimit,
+        viewRevision: session.viewRevision,
+        sourceRevision: session.identity.sourceRevision,
+        criteriaRevision: this.#equipmentCriteriaRevision(session.pane.stepId),
+        sourceUuids: rowSource.sourceUuids,
+        rowAt: (index) => rowSource.rowAt(index),
+      },
+      restoreScrollTop: this.#scrollById.get(scrollId),
     });
-    const scrollId = viewport.dataset.wayfinderScrollId;
-    const savedScrollTop = scrollId ? this.#scrollById.get(scrollId) : undefined;
-    if (savedScrollTop !== undefined) this.#equipmentStableCatalogue.controller.restoreScrollTop(savedScrollTop);
   }
 
   #equipmentResultWindowState(stepId: string): StartingEquipmentResultWindowLoadState {

@@ -36,7 +36,7 @@ import { profileEquipmentStage } from "./application/equipment-performance-profi
 import { assertEquipmentApplyAuthority } from "./application/equipment-policy-service.js";
 import { parseMaterializedEquipmentQuantity } from "./application/equipment-quantity-entry.js";
 import { createEquipmentSearchScheduler, scheduleEquipmentSearchInput, } from "./application/equipment-search-input-service.js";
-import { EquipmentStableCatalogue } from "./application/equipment-stable-catalogue.js";
+import { EquipmentStableCatalogueHost } from "./application/equipment-stable-catalogue-host.js";
 import { clearEquipmentResultSkeletonBand, coverEquipmentResultViewport, } from "./application/equipment-virtual-list-dom.js";
 import { buildExistingCharacterHistory } from "./application/existing-character-history-service.js";
 import { hasExecutableAcquisition, persistExistingCharacterImport, } from "./application/existing-character-import-service.js";
@@ -124,7 +124,24 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     #equipmentResultWindowStateByStepId = new Map();
     #equipmentCriteriaRevisionByStepId = new Map();
     #equipmentResultMeasurementsByStepId = new Map();
-    #equipmentStableCatalogue = null;
+    #equipmentStableCatalogue = new EquipmentStableCatalogueHost({
+        onPreview: (row, button, stepId) => {
+            this.#rememberInteractiveState();
+            this.#pendingEquipmentFocusIds = [row.previewFocusId];
+            const root = this.element;
+            const renderedPreviewSourceUuid = root instanceof HTMLElement
+                ? root.querySelector("[data-equipment-preview]")?.dataset.equipmentPreview
+                : undefined;
+            if (this.#equipmentPreviewByStepId.get(stepId) === row.sourceUuid &&
+                renderedPreviewSourceUuid === row.sourceUuid) {
+                this.#pendingEquipmentFocusIds = null;
+                return;
+            }
+            this.#equipmentPreviewByStepId.set(stepId, row.sourceUuid);
+            button.setAttribute("aria-pressed", "true");
+            this.#renderStartingEquipmentPartial(stepId, "preview");
+        },
+    });
     #pendingEquipmentWindowEdgeFocus = null;
     #pendingEquipmentListFocusStepId = null;
     #equipmentWindowAnnouncementPending = false;
@@ -646,8 +663,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     }
     _tearDown(options) {
         try {
-            this.#equipmentStableCatalogue?.controller.dispose();
-            this.#equipmentStableCatalogue = null;
+            this.#equipmentStableCatalogue.dispose();
             super._tearDown(options);
         }
         finally {
@@ -704,8 +720,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         }
     }
     #finalizeClosedState() {
-        this.#equipmentStableCatalogue?.controller.dispose();
-        this.#equipmentStableCatalogue = null;
+        this.#equipmentStableCatalogue.dispose();
         this.#pickerSearchScheduler.dispose();
         this.#equipmentSearchScheduler.dispose();
         this.#equipmentRenderSession = null;
@@ -1598,49 +1613,30 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         return this.#equipmentResultWindowState(stepId).committed;
     }
     #mountEquipmentStableCatalogue(root, session) {
-        const viewport = root.querySelector("[data-wayfinder-equipment-virtual-list]");
-        const canvas = viewport?.querySelector("[data-equipment-stable-canvas]") ?? null;
-        if (!session || !viewport || !canvas || viewport.dataset.stepId !== session.pane.stepId) {
-            this.#equipmentStableCatalogue?.controller.dispose();
-            this.#equipmentStableCatalogue = null;
+        if (!session) {
+            this.#equipmentStableCatalogue.dispose();
             return;
         }
-        if (this.#equipmentStableCatalogue?.viewport !== viewport) {
-            this.#equipmentStableCatalogue?.controller.dispose();
-            const catalogueRoot = viewport.closest("[data-application-part='equipment-catalogue']");
-            const controller = new EquipmentStableCatalogue({
-                viewport,
-                canvas,
-                previousPageButton: catalogueRoot?.querySelector("[data-equipment-stable-page='previous']") ?? null,
-                nextPageButton: catalogueRoot?.querySelector("[data-equipment-stable-page='next']") ?? null,
-                onPreview: (row, button, stepId) => {
-                    this.#rememberInteractiveState();
-                    this.#pendingEquipmentFocusIds = [row.previewFocusId];
-                    const renderedPreviewSourceUuid = root.querySelector("[data-equipment-preview]")?.dataset.equipmentPreview;
-                    if (this.#equipmentPreviewByStepId.get(stepId) === row.sourceUuid &&
-                        renderedPreviewSourceUuid === row.sourceUuid) {
-                        this.#pendingEquipmentFocusIds = null;
-                        return;
-                    }
-                    this.#equipmentPreviewByStepId.set(stepId, row.sourceUuid);
-                    button.setAttribute("aria-pressed", "true");
-                    this.#renderStartingEquipmentPartial(stepId, "preview");
-                },
-            });
-            this.#equipmentStableCatalogue = { viewport, controller };
-        }
         const rowSource = startingEquipmentCatalogueRowSource(session.pane);
-        this.#equipmentStableCatalogue.controller.setProjection({
-            key: `${session.identity.sourceRevision}:${session.viewRevision}:${session.pane.catalogue.search}`,
-            orderKey: session.pane.catalogue.rowOrderKey,
-            stepId: session.pane.stepId,
-            sourceUuids: rowSource.sourceUuids,
-            rowAt: (index) => rowSource.rowAt(index),
+        const scrollId = `${session.pane.stepId}:equipment-results`;
+        this.#equipmentStableCatalogue.update({
+            root,
+            projection: {
+                key: `${session.identity.sourceRevision}:${session.viewRevision}:${session.pane.catalogue.search}`,
+                orderKey: session.pane.catalogue.rowOrderKey,
+                stepId: session.pane.stepId,
+                renderedQuery: session.pane.catalogue.search,
+                totalResultCount: session.pane.catalogue.totalResultCount,
+                resultOffset: session.pane.catalogue.resultOffset,
+                resultLimit: session.pane.catalogue.resultLimit,
+                viewRevision: session.viewRevision,
+                sourceRevision: session.identity.sourceRevision,
+                criteriaRevision: this.#equipmentCriteriaRevision(session.pane.stepId),
+                sourceUuids: rowSource.sourceUuids,
+                rowAt: (index) => rowSource.rowAt(index),
+            },
+            restoreScrollTop: this.#scrollById.get(scrollId),
         });
-        const scrollId = viewport.dataset.wayfinderScrollId;
-        const savedScrollTop = scrollId ? this.#scrollById.get(scrollId) : undefined;
-        if (savedScrollTop !== undefined)
-            this.#equipmentStableCatalogue.controller.restoreScrollTop(savedScrollTop);
     }
     #equipmentResultWindowState(stepId) {
         let state = this.#equipmentResultWindowStateByStepId.get(stepId);

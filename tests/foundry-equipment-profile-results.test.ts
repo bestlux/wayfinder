@@ -413,6 +413,9 @@ describe("equipment catalogue performance profile", () => {
     expect(browserProfile).toContain("canvasBounds.top + logicalCanvasHeight");
     expect(browserProfile).toContain("bottom: Math.min(bounds.bottom, canvasBounds.top + logicalCanvasHeight)");
     expect(browserProfile).toContain("stableHostPreserved: currentResultList() === stableHost");
+    expect(browserProfile).toContain(
+      "stableHostPreserved: sample.stableHostAtStart === null ? null : resultList === sample.stableHostAtStart"
+    );
     expect(browserProfile).toContain("packDocumentReadCount: counters.equipmentPackDocument - documentReadsBefore");
     expect(browserProfile).toContain("async probeControllerRecovery(");
     expect(browserProfile).toContain("const target = await findUnresolvedPriceRow(settleTimeoutMs)");
@@ -504,6 +507,11 @@ describe("equipment catalogue performance profile", () => {
     const cartOutcome = cart.actionOutcome as { observedQuantity: number; previousQuantity: number };
     cartOutcome.observedQuantity = cartOutcome.previousQuantity;
     expect(validateEquipmentSample(cart, profile)).toContain("Cart quantity did not record the exact line increment.");
+    const remountedFacet = sample("facet-change");
+    remountedFacet.stableHostPreserved = false;
+    expect(validateEquipmentSample(remountedFacet, profile)).toContain(
+      "Scoped equipment interaction replaced the durable catalogue host."
+    );
   });
 
   it("keeps a collapsed narrow catalogue viewport as an explicit semantic failure", () => {
@@ -978,6 +986,7 @@ function sample(actionId: string) {
     lastMountedResultIndex: ["cold-open", "warm-reopen"].includes(actionId) ? 27 : 0,
     mountedIndexesContiguous: true,
     stableHost: true,
+    stableHostPreserved: true,
     canvasHeightPx: ["cold-open", "warm-reopen"].includes(actionId) ? 1138 * 64 : 64,
     maxVisibleGapPx: 0,
     imageRequestCount: 0,

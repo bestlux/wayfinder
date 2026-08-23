@@ -22,6 +22,7 @@ describe("starting-equipment template registration", () => {
       "templates/wayfinder/starting-equipment-policy.hbs",
       "templates/wayfinder/starting-equipment-state.hbs",
       "templates/wayfinder/starting-equipment-catalogue.hbs",
+      "templates/wayfinder/starting-equipment-catalogue-host.hbs",
       "templates/wayfinder/starting-equipment-detail.hbs",
       "templates/wayfinder/starting-equipment-cart.hbs",
     ];

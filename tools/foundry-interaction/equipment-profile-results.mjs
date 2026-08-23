@@ -98,6 +98,7 @@ const EQUIPMENT_STAGE_DETAIL_KEYS = Object.freeze({
   "foundry-html-replacement": [],
   "foundry-on-render-layout": [],
 });
+const STABLE_HOST_IDENTITY_ACTIONS = new Set(["rapid-search", "facet-change", "cart-quantity", "preview-change"]);
 
 const FROZEN_VIEWPORT = { width: 1440, height: 1000 };
 const FROZEN_APP_WIDTHS = [1240, 1180, 980, 760];
@@ -557,6 +558,9 @@ export function validateEquipmentSample(sample, profile) {
     if (sample.resultDomElementCount > resultDomLimit) {
       failures.push(`Sample result DOM exceeded its ${resultDomLimit}-element mounted-window limit.`);
     }
+  }
+  if (STABLE_HOST_IDENTITY_ACTIONS.has(sample.actionId) && sample.stableHostPreserved !== true) {
+    failures.push("Scoped equipment interaction replaced the durable catalogue host.");
   }
   if (sample.longTaskSupported !== true) failures.push("This browser did not expose Long Task performance entries.");
   if (sample.planBuildCounterSupported !== true) failures.push("The render-plan execution counter is unavailable.");

@@ -10,6 +10,7 @@ const ROW_HEIGHT_CUSTOM_PROPERTY = "--wayfinder-equipment-result-row-height";
  * exact-price authority remain outside this browse-only boundary.
  */
 export class EquipmentStableCatalogue {
+    #host;
     #viewport;
     #canvas;
     #rowHeightPx;
@@ -30,6 +31,7 @@ export class EquipmentStableCatalogue {
     #frame = null;
     #disposed = false;
     constructor(options) {
+        this.#host = options.host;
         this.#viewport = options.viewport;
         this.#canvas = options.canvas;
         this.#rowHeightFromCss = options.rowHeightPx === undefined;
@@ -54,12 +56,12 @@ export class EquipmentStableCatalogue {
     setProjection(projection) {
         this.#assertActive();
         this.#refreshRowHeight();
+        this.#patchProjectionDatasets(projection);
         const preservesOrder = this.#projection !== null &&
             this.#projection.orderKey === projection.orderKey &&
             this.#projection.sourceUuids.length === projection.sourceUuids.length;
         if (preservesOrder) {
             this.#projection = projection;
-            this.#viewport.dataset.projectionKey = projection.key;
             const range = this.#mountedRange.end > this.#mountedRange.start
                 ? this.#mountedRange
                 : this.#emergencyRange(this.#visibleRange());
@@ -79,8 +81,6 @@ export class EquipmentStableCatalogue {
         this.#indexBySourceUuid = indexBySourceUuid;
         this.#orderIndexBuildCount += 1;
         this.#canvas.style.height = `${projection.sourceUuids.length * this.#rowHeightPx}px`;
-        this.#viewport.dataset.totalResults = String(projection.sourceUuids.length);
-        this.#viewport.dataset.projectionKey = projection.key;
         this.#viewport.dataset.orderIndexBuildCount = String(this.#orderIndexBuildCount);
         if (focusedSourceUuid && !indexBySourceUuid.has(focusedSourceUuid)) {
             this.#viewport.focus({ preventScroll: true });
@@ -118,6 +118,7 @@ export class EquipmentStableCatalogue {
         this.#frame = null;
         this.#mountedBySourceUuid.clear();
         this.#canvas.replaceChildren();
+        this.#viewport.classList.remove("is-stable-catalogue");
     }
     #onScroll = () => {
         if (!this.#projection || this.#disposed)
@@ -292,6 +293,22 @@ export class EquipmentStableCatalogue {
     #assertActive() {
         if (this.#disposed)
             throw new Error("Cannot update a disposed stable equipment catalogue.");
+    }
+    #patchProjectionDatasets(projection) {
+        const datasets = [this.#host.dataset, this.#viewport.dataset];
+        for (const dataset of datasets) {
+            dataset.stepId = projection.stepId;
+            dataset.totalResults = String(projection.totalResultCount);
+            dataset.resultOffset = String(projection.resultOffset);
+            dataset.resultLimit = String(projection.resultLimit);
+            dataset.wayfinderRenderedQuery = projection.renderedQuery;
+            dataset.wayfinderViewRevision = String(projection.viewRevision);
+            dataset.wayfinderSourceRevision = String(projection.sourceRevision);
+            dataset.wayfinderCriteriaRevision = String(projection.criteriaRevision);
+            dataset.projectionKey = projection.key;
+            dataset.orderKey = projection.orderKey;
+        }
+        this.#viewport.setAttribute("aria-busy", "false");
     }
     #refreshRowHeight() {
         if (!this.#rowHeightFromCss)

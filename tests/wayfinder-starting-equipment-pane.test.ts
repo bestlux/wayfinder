@@ -180,7 +180,7 @@ describe("starting equipment pane", () => {
     expect(item.canAdd).toBe(true);
     expect(item.allowanceOptions).toHaveLength(1);
 
-    const catalogue = readFileSync(resolve("templates/wayfinder/starting-equipment-catalogue.hbs"), "utf8");
+    const catalogue = readFileSync(resolve("templates/wayfinder/starting-equipment-catalogue-host.hbs"), "utf8");
     const detail = readFileSync(resolve("templates/wayfinder/starting-equipment-detail.hbs"), "utf8");
     const stableRows = readFileSync(resolve("src/wayfinder/application/equipment-stable-catalogue.ts"), "utf8");
     expect(detail).toContain("{{#unless canAdd}} is-unaffordable{{/unless}}");
@@ -1002,6 +1002,7 @@ describe("starting equipment pane", () => {
       "starting-equipment-status",
       "starting-equipment-state",
       "starting-equipment-catalogue",
+      "starting-equipment-catalogue-host",
       "starting-equipment-detail",
       "starting-equipment-cart",
     ]
@@ -1440,13 +1441,14 @@ describe("starting equipment pane", () => {
 
   it("mounts stable direct result rows and keeps item actions in selected detail", () => {
     const catalogue = readFileSync(resolve("templates/wayfinder/starting-equipment-catalogue.hbs"), "utf8");
+    const catalogueHost = readFileSync(resolve("templates/wayfinder/starting-equipment-catalogue-host.hbs"), "utf8");
     const detail = readFileSync(resolve("templates/wayfinder/starting-equipment-detail.hbs"), "utf8");
     const pane = readFileSync(resolve("templates/wayfinder/starting-equipment-pane.hbs"), "utf8");
     const styles = readFileSync(resolve("styles/wayfinder/starting-equipment.css"), "utf8");
     const stableRows = readFileSync(resolve("src/wayfinder/application/equipment-stable-catalogue.ts"), "utf8");
 
     expect(catalogue).not.toContain("{{#each activePane.catalogue.items}}");
-    expect(catalogue).toContain("data-equipment-stable-canvas");
+    expect(catalogueHost).toContain("data-equipment-stable-canvas");
     expect(stableRows).not.toContain("innerHTML");
     expect(stableRows).toContain('root.setAttribute("role", "listitem")');
     expect(stableRows).toContain('mounted.root.setAttribute("aria-posinset"');
@@ -1485,7 +1487,8 @@ describe("starting equipment pane", () => {
     expect(policy).toContain('data-wayfinder-action="decline-equipment-policy-request"');
 
     // The measured release envelope allows zero image requests per sample; type identity comes from icon glyphs.
-    for (const template of [detail, catalogue, cart, policy]) {
+    const catalogueHost = readFileSync(resolve("templates/wayfinder/starting-equipment-catalogue-host.hbs"), "utf8");
+    for (const template of [detail, catalogue, catalogueHost, cart, policy]) {
       expect(template).not.toContain("<img");
     }
 

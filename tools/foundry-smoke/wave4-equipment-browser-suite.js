@@ -452,6 +452,7 @@ globalThis.__runWayfinderWave4PlayerInitial = async function playerInitial({
   const treasureProjection = await runtime.uiAdapter.project({
     ...requestFor(physicalActor, physicalDraft),
     query: physicalCase.treasure.name,
+    filters: { availability: ["all"] },
   });
   const treasureIndex = treasureProjection.recordSource.sourceUuids.indexOf(physicalCase.treasure.sourceUuid);
   const treasure = treasureIndex < 0 ? null : treasureProjection.recordSource.recordAt(treasureIndex);

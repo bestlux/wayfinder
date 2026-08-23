@@ -11,6 +11,7 @@ let actorId = null;
 let counters = null;
 let configured = false;
 let documentReadGate = null;
+let orderedCatalogueSourceUuids = null;
 let readyDraftSnapshot = null;
 
 globalThis.__wayfinderEquipmentProfile = {
@@ -67,10 +68,10 @@ globalThis.__wayfinderEquipmentProfile = {
       input.dispatchEvent(new Event("input", { bubbles: true }));
     }
     const list = currentResultList();
-    if (list.scrollTop !== 0) {
-      list.scrollTop = 0;
-      list.dispatchEvent(new Event("scroll", { bubbles: true }));
-    }
+    if (list.scrollTop !== 0) scrollResultList(0);
+    // A same-position event neutralizes the controller's prior direction. The exact
+    // top range therefore uses the frozen 12-behind/24-ahead settled contract.
+    scrollResultList(list.scrollTop);
     await waitUntil(() => {
       const window = resultWindowSnapshot();
       const expectedMountedRows = expectedMountedRowsForGeometry(resultWindowSizing, window);
@@ -111,6 +112,7 @@ globalThis.__wayfinderEquipmentProfile = {
     }
     return {
       schemaVersion: 3,
+      catalogueSourceUuids: [...(orderedCatalogueSourceUuids ?? [])],
       initialWindow: initial,
       destinationWindow: resultWindowSnapshot(),
       immediateShelf,
@@ -229,11 +231,18 @@ globalThis.__wayfinderEquipmentProfile = {
     if (filtered.visibleResultCount !== counts.visible) {
       throw new Error("Equipment count discovery disagreed with the rendered final-query visible count.");
     }
+    orderedCatalogueSourceUuids = emptyProjection.records.map((entry) => entry.sourceUuid);
+    if (
+      orderedCatalogueSourceUuids.length !== counts.defaultShelf ||
+      new Set(orderedCatalogueSourceUuids).size !== orderedCatalogueSourceUuids.length
+    ) {
+      throw new Error("Equipment count discovery found incomplete or duplicate ordered catalogue identities.");
+    }
     const reset = currentSearch();
     reset.value = "";
     reset.dispatchEvent(new Event("input", { bubbles: true }));
     await waitUntil(() => visibleResultValues().length > 1, settleTimeoutMs);
-    return counts;
+    return { counts, orderedSourceUuids: [...orderedCatalogueSourceUuids] };
   },
 
   async runSample({

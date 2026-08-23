@@ -75,12 +75,24 @@ browserIt("mounts real rows synchronously across jumps and pins the focused row"
         typeIcon: "fa-box",
         sourceLabel: "Player Core",
         unavailableReason: null,
-        priceLabel: `${index + 1} cp`,
-        canAdd: true,
+        priceLabel: index === 5 ? "View for exact price" : `${index + 1} cp`,
+        pricePending: index === 5,
+        canAdd: index !== 5 && index !== 6,
         previewing: false,
       }));
       controller.setProjection({ key: "fixture", rows });
       await nextFrame();
+      const pendingRoot = viewport.querySelector<HTMLElement>("[data-result-index='5']")!;
+      const blockedRoot = viewport.querySelector<HTMLElement>("[data-result-index='6']")!;
+      const pendingPresentation = {
+        blocked: pendingRoot.classList.contains("is-blocked"),
+        pricePending: pendingRoot.dataset.pricePending,
+        unaffordable: pendingRoot.querySelector(".equipment-result-price")!.classList.contains("is-unaffordable"),
+      };
+      const blockedPresentation = {
+        blocked: blockedRoot.classList.contains("is-blocked"),
+        unaffordable: blockedRoot.querySelector(".equipment-result-price")!.classList.contains("is-unaffordable"),
+      };
       const pagingAtStart = { previousDisabled: previousPageButton.disabled, nextDisabled: nextPageButton.disabled };
       nextPageButton.click();
       await nextFrame();
@@ -130,6 +142,8 @@ browserIt("mounts real rows synchronously across jumps and pins the focused row"
         immediateRows,
         mountedAfterFrame: viewport.querySelectorAll("[role='listitem']").length,
         pagingAtStart,
+        pendingPresentation,
+        blockedPresentation,
         pagingFocusedPosition,
         pagingScrollTop,
         pinnedRemovedAfterBlur: !focusButton.isConnected,
@@ -148,6 +162,8 @@ browserIt("mounts real rows synchronously across jumps and pins the focused row"
       focusPinnedImmediately: true,
       immediateGapPx: 0,
       pagingAtStart: { previousDisabled: true, nextDisabled: false },
+      pendingPresentation: { blocked: false, pricePending: "true", unaffordable: false },
+      blockedPresentation: { blocked: true, unaffordable: true },
       pinnedRemovedAfterBlur: true,
       previewedSourceUuid: "Compendium.pf2e.equipment-srd.Item.720",
       stableViewport: true,

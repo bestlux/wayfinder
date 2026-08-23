@@ -204,7 +204,7 @@ async function main() {
     failureStage = "workspace-inspection";
     const inspected = await playerPage.evaluate(() => globalThis.__wayfinderEquipmentProfile.inspect());
     failureStage = "catalogue-counts";
-    const catalogueCounts = await playerPage.evaluate(
+    const catalogueDiscovery = await playerPage.evaluate(
       (payload) => globalThis.__wayfinderEquipmentProfile.discoverCatalogueCounts(payload),
       {
         finalResultValues: profile.expectedFinalResultValues,
@@ -212,10 +212,12 @@ async function main() {
         settleTimeoutMs: profile.settleTimeoutMs,
       },
     );
+    const catalogueCounts = catalogueDiscovery.counts;
     liveFixture = {
       ...setup,
       executor: playerOpen.executor,
       catalogueCounts,
+      catalogueSourceUuids: catalogueDiscovery.orderedSourceUuids,
       expectedFinalResultValues: [...profile.expectedFinalResultValues],
       finalResultCount: profile.expectedFinalResultValues.length,
       observedInitialVisibleCount: inspected.visibleResultCount,

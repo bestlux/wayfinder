@@ -176,7 +176,8 @@ describe("starting equipment pane", () => {
     const detail = readFileSync(resolve("templates/wayfinder/starting-equipment-detail.hbs"), "utf8");
     const stableRows = readFileSync(resolve("src/wayfinder/application/equipment-stable-catalogue.ts"), "utf8");
     expect(detail).toContain("{{#unless canAdd}} is-unaffordable{{/unless}}");
-    expect(stableRows).toContain('mounted.price.classList.toggle("is-unaffordable", !row.canAdd)');
+    expect(stableRows).toContain("const visuallyBlocked = !row.canAdd && row.pricePending !== true");
+    expect(stableRows).toContain('mounted.price.classList.toggle("is-unaffordable", visuallyBlocked)');
     expect(catalogue).toContain("data-equipment-stable-canvas");
   });
 

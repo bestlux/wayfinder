@@ -217,6 +217,8 @@ describe("equipment catalogue performance profile", () => {
     expect(runner).toContain("await playerPage.setViewportSize(profile.viewport)");
     expect(browserProfile).toContain("async resize({ height, width })");
     expect(browserProfile).toContain("app.setPosition?.({ height, width })");
+    expect(browserProfile).toContain("if (list.scrollTop !== 0) scrollResultList(0)");
+    expect(browserProfile).toContain("scrollResultList(list.scrollTop)");
     expect(browserProfile).toContain("async probeStableHostScroll({ framesAfterScroll");
     expect(browserProfile).toContain("const immediateShelf = visibleShelfSnapshot()");
     expect(browserProfile).toContain("stableHostPreserved: currentResultList() === stableHost");
@@ -372,6 +374,19 @@ describe("equipment catalogue performance profile", () => {
     rendered.equipmentRenderCallCount = 1;
     expect(validateEquipmentScrollProbe(profile, rendered)).toContain(
       "Equipment scroll caused document I/O, a Foundry render, or replacement of the stable host."
+    );
+
+    const wrongDestination = structuredClone(probe);
+    wrongDestination.destinationWindow.mountedResultValues[20] =
+      wrongDestination.destinationWindow.mountedResultValues[19];
+    expect(validateEquipmentScrollProbe(profile, wrongDestination)).toContain(
+      "Equipment stable-host destination rows drifted from the ordered runtime catalogue projection."
+    );
+
+    const incompleteProjection = structuredClone(probe);
+    incompleteProjection.catalogueSourceUuids.length = 36;
+    expect(validateEquipmentScrollProbe(profile, incompleteProjection)).toContain(
+      "Equipment stable-host probe lacks the complete unique ordered runtime catalogue projection."
     );
   });
 
@@ -678,6 +693,7 @@ function fixture(runId = "run-1") {
     actorCountAfterCreate: 5,
     policy: structuredClone(profile.expectedPolicy),
     catalogueCounts: structuredClone(profile.expectedCatalogueCounts),
+    catalogueSourceUuids: mountedResultValues(profile.expectedCatalogueCounts.defaultShelf),
     expectedFinalResultValues: [...profile.expectedFinalResultValues],
     finalResultCount: profile.expectedFinalResultValues.length,
   };
@@ -922,6 +938,7 @@ function stableHostScrollProbe() {
     mountedIndexesContiguous: true,
     listClientHeight: 1000,
     measuredRowHeightPx: 64,
+    mountedResultValues: mountedResultValues(41),
   };
   const destinationWindow = {
     mountedResultCount: 53,
@@ -932,6 +949,7 @@ function stableHostScrollProbe() {
     mountedIndexesContiguous: true,
     listClientHeight: 1000,
     measuredRowHeightPx: 64,
+    mountedResultValues: mountedResultValues(72).slice(19, 72),
   };
   const probe = {
     schemaVersion: 3,
@@ -939,6 +957,7 @@ function stableHostScrollProbe() {
     browserViewport: resultWindowBrowserViewport(profile, windowProfile),
     requestedAppWidth: profile.resultWindowSampling.appWidth,
     requestedAppHeight: windowProfile.appHeight,
+    catalogueSourceUuids: mountedResultValues(profile.expectedCatalogueCounts.defaultShelf),
     rapidFullScreenScrollCount: 2,
     initialWindow,
     destinationWindow,

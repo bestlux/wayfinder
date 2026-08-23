@@ -340,6 +340,16 @@ export function validateEquipmentFixture(profile, fixture, expectedWorldId) {
       `Equipment profile catalogue counts drifted: observed ${stableJson(fixture?.catalogueCounts)}, expected ${stableJson(profile.expectedCatalogueCounts)}.`,
     );
   }
+  const catalogueSourceUuids = fixture?.catalogueSourceUuids;
+  if (
+    !Array.isArray(catalogueSourceUuids) ||
+    catalogueSourceUuids.length !== profile.expectedCatalogueCounts?.defaultShelf ||
+    catalogueSourceUuids.some((value) => !nonempty(value)) ||
+    new Set(catalogueSourceUuids).size !== catalogueSourceUuids.length ||
+    !startsWithStrings(catalogueSourceUuids.slice(0, profile.expectedDefaultShelfValues.length), profile.expectedDefaultShelfValues)
+  ) {
+    failures.push("Equipment profile fixture lacks the complete unique ordered runtime catalogue projection.");
+  }
   return failures;
 }
 
@@ -691,6 +701,39 @@ export function validateEquipmentScrollProbe(profile, probe) {
     probe.destinationWindow.mountedIndexesContiguous !== true
   ) {
     failures.push("Equipment scroll probe did not synchronously advance to its adaptive direct-row range.");
+  }
+  const catalogueSourceUuids = probe?.catalogueSourceUuids;
+  if (
+    !Array.isArray(catalogueSourceUuids) ||
+    catalogueSourceUuids.length !== profile.expectedCatalogueCounts?.defaultShelf ||
+    catalogueSourceUuids.some((value) => !nonempty(value)) ||
+    new Set(catalogueSourceUuids).size !== catalogueSourceUuids.length ||
+    !startsWithStrings(catalogueSourceUuids.slice(0, profile.expectedDefaultShelfValues.length), profile.expectedDefaultShelfValues)
+  ) {
+    failures.push("Equipment stable-host probe lacks the complete unique ordered runtime catalogue projection.");
+  } else {
+    for (const [label, window] of [
+      ["initial", probe?.initialWindow],
+      ["destination", probe?.destinationWindow],
+    ]) {
+      const first = window?.firstMountedResultIndex;
+      const last = window?.lastMountedResultIndex;
+      const values = window?.mountedResultValues;
+      const expected =
+        nonnegativeInteger(first) && nonnegativeInteger(last) && last >= first
+          ? catalogueSourceUuids.slice(first, last + 1)
+          : null;
+      if (
+        expected === null ||
+        !Array.isArray(values) ||
+        values.length !== window?.mountedResultCount ||
+        values.some((value) => !nonempty(value)) ||
+        new Set(values).size !== values.length ||
+        !sameStrings(values, expected)
+      ) {
+        failures.push(`Equipment stable-host ${label} rows drifted from the ordered runtime catalogue projection.`);
+      }
+    }
   }
   const rawShelves = probe?.shelvesAfterScroll;
   const shelves = [probe?.immediateShelf, ...(Array.isArray(rawShelves) ? rawShelves : [])].filter(Boolean);
@@ -1140,6 +1183,9 @@ export function qualifyEquipmentEvidenceRuns(results) {
   }
   for (const key of ["profile", "candidate", "runtime", "driver", "environment"]) {
     if (stableJson(first?.[key]) !== stableJson(second?.[key])) failures.push(`Qualified runs disagree on ${key}.`);
+  }
+  if (stableJson(first?.fixture?.catalogueSourceUuids) !== stableJson(second?.fixture?.catalogueSourceUuids)) {
+    failures.push("Qualified runs disagree on the ordered runtime catalogue projection.");
   }
   if (stableJson(servedCandidateSummary(first?.servedModuleFiles)) !== stableJson(servedCandidateSummary(second?.servedModuleFiles))) {
     failures.push("Qualified runs disagree on the served candidate manifest.");

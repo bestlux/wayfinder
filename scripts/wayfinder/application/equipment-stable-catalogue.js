@@ -332,8 +332,9 @@ function createMountedRow(document, row, index) {
 }
 function patchMountedRow(mounted, row) {
     mounted.row = row;
+    const visuallyBlocked = !row.canAdd && row.pricePending !== true;
     mounted.root.classList.toggle("is-previewing", row.previewing);
-    mounted.root.classList.toggle("is-blocked", !row.canAdd);
+    mounted.root.classList.toggle("is-blocked", visuallyBlocked);
     mounted.root.dataset.pricePending = row.pricePending ? "true" : "false";
     mounted.button.ariaLabel = row.previewAriaLabel;
     mounted.button.setAttribute("aria-pressed", row.previewing ? "true" : "false");
@@ -349,7 +350,7 @@ function patchMountedRow(mounted, row) {
     mounted.rarity.textContent = row.rarity === "common" ? "" : row.rarityLabel;
     mounted.rarity.hidden = row.rarity === "common";
     mounted.meta.textContent = `${row.itemTypeLabel} · ${row.sourceLabel}${row.unavailableReason ? ` · ${row.unavailableReason}` : ""}`;
-    mounted.price.classList.toggle("is-unaffordable", !row.canAdd);
+    mounted.price.classList.toggle("is-unaffordable", visuallyBlocked);
     mounted.price.textContent = row.priceLabel;
 }
 function containsRange(container, candidate) {

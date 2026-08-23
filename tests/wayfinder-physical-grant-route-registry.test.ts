@@ -21,9 +21,11 @@ interface CoverageRoute {
   profileId?: string;
   materializer?: string;
   sourcePolicy: string;
-  triggerVariants: Array<Array<{ sourceUuid: string; slotId?: string; channel?: "selections" | "branchSelections" }>>;
-  terminals: string[];
-  blocker?: { preReview: boolean; code: string; detail: string };
+  activationVariants: Array<
+    Array<{ sourceUuid: string; slotId?: string; channel?: "selections" | "branchSelections" }>
+  >;
+  terminalSourceUuids: string[];
+  blocker?: { preReview: boolean; reasonCode: string; detail: string };
 }
 
 const coverage = JSON.parse(readFileSync(resolve("docs/coverage/pf2e-8.4.1-level1-physical-grants.json"), "utf8")) as {
@@ -158,10 +160,14 @@ function normalizeCoverageRoute(route: CoverageRoute) {
     profileId: route.profileId ?? null,
     materializer: route.materializer ?? null,
     sourcePolicy: route.sourcePolicy,
-    activationVariants: route.triggerVariants,
-    terminals: route.terminals,
+    activationVariants: route.activationVariants,
+    terminals: route.terminalSourceUuids,
     blocker: route.blocker
-      ? { preReview: route.blocker.preReview, reasonCode: route.blocker.code, detail: route.blocker.detail }
+      ? {
+          preReview: route.blocker.preReview,
+          reasonCode: route.blocker.reasonCode,
+          detail: route.blocker.detail,
+        }
       : null,
   };
 }

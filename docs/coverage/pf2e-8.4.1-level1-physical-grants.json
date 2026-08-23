@@ -45,8 +45,8 @@
         "Compendium.pf2e.equipment-srd.Item.qCEOZ6109Yo34tRx"
       ],
       "draftSlots": [],
-      "triggerVariants": [],
-      "terminals": [
+      "activationVariants": [],
+      "terminalSourceUuids": [
         "Compendium.pf2e.equipment-srd.Item.qCEOZ6109Yo34tRx"
       ],
       "links": [],
@@ -67,8 +67,8 @@
         "Compendium.pf2e.equipment-srd.Item.qCEOZ6109Yo34tRx"
       ],
       "draftSlots": [],
-      "triggerVariants": [],
-      "terminals": [
+      "activationVariants": [],
+      "terminalSourceUuids": [
         "Compendium.pf2e.equipment-srd.Item.qCEOZ6109Yo34tRx"
       ],
       "links": [],
@@ -88,8 +88,8 @@
         "Compendium.pf2e.classfeatures.Item.JuKD6k7nDwfO0Ckv"
       ],
       "draftSlots": [],
-      "triggerVariants": [],
-      "terminals": [],
+      "activationVariants": [],
+      "terminalSourceUuids": [],
       "terminalSelector": {
         "kind": "reviewed-catalogue-choice",
         "profileId": "giant-instinct-titan-mauler",
@@ -112,8 +112,8 @@
         "Compendium.pf2e.equipment-srd.Item.kJJvKm80KwWXPukV"
       ],
       "draftSlots": [],
-      "triggerVariants": [],
-      "terminals": [
+      "activationVariants": [],
+      "terminalSourceUuids": [
         "Compendium.pf2e.equipment-srd.Item.kJJvKm80KwWXPukV"
       ],
       "links": [],
@@ -133,8 +133,8 @@
         "Compendium.pf2e.equipment-srd.Item.FA1mAc7rEyC9vzZa"
       ],
       "draftSlots": [],
-      "triggerVariants": [],
-      "terminals": [
+      "activationVariants": [],
+      "terminalSourceUuids": [
         "Compendium.pf2e.equipment-srd.Item.FA1mAc7rEyC9vzZa"
       ],
       "links": [],
@@ -154,7 +154,7 @@
         "heritage-level-1",
         "grant-choice-class-heritage-ancient-elf-ancientElf-level-1"
       ],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.heritages.Item.Nd9hdX8rdYyRozw8",
@@ -168,13 +168,18 @@
           }
         ]
       ],
-      "terminals": [],
+      "terminalSourceUuids": [],
       "links": [],
       "ruleChecks": [],
-      "semanticChecks": [],
+      "semanticChecks": [
+        {
+          "source": "Compendium.pf2e.feats-srd.Item.CJMkxlxHiHZQYDCz",
+          "contains": "Add the formulas for four additional common alchemical items to your formula book"
+        }
+      ],
       "blocker": {
         "preReview": true,
-        "code": "prose-only-no-terminal",
+        "reasonCode": "prose-only-no-terminal",
         "detail": "Alchemist Dedication mentions a formula book in prose without an exact physical GrantItem terminal."
       }
     },
@@ -193,7 +198,7 @@
         "grant-choice-class-heritage-ancient-elf-ancientElf-level-1",
         "grant-choice-none-feat-barbarian-dedication-instinct-level-1"
       ],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.heritages.Item.Nd9hdX8rdYyRozw8",
@@ -212,13 +217,13 @@
           }
         ]
       ],
-      "terminals": [],
+      "terminalSourceUuids": [],
       "links": [],
       "ruleChecks": [],
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "unsupported-physical-choice",
+        "reasonCode": "unsupported-physical-choice",
         "detail": "The Ancient Elf dedication path reaches Giant Instinct without the reviewed Titan Mauler acquisition profile used by a Barbarian class selection."
       }
     },
@@ -232,14 +237,14 @@
         "Compendium.pf2e.equipment-srd.Item.mrgtvEbYTjGpOi7F"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.heritages.Item.OIW3UYrdaWLwUZCh"
           }
         ]
       ],
-      "terminals": [
+      "terminalSourceUuids": [
         "Compendium.pf2e.equipment-srd.Item.mrgtvEbYTjGpOi7F"
       ],
       "links": [],
@@ -247,7 +252,7 @@
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "unprofiled-native-grant",
+        "reasonCode": "unprofiled-native-grant",
         "detail": "PF2E creates this physical item before acquisition, but Wayfinder has no reviewed reconciliation profile for it."
       }
     },
@@ -261,14 +266,14 @@
         "Compendium.pf2e.equipment-srd.Item.BtncTx8EfxTsHqQI"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.feats-srd.Item.LvVg83ZDj8mabcWF"
           }
         ]
       ],
-      "terminals": [
+      "terminalSourceUuids": [
         "Compendium.pf2e.equipment-srd.Item.BtncTx8EfxTsHqQI"
       ],
       "links": [],
@@ -276,7 +281,7 @@
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "unprofiled-native-grant",
+        "reasonCode": "unprofiled-native-grant",
         "detail": "Clan Pistol replaces the default Clan Dagger, but Wayfinder does not yet capture and reconcile that replacement branch."
       }
     },
@@ -290,14 +295,14 @@
         "Compendium.pf2e.equipment-srd.Item.gwP3Uums2ApH6o9K"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.backgrounds.Item.ynObDI0VbZ4sqeMI"
           }
         ]
       ],
-      "terminals": [
+      "terminalSourceUuids": [
         "Compendium.pf2e.equipment-srd.Item.gwP3Uums2ApH6o9K"
       ],
       "links": [],
@@ -305,7 +310,7 @@
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "semantic-prerequisite-mismatch",
+        "reasonCode": "semantic-prerequisite-mismatch",
         "detail": "This background embeds Pilgrim's Token, whose religion and follower requirements are not yet proven by Wayfinder."
       }
     },
@@ -319,14 +324,14 @@
         "Compendium.pf2e.equipment-srd.Item.G72UFwPRKBdfqib9"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.classfeatures.Item.N1hWQx0IuKWjZ2dn"
           }
         ]
       ],
-      "terminals": [
+      "terminalSourceUuids": [
         "Compendium.pf2e.equipment-srd.Item.G72UFwPRKBdfqib9"
       ],
       "links": [],
@@ -334,7 +339,7 @@
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "owned-item-dependency",
+        "reasonCode": "owned-item-dependency",
         "detail": "This feature can grant a new physical item or depend on an owned item, and neither path is represented by reviewed Wayfinder equipment authority."
       }
     },
@@ -347,20 +352,20 @@
         "Compendium.pf2e.classfeatures.Item.LfgeEJgJdA8WAKV8"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.classfeatures.Item.LfgeEJgJdA8WAKV8"
           }
         ]
       ],
-      "terminals": [],
+      "terminalSourceUuids": [],
       "links": [],
       "ruleChecks": [],
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "owned-item-dependency",
+        "reasonCode": "owned-item-dependency",
         "detail": "This feature can grant a new physical item or depend on an owned item, and neither path is represented by reviewed Wayfinder equipment authority."
       }
     },
@@ -374,14 +379,14 @@
         "Compendium.pf2e.equipment-srd.Item.wyodEqz1v4PjQFCr"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.classfeatures.Item.xrJ4nGGgejUPf16q"
           }
         ]
       ],
-      "terminals": [
+      "terminalSourceUuids": [
         "Compendium.pf2e.equipment-srd.Item.wyodEqz1v4PjQFCr"
       ],
       "links": [],
@@ -389,7 +394,7 @@
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "owned-item-dependency",
+        "reasonCode": "owned-item-dependency",
         "detail": "This feature can grant a new physical item or depend on an owned item, and neither path is represented by reviewed Wayfinder equipment authority."
       }
     },
@@ -402,20 +407,20 @@
         "Compendium.pf2e.classfeatures.Item.o8Q7wWx2oKvKMi1s"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.classfeatures.Item.o8Q7wWx2oKvKMi1s"
           }
         ]
       ],
-      "terminals": [],
+      "terminalSourceUuids": [],
       "links": [],
       "ruleChecks": [],
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "slot-key-collision",
+        "reasonCode": "slot-key-collision",
         "detail": "This physical ikon has multiple no-flag PF2E choices that collapse to one Wayfinder draft slot, so its terminal item is not reviewed deterministically."
       }
     },
@@ -428,20 +433,20 @@
         "Compendium.pf2e.classfeatures.Item.MhM6u4Stl0jV6CF2"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.classfeatures.Item.MhM6u4Stl0jV6CF2"
           }
         ]
       ],
-      "terminals": [],
+      "terminalSourceUuids": [],
       "links": [],
       "ruleChecks": [],
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "slot-key-collision",
+        "reasonCode": "slot-key-collision",
         "detail": "This physical ikon has multiple no-flag PF2E choices that collapse to one Wayfinder draft slot, so its terminal item is not reviewed deterministically."
       }
     },
@@ -455,14 +460,14 @@
         "Compendium.pf2e.equipment-srd.Item.kF6oa9xUGAz4zF11"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.classfeatures.Item.gjZXHLjezR0mkMnc"
           }
         ]
       ],
-      "terminals": [
+      "terminalSourceUuids": [
         "Compendium.pf2e.equipment-srd.Item.kF6oa9xUGAz4zF11"
       ],
       "links": [],
@@ -470,7 +475,7 @@
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "owned-item-dependency",
+        "reasonCode": "owned-item-dependency",
         "detail": "This feature can grant a new physical item or depend on an owned item, and neither path is represented by reviewed Wayfinder equipment authority."
       }
     },
@@ -483,20 +488,20 @@
         "Compendium.pf2e.classfeatures.Item.lJAQPRT2t8IABR4v"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.classfeatures.Item.lJAQPRT2t8IABR4v"
           }
         ]
       ],
-      "terminals": [],
+      "terminalSourceUuids": [],
       "links": [],
       "ruleChecks": [],
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "owned-item-dependency",
+        "reasonCode": "owned-item-dependency",
         "detail": "This feature can grant a new physical item or depend on an owned item, and neither path is represented by reviewed Wayfinder equipment authority."
       }
     },
@@ -509,20 +514,20 @@
         "Compendium.pf2e.classfeatures.Item.HhDQOylStcEVZCNg"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.classfeatures.Item.HhDQOylStcEVZCNg"
           }
         ]
       ],
-      "terminals": [],
+      "terminalSourceUuids": [],
       "links": [],
       "ruleChecks": [],
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "owned-item-dependency",
+        "reasonCode": "owned-item-dependency",
         "detail": "This feature can grant a new physical item or depend on an owned item, and neither path is represented by reviewed Wayfinder equipment authority."
       }
     },
@@ -535,20 +540,20 @@
         "Compendium.pf2e.classfeatures.Item.ndSCXO9Dg57fmZIY"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.classfeatures.Item.ndSCXO9Dg57fmZIY"
           }
         ]
       ],
-      "terminals": [],
+      "terminalSourceUuids": [],
       "links": [],
       "ruleChecks": [],
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "owned-item-dependency",
+        "reasonCode": "owned-item-dependency",
         "detail": "This feature can grant a new physical item or depend on an owned item, and neither path is represented by reviewed Wayfinder equipment authority."
       }
     },
@@ -562,14 +567,14 @@
         "Compendium.pf2e.equipment-srd.Item.huzq73aQUEAlAXiu"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.classfeatures.Item.Wy6vSjm588txUFFv"
           }
         ]
       ],
-      "terminals": [
+      "terminalSourceUuids": [
         "Compendium.pf2e.equipment-srd.Item.huzq73aQUEAlAXiu"
       ],
       "links": [],
@@ -577,7 +582,7 @@
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "owned-item-dependency",
+        "reasonCode": "owned-item-dependency",
         "detail": "This feature can grant a new physical item or depend on an owned item, and neither path is represented by reviewed Wayfinder equipment authority."
       }
     },
@@ -591,14 +596,14 @@
         "Compendium.pf2e.equipment-srd.Item.mQTRsxgl7ST3GaRL"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.classfeatures.Item.iecFmUwSrytQNwoE"
           }
         ]
       ],
-      "terminals": [
+      "terminalSourceUuids": [
         "Compendium.pf2e.equipment-srd.Item.mQTRsxgl7ST3GaRL"
       ],
       "links": [],
@@ -606,7 +611,7 @@
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "owned-item-dependency",
+        "reasonCode": "owned-item-dependency",
         "detail": "This feature can grant a new physical item or depend on an owned item, and neither path is represented by reviewed Wayfinder equipment authority."
       }
     },
@@ -619,20 +624,20 @@
         "Compendium.pf2e.classfeatures.Item.LC8i3ZJjhhKEHSLI"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.classfeatures.Item.LC8i3ZJjhhKEHSLI"
           }
         ]
       ],
-      "terminals": [],
+      "terminalSourceUuids": [],
       "links": [],
       "ruleChecks": [],
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "owned-item-dependency",
+        "reasonCode": "owned-item-dependency",
         "detail": "This feature can grant a new physical item or depend on an owned item, and neither path is represented by reviewed Wayfinder equipment authority."
       }
     },
@@ -646,14 +651,14 @@
         "Compendium.pf2e.equipment-srd.Item.Qp3FW0dmSed1iBxA"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.classfeatures.Item.6dtTNqL4SdPFKOrh"
           }
         ]
       ],
-      "terminals": [
+      "terminalSourceUuids": [
         "Compendium.pf2e.equipment-srd.Item.Qp3FW0dmSed1iBxA"
       ],
       "links": [],
@@ -661,7 +666,7 @@
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "owned-item-dependency",
+        "reasonCode": "owned-item-dependency",
         "detail": "This feature can grant a new physical item or depend on an owned item, and neither path is represented by reviewed Wayfinder equipment authority."
       }
     },
@@ -674,20 +679,20 @@
         "Compendium.pf2e.classfeatures.Item.jpS7wcMnBXK1rS4J"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.classfeatures.Item.jpS7wcMnBXK1rS4J"
           }
         ]
       ],
-      "terminals": [],
+      "terminalSourceUuids": [],
       "links": [],
       "ruleChecks": [],
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "slot-key-collision",
+        "reasonCode": "slot-key-collision",
         "detail": "This physical ikon has multiple no-flag PF2E choices that collapse to one Wayfinder draft slot, so its terminal item is not reviewed deterministically."
       }
     },
@@ -700,20 +705,20 @@
         "Compendium.pf2e.classfeatures.Item.Jm8L7uSM01pJxSiW"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.classfeatures.Item.Jm8L7uSM01pJxSiW"
           }
         ]
       ],
-      "terminals": [],
+      "terminalSourceUuids": [],
       "links": [],
       "ruleChecks": [],
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "owned-item-dependency",
+        "reasonCode": "owned-item-dependency",
         "detail": "This feature can grant a new physical item or depend on an owned item, and neither path is represented by reviewed Wayfinder equipment authority."
       }
     },
@@ -727,14 +732,14 @@
         "Compendium.pf2e.equipment-srd.Item.1gmWdViYy3zgaW5c"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.classfeatures.Item.pHUi7KCh1DH5pxMe"
           }
         ]
       ],
-      "terminals": [
+      "terminalSourceUuids": [
         "Compendium.pf2e.equipment-srd.Item.1gmWdViYy3zgaW5c"
       ],
       "links": [],
@@ -742,7 +747,7 @@
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "owned-item-dependency",
+        "reasonCode": "owned-item-dependency",
         "detail": "This feature can grant a new physical item or depend on an owned item, and neither path is represented by reviewed Wayfinder equipment authority."
       }
     },
@@ -756,14 +761,14 @@
         "Compendium.pf2e.equipment-srd.Item.iwsNMFqLdORjkotL"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.heritages.Item.qKn9k3TQt0gsOLn7"
           }
         ]
       ],
-      "terminals": [
+      "terminalSourceUuids": [
         "Compendium.pf2e.equipment-srd.Item.iwsNMFqLdORjkotL"
       ],
       "links": [],
@@ -771,7 +776,7 @@
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "unprofiled-native-grant",
+        "reasonCode": "unprofiled-native-grant",
         "detail": "PF2E creates this physical item before acquisition, but Wayfinder has no reviewed reconciliation profile for it."
       }
     },
@@ -786,14 +791,14 @@
         "Compendium.pf2e.equipment-srd.Item.z9T4c1hXwOotsMCp"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.backgrounds.Item.N0CRYmDCw8bgNxLl"
           }
         ]
       ],
-      "terminals": [
+      "terminalSourceUuids": [
         "Compendium.pf2e.equipment-srd.Item.plplsXJsqrdqNQVI",
         "Compendium.pf2e.equipment-srd.Item.z9T4c1hXwOotsMCp"
       ],
@@ -802,7 +807,7 @@
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "unprofiled-native-grant",
+        "reasonCode": "unprofiled-native-grant",
         "detail": "PF2E creates this physical item before acquisition, but Wayfinder has no reviewed reconciliation profile for it."
       }
     },
@@ -817,14 +822,14 @@
         "Compendium.pf2e.equipment-srd.Item.56CTZheeNhNPpLo1"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.classfeatures.Item.fpwtpm8pdwO1I6MO"
           }
         ]
       ],
-      "terminals": [
+      "terminalSourceUuids": [
         "Compendium.pf2e.equipment-srd.Item.N42lmp3Ft6EsSvzg",
         "Compendium.pf2e.equipment-srd.Item.56CTZheeNhNPpLo1"
       ],
@@ -833,7 +838,7 @@
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "unprofiled-native-grant",
+        "reasonCode": "unprofiled-native-grant",
         "detail": "PF2E creates this physical item before acquisition, but Wayfinder has no reviewed reconciliation profile for it."
       }
     },
@@ -846,20 +851,20 @@
         "Compendium.pf2e.classfeatures.Item.bok3P78CMchFibxC"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.classfeatures.Item.bok3P78CMchFibxC"
           }
         ]
       ],
-      "terminals": [],
+      "terminalSourceUuids": [],
       "links": [],
       "ruleChecks": [],
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "unsupported-physical-choice",
+        "reasonCode": "unsupported-physical-choice",
         "detail": "This build reaches a PF2E physical-item choice that Wayfinder does not capture as reviewed starting-equipment authority."
       }
     },
@@ -872,20 +877,25 @@
         "Compendium.pf2e.feats-srd.Item.lFVqejlf52cdYrZy"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.feats-srd.Item.lFVqejlf52cdYrZy"
           }
         ]
       ],
-      "terminals": [],
+      "terminalSourceUuids": [],
       "links": [],
       "ruleChecks": [],
-      "semanticChecks": [],
+      "semanticChecks": [
+        {
+          "source": "Compendium.pf2e.feats-srd.Item.lFVqejlf52cdYrZy",
+          "contains": "You gain a formula book that includes the formula for black powder"
+        }
+      ],
       "blocker": {
         "preReview": true,
-        "code": "prose-only-no-terminal",
+        "reasonCode": "prose-only-no-terminal",
         "detail": "The formula book is described in prose without an exact physical GrantItem terminal, so Wayfinder cannot assign acquisition authority to it."
       }
     },
@@ -899,14 +909,14 @@
         "Compendium.pf2e.equipment-srd.Item.ZEDDVQDtUZ2qOB5q"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.feats-srd.Item.1HsH8hE79MDsi8kK"
           }
         ]
       ],
-      "terminals": [
+      "terminalSourceUuids": [
         "Compendium.pf2e.equipment-srd.Item.ZEDDVQDtUZ2qOB5q"
       ],
       "links": [],
@@ -914,7 +924,7 @@
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "unsupported-physical-choice",
+        "reasonCode": "unsupported-physical-choice",
         "detail": "The granted warmask owns a nested tradition choice that Wayfinder does not capture before PF2E creates the item."
       }
     },
@@ -928,14 +938,14 @@
         "Compendium.pf2e.equipment-srd.Item.gwP3Uums2ApH6o9K"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.backgrounds.Item.r9fzNQEz33HyKTxm"
           }
         ]
       ],
-      "terminals": [
+      "terminalSourceUuids": [
         "Compendium.pf2e.equipment-srd.Item.gwP3Uums2ApH6o9K"
       ],
       "links": [],
@@ -943,7 +953,7 @@
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "semantic-prerequisite-mismatch",
+        "reasonCode": "semantic-prerequisite-mismatch",
         "detail": "This background embeds Pilgrim's Token, whose religion and follower requirements are not yet proven by Wayfinder."
       }
     },
@@ -957,14 +967,14 @@
         "Compendium.pf2e.equipment-srd.Item.gwP3Uums2ApH6o9K"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.feats-srd.Item.BqceQIKE0lwIS98s"
           }
         ]
       ],
-      "terminals": [
+      "terminalSourceUuids": [
         "Compendium.pf2e.equipment-srd.Item.gwP3Uums2ApH6o9K"
       ],
       "links": [],
@@ -972,7 +982,7 @@
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "semantic-prerequisite-mismatch",
+        "reasonCode": "semantic-prerequisite-mismatch",
         "detail": "Wayfinder does not yet prove the feat's religion and follower requirements before PF2E creates the free token."
       }
     },
@@ -986,14 +996,14 @@
         "Compendium.pf2e.equipment-srd.Item.U5IGgD7Z225OPnhK"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.feats-srd.Item.cilZUszwjSGB4p1W"
           }
         ]
       ],
-      "terminals": [
+      "terminalSourceUuids": [
         "Compendium.pf2e.equipment-srd.Item.U5IGgD7Z225OPnhK"
       ],
       "links": [],
@@ -1001,7 +1011,7 @@
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "unprofiled-native-grant",
+        "reasonCode": "unprofiled-native-grant",
         "detail": "PF2E creates this physical item before acquisition, but Wayfinder has no reviewed reconciliation profile for it."
       }
     },
@@ -1015,14 +1025,14 @@
         "Compendium.pf2e.equipment-srd.Item.0KHgAaDi3tmu32Hq"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.heritages.Item.q2omqJ9t0skGTYki"
           }
         ]
       ],
-      "terminals": [
+      "terminalSourceUuids": [
         "Compendium.pf2e.equipment-srd.Item.0KHgAaDi3tmu32Hq"
       ],
       "links": [],
@@ -1030,7 +1040,7 @@
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "unprofiled-native-grant",
+        "reasonCode": "unprofiled-native-grant",
         "detail": "PF2E creates this physical item before acquisition, but Wayfinder has no reviewed reconciliation profile for it."
       }
     },
@@ -1044,14 +1054,14 @@
         "Compendium.pf2e.equipment-srd.Item.GbR8rgZMCVBn3Evb"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.classfeatures.Item.PoclGJ7BCEyIuqJe"
           }
         ]
       ],
-      "terminals": [
+      "terminalSourceUuids": [
         "Compendium.pf2e.equipment-srd.Item.GbR8rgZMCVBn3Evb"
       ],
       "links": [],
@@ -1059,7 +1069,7 @@
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "unprofiled-native-grant",
+        "reasonCode": "unprofiled-native-grant",
         "detail": "PF2E creates this physical item before acquisition, but Wayfinder has no reviewed reconciliation profile for it."
       }
     },
@@ -1073,14 +1083,14 @@
         "Compendium.pf2e.equipment-srd.Item.f0A1zqCFiUJuXc9U"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.classfeatures.Item.DK1LCE5pd0YCY11c"
           }
         ]
       ],
-      "terminals": [
+      "terminalSourceUuids": [
         "Compendium.pf2e.equipment-srd.Item.f0A1zqCFiUJuXc9U"
       ],
       "links": [],
@@ -1088,7 +1098,7 @@
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "unprofiled-native-grant",
+        "reasonCode": "unprofiled-native-grant",
         "detail": "PF2E creates this physical item before acquisition, but Wayfinder has no reviewed reconciliation profile for it."
       }
     },
@@ -1102,14 +1112,14 @@
         "Compendium.pf2e.equipment-srd.Item.FodtZGtCsH9NDXlC"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.classfeatures.Item.1vgFGSnn0DIBmK7j"
           }
         ]
       ],
-      "terminals": [
+      "terminalSourceUuids": [
         "Compendium.pf2e.equipment-srd.Item.FodtZGtCsH9NDXlC"
       ],
       "links": [],
@@ -1117,7 +1127,7 @@
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "unprofiled-native-grant",
+        "reasonCode": "unprofiled-native-grant",
         "detail": "PF2E creates this physical item before acquisition, but Wayfinder has no reviewed reconciliation profile for it."
       }
     },
@@ -1131,14 +1141,14 @@
         "Compendium.pf2e.equipment-srd.Item.AtiSK2lwEi25f3PT"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.classfeatures.Item.AltwHU7hCqTwpn48"
           }
         ]
       ],
-      "terminals": [
+      "terminalSourceUuids": [
         "Compendium.pf2e.equipment-srd.Item.AtiSK2lwEi25f3PT"
       ],
       "links": [],
@@ -1146,7 +1156,7 @@
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "unprofiled-native-grant",
+        "reasonCode": "unprofiled-native-grant",
         "detail": "PF2E creates this physical item before acquisition, but Wayfinder has no reviewed reconciliation profile for it."
       }
     },
@@ -1160,14 +1170,14 @@
         "Compendium.pf2e.equipment-srd.Item.NpNDlH8YE2i67vQV"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.classfeatures.Item.N6KvTbaRsphc0Ymb"
           }
         ]
       ],
-      "terminals": [
+      "terminalSourceUuids": [
         "Compendium.pf2e.equipment-srd.Item.NpNDlH8YE2i67vQV"
       ],
       "links": [],
@@ -1175,7 +1185,7 @@
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "unprofiled-native-grant",
+        "reasonCode": "unprofiled-native-grant",
         "detail": "PF2E creates this physical item before acquisition, but Wayfinder has no reviewed reconciliation profile for it."
       }
     },
@@ -1189,14 +1199,14 @@
         "Compendium.pf2e.equipment-srd.Item.7FzmHy7PugYNGkoX"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.classfeatures.Item.DhdLzrcMvB93Rjmt"
           }
         ]
       ],
-      "terminals": [
+      "terminalSourceUuids": [
         "Compendium.pf2e.equipment-srd.Item.7FzmHy7PugYNGkoX"
       ],
       "links": [],
@@ -1204,7 +1214,7 @@
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "unprofiled-native-grant",
+        "reasonCode": "unprofiled-native-grant",
         "detail": "PF2E creates this physical item before acquisition, but Wayfinder has no reviewed reconciliation profile for it."
       }
     },
@@ -1217,20 +1227,20 @@
         "Compendium.pf2e.classfeatures.Item.84GDSAXaMKMTg2IT"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.classfeatures.Item.84GDSAXaMKMTg2IT"
           }
         ]
       ],
-      "terminals": [],
+      "terminalSourceUuids": [],
       "links": [],
       "ruleChecks": [],
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "unsupported-physical-choice",
+        "reasonCode": "unsupported-physical-choice",
         "detail": "This build reaches a PF2E physical-item choice that Wayfinder does not capture as reviewed starting-equipment authority."
       }
     },
@@ -1244,14 +1254,14 @@
         "Compendium.pf2e.equipment-srd.Item.V9mhR91d2qWa3dGh"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.classfeatures.Item.MyN1cQgE0HsLF20e"
           }
         ]
       ],
-      "terminals": [
+      "terminalSourceUuids": [
         "Compendium.pf2e.equipment-srd.Item.V9mhR91d2qWa3dGh"
       ],
       "links": [],
@@ -1259,7 +1269,7 @@
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "unprofiled-native-grant",
+        "reasonCode": "unprofiled-native-grant",
         "detail": "PF2E creates this physical item before acquisition, but Wayfinder has no reviewed reconciliation profile for it."
       }
     },
@@ -1273,14 +1283,14 @@
         "Compendium.pf2e.equipment-srd.Item.ZjApNlusD5oZkPTJ"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.classfeatures.Item.pDxdE8S8QJV2PGiB"
           }
         ]
       ],
-      "terminals": [
+      "terminalSourceUuids": [
         "Compendium.pf2e.equipment-srd.Item.ZjApNlusD5oZkPTJ"
       ],
       "links": [],
@@ -1288,7 +1298,7 @@
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "unprofiled-native-grant",
+        "reasonCode": "unprofiled-native-grant",
         "detail": "PF2E creates this physical item before acquisition, but Wayfinder has no reviewed reconciliation profile for it."
       }
     },
@@ -1301,20 +1311,20 @@
         "Compendium.pf2e.classfeatures.Item.YiDkrwaxiF7Gao7y"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.classfeatures.Item.YiDkrwaxiF7Gao7y"
           }
         ]
       ],
-      "terminals": [],
+      "terminalSourceUuids": [],
       "links": [],
       "ruleChecks": [],
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "unsupported-physical-choice",
+        "reasonCode": "unsupported-physical-choice",
         "detail": "This build reaches a PF2E physical-item choice that Wayfinder does not capture as reviewed starting-equipment authority."
       }
     },
@@ -1328,14 +1338,14 @@
         "Compendium.pf2e.equipment-srd.Item.KA0Ku5qOQfXqw3BK"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.heritages.Item.LlUEmCDOLSZaGOyI"
           }
         ]
       ],
-      "terminals": [
+      "terminalSourceUuids": [
         "Compendium.pf2e.equipment-srd.Item.KA0Ku5qOQfXqw3BK"
       ],
       "links": [],
@@ -1343,7 +1353,7 @@
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "unprofiled-native-grant",
+        "reasonCode": "unprofiled-native-grant",
         "detail": "PF2E creates this physical item before acquisition, but Wayfinder has no reviewed reconciliation profile for it."
       }
     },
@@ -1357,14 +1367,14 @@
         "Compendium.pf2e.equipment-srd.Item.7cy9gLlKX2vNja0a"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.feats-srd.Item.TcUpt0KaDnoYheX8"
           }
         ]
       ],
-      "terminals": [
+      "terminalSourceUuids": [
         "Compendium.pf2e.equipment-srd.Item.7cy9gLlKX2vNja0a"
       ],
       "links": [],
@@ -1372,7 +1382,7 @@
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "semantic-prerequisite-mismatch",
+        "reasonCode": "semantic-prerequisite-mismatch",
         "detail": "Wayfinder does not yet prove Tough Skin's required Lethoci or Xyloshi heritage before PF2E creates its armor."
       }
     },
@@ -1385,20 +1395,20 @@
         "Compendium.pf2e.feats-srd.Item.qPFWEyihvbWsCcUv"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.feats-srd.Item.qPFWEyihvbWsCcUv"
           }
         ]
       ],
-      "terminals": [],
+      "terminalSourceUuids": [],
       "links": [],
       "ruleChecks": [],
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "owned-item-dependency",
+        "reasonCode": "owned-item-dependency",
         "detail": "This feature can grant a new physical item or depend on an owned item, and neither path is represented by reviewed Wayfinder equipment authority."
       }
     },
@@ -1412,14 +1422,14 @@
         "Compendium.pf2e.equipment-srd.Item.gwP3Uums2ApH6o9K"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.backgrounds.Item.UFHezf1LXUwcQIAQ"
           }
         ]
       ],
-      "terminals": [
+      "terminalSourceUuids": [
         "Compendium.pf2e.equipment-srd.Item.gwP3Uums2ApH6o9K"
       ],
       "links": [],
@@ -1427,7 +1437,7 @@
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "semantic-prerequisite-mismatch",
+        "reasonCode": "semantic-prerequisite-mismatch",
         "detail": "This background embeds Pilgrim's Token, whose religion and follower requirements are not yet proven by Wayfinder."
       }
     },
@@ -1441,14 +1451,14 @@
         "Compendium.pf2e.equipment-srd.Item.gwP3Uums2ApH6o9K"
       ],
       "draftSlots": [],
-      "triggerVariants": [
+      "activationVariants": [
         [
           {
             "sourceUuid": "Compendium.pf2e.backgrounds.Item.maxaKunHAOKUrR4q"
           }
         ]
       ],
-      "terminals": [
+      "terminalSourceUuids": [
         "Compendium.pf2e.equipment-srd.Item.gwP3Uums2ApH6o9K"
       ],
       "links": [],
@@ -1456,7 +1466,7 @@
       "semanticChecks": [],
       "blocker": {
         "preReview": true,
-        "code": "semantic-prerequisite-mismatch",
+        "reasonCode": "semantic-prerequisite-mismatch",
         "detail": "This background embeds Pilgrim's Token, whose religion and follower requirements are not yet proven by Wayfinder."
       }
     }

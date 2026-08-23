@@ -6,9 +6,30 @@ The `module.json` checked into the repo is the **development** manifest. The rel
 
 ## Cut a local package
 
+`npm run package` is the ordinary local artifact path. It runs the repository checks and builds an installable package, but it does not bind live release evidence:
+
 ```powershell
 npm run package
 ```
+
+## Qualify a release candidate
+
+The committed PF2E physical-grant registry and generated Markdown report are checked by ordinary `npm run check` without requiring an external checkout. Before qualified packaging, run the release-only source gate against the exact clean PF2E pin. Set `PF2E_REPO` when the checkout is not in a conventional sibling location:
+
+```powershell
+$env:PF2E_REPO = "D:\Source\pf2e"
+npm run check:physical-grants
+```
+
+That gate verifies the exact Git commit and clean status, corpus and level-1 counts, declared links/rules/prose canaries, and bidirectional scanner binding. It is intentionally not part of `npm run check` or tag CI because those lanes do not own the pinned PF2E source checkout.
+
+After the exact candidate is committed under a durable branch or tag ref and its WF-080-51 artifact is available, build the evidence-bound package:
+
+```powershell
+npm run package:qualified -- --wf51 .wayfinder-smoke\wf51-release-candidate --ref codex/release-candidate
+```
+
+`package:qualified` rechecks generated policy artifacts, binds the current physical-grant registry and WF-080-51 evidence to the exact candidate, builds the package under `dist/qualified-release/`, and writes `package-evidence.json`. The later tag workflow rebuilds the same candidate for public release; the qualified package is the pre-tag evidence contract.
 
 For a CI-style dry run after validation has already passed:
 
@@ -51,11 +72,13 @@ Before making the repository public or submitting a Foundry package listing:
 1. Bump `package.json` and `module.json` to the same version.
 2. Add a `CHANGELOG.md` section for the version.
 3. Build the exact candidate and run the current release smoke matrix in Foundry. Record the candidate version, Foundry/PF2E versions, scenario count, failures, and artifact directories in `docs/coverage/beta-readiness-smoke.md`.
-4. Run `npm run check`.
-5. Run the CI-style packaging command above and inspect `dist/release/package-manifest.json`, the generated release manifest, and extracted notes.
-6. Commit and push the release commit. Tag that exact commit as `vX.Y.Z`, then push the tag.
-7. `.github/workflows/release.yml` validates the repo, builds the package, attaches the release manifest and zip to the GitHub Release, and uses the extracted changelog section as the GitHub Release body.
-8. Verify the workflow, tag, GitHub Release, `module.json`, `module.zip`, package manifest, and version-specific asset URLs independently before announcing the release or closing a release-blocked issue.
+4. Run `npm run check`, then commit the exact candidate under a durable release branch or candidate tag.
+5. Run `npm run check:physical-grants` against the exact clean pinned PF2E source checkout.
+6. Run `npm run package:qualified -- --wf51 <coordinator-artifact-directory> --ref <exact-candidate-ref>` and inspect `dist/qualified-release/package-evidence.json`, `package-manifest.json`, the generated release manifest, and the ZIP hash.
+7. Extract and inspect the matching changelog notes with `npm run release:notes -- --version X.Y.Z --out dist/qualified-release/release-notes.md`.
+8. Push the release commit. Tag that exact commit as `vX.Y.Z`, then push the tag.
+9. `.github/workflows/release.yml` validates the repo, rebuilds the package, attaches the release manifest and zip to the GitHub Release, and uses the extracted changelog section as the GitHub Release body.
+10. Verify the workflow, tag, GitHub Release, `module.json`, `module.zip`, package manifest, qualified evidence, and version-specific asset URLs independently before announcing the release or closing a release-blocked issue.
 
 ## Foundry package listing
 

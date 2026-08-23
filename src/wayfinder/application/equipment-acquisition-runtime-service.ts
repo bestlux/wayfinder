@@ -50,13 +50,12 @@ import {
   prepareTransientBrowsePhysicalItems,
 } from "./equipment-browse-preparation-service.js";
 import {
-  buildEquipmentCatalogueFacetOptions,
-  buildEquipmentCatalogueLevelFacet,
   equipmentCatalogueSourceLabel,
   isTitanMaulerEligibleEntry,
-  matchesEquipmentCatalogueFilters,
   type NormalizedEquipmentCatalogueFilters,
   normalizeEquipmentCatalogueFilters,
+  projectEquipmentCatalogueFilters,
+  rankEquipmentCatalogueMatches,
 } from "./equipment-catalogue-filters.js";
 import {
   createEquipmentCatalogueDraftContext,
@@ -270,8 +269,8 @@ export function createEquipmentAcquisitionRuntime(
     readonly matchedEntries: readonly EquipmentCatalogueEntry[];
     readonly indexBySourceUuid: ReadonlyMap<string, number>;
     records: readonly StartingEquipmentCatalogueRecord[];
-    readonly filters: ReturnType<typeof catalogueFilters>;
-    readonly levelFilter: ReturnType<typeof buildEquipmentCatalogueLevelFacet>;
+    readonly filters: ReturnType<typeof projectEquipmentCatalogueFilters>["facets"];
+    readonly levelFilter: ReturnType<typeof projectEquipmentCatalogueFilters>["levelFacet"];
     readonly activeFilters: ReturnType<typeof effectiveCatalogueFilters>;
   };
   const browseProjectionCache = new Map<string, BrowseProjectionSnapshot>();
@@ -536,11 +535,14 @@ export function createEquipmentAcquisitionRuntime(
           browseProjectionCache.delete(browseProjectionKey);
           browseProjectionCache.set(browseProjectionKey, browseSnapshot);
         } else {
+          const filterProjection = projectEquipmentCatalogueFilters({
+            entries,
+            filters: normalizedFilters,
+            selectedValues: request.filters,
+            includeTitanMaulerFacet: titanMauler.required && titanMauler.selectedSourceUuid === null,
+          });
           const matchedEntries = Object.freeze(
-            rankCatalogueMatches(
-              entries.filter((entry) => matchesEquipmentCatalogueFilters(entry, normalizedFilters)),
-              request.query
-            )
+            rankEquipmentCatalogueMatches(filterProjection.matchedEntries, request.query)
           );
           const records = Object.freeze(
             matchedEntries.map((entry) => {
@@ -572,8 +574,8 @@ export function createEquipmentAcquisitionRuntime(
             matchedEntries,
             indexBySourceUuid: new Map(matchedEntries.map((entry, index) => [entry.sourceUuid, index])),
             records,
-            filters: catalogueFilters(entries, normalizedFilters, request.filters, titanMauler),
-            levelFilter: buildEquipmentCatalogueLevelFacet(entries, normalizedFilters),
+            filters: filterProjection.facets,
+            levelFilter: filterProjection.levelFacet,
             activeFilters: effectiveCatalogueFilters(request.filters, normalizedFilters, titanMauler),
           };
           browseSnapshot = actorPricingFingerprint
@@ -2263,28 +2265,6 @@ function equipmentBrowseEntryOrderEqual(left: EquipmentCatalogueEntry, right: Eq
   );
 }
 
-function rankCatalogueMatches(entries: readonly EquipmentCatalogueEntry[], query: string): EquipmentCatalogueEntry[] {
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  return entries
-    .map((entry, index) => ({ entry, index, relevance: catalogueQueryRelevance(entry, normalizedQuery) }))
-    .sort(
-      (left, right) =>
-        Number(right.entry.available) - Number(left.entry.available) ||
-        left.relevance - right.relevance ||
-        left.index - right.index
-    )
-    .map(({ entry }) => entry);
-}
-
-function catalogueQueryRelevance(entry: EquipmentCatalogueEntry, normalizedQuery: string): number {
-  if (!normalizedQuery) return 0;
-  const name = entry.name.trim().toLocaleLowerCase();
-  if (name === normalizedQuery) return 0;
-  if (name.startsWith(normalizedQuery)) return 1;
-  if (name.includes(normalizedQuery)) return 2;
-  return 3;
-}
-
 function chunksOf<T>(values: readonly T[], size: number): T[][] {
   const chunks: T[][] = [];
   for (let index = 0; index < values.length; index += size) chunks.push(values.slice(index, index + size));
@@ -2335,24 +2315,6 @@ async function yieldBetweenEquipmentPreparationChunks(): Promise<void> {
     return;
   }
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
-}
-
-function catalogueFilters(
-  entries: readonly EquipmentCatalogueEntry[],
-  filters: NormalizedEquipmentCatalogueFilters,
-  requested: StartingEquipmentUiRequest["filters"],
-  titanMauler: ReturnType<typeof titanMaulerProjection>
-) {
-  const facet = (key: "availability" | "rarity" | "source" | "titan-mauler" | "trait" | "type") =>
-    buildEquipmentCatalogueFacetOptions(entries, filters, key, requested[key]);
-  return [
-    ...facet("availability"),
-    ...facet("type"),
-    ...facet("rarity"),
-    ...facet("source"),
-    ...facet("trait"),
-    ...(titanMauler.required && titanMauler.selectedSourceUuid === null ? facet("titan-mauler") : []),
-  ];
 }
 
 function effectiveCatalogueFilters(

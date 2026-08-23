@@ -8,7 +8,7 @@ import { assertPreparedClassGrantPlanMatches, evaluateTitanMaulerCandidate, norm
 import { clampStartingEquipmentResultWindow, STARTING_EQUIPMENT_RESULT_WINDOW, } from "../starting-equipment-result-window.js";
 import { buildTitanMaulerCandidate, titanMaulerGrantIdForDraft } from "./class-grant-projection-service.js";
 import { isBrowsePhysicalBatchSafeSource, prepareTransientBrowsePhysicalItems, } from "./equipment-browse-preparation-service.js";
-import { buildEquipmentCatalogueFacetOptions, buildEquipmentCatalogueLevelFacet, equipmentCatalogueSourceLabel, isTitanMaulerEligibleEntry, matchesEquipmentCatalogueFilters, normalizeEquipmentCatalogueFilters, } from "./equipment-catalogue-filters.js";
+import { equipmentCatalogueSourceLabel, isTitanMaulerEligibleEntry, normalizeEquipmentCatalogueFilters, projectEquipmentCatalogueFilters, rankEquipmentCatalogueMatches, } from "./equipment-catalogue-filters.js";
 import { createEquipmentCatalogueDraftContext, createEquipmentCatalogueService, EMPTY_EQUIPMENT_ACCESS_REGISTRY, } from "./equipment-catalogue-service.js";
 import { resolveCurrentEquipmentSourceDiagnostics, resolveEquipmentPolicyForActor, } from "./equipment-policy-service.js";
 import { createEquipmentPreviewProjector } from "./equipment-preview-projector.js";
@@ -311,7 +311,13 @@ export function createEquipmentAcquisitionRuntime(options) {
                     browseProjectionCache.set(browseProjectionKey, browseSnapshot);
                 }
                 else {
-                    const matchedEntries = Object.freeze(rankCatalogueMatches(entries.filter((entry) => matchesEquipmentCatalogueFilters(entry, normalizedFilters)), request.query));
+                    const filterProjection = projectEquipmentCatalogueFilters({
+                        entries,
+                        filters: normalizedFilters,
+                        selectedValues: request.filters,
+                        includeTitanMaulerFacet: titanMauler.required && titanMauler.selectedSourceUuid === null,
+                    });
+                    const matchedEntries = Object.freeze(rankEquipmentCatalogueMatches(filterProjection.matchedEntries, request.query));
                     const records = Object.freeze(matchedEntries.map((entry) => {
                         if (entry.price.kind !== "priced" ||
                             entry.unavailableReasons.some((reason) => reason.code !== "source-not-allowed" && reason.code !== "rarity-not-available")) {
@@ -336,8 +342,8 @@ export function createEquipmentAcquisitionRuntime(options) {
                         matchedEntries,
                         indexBySourceUuid: new Map(matchedEntries.map((entry, index) => [entry.sourceUuid, index])),
                         records,
-                        filters: catalogueFilters(entries, normalizedFilters, request.filters, titanMauler),
-                        levelFilter: buildEquipmentCatalogueLevelFacet(entries, normalizedFilters),
+                        filters: filterProjection.facets,
+                        levelFilter: filterProjection.levelFacet,
                         activeFilters: effectiveCatalogueFilters(request.filters, normalizedFilters, titanMauler),
                     };
                     browseSnapshot = actorPricingFingerprint
@@ -1788,27 +1794,6 @@ function equipmentBrowseEntryOrderMaterial(entry) {
 function equipmentBrowseEntryOrderEqual(left, right) {
     return (canonicalJson(equipmentBrowseEntryOrderMaterial(left)) === canonicalJson(equipmentBrowseEntryOrderMaterial(right)));
 }
-function rankCatalogueMatches(entries, query) {
-    const normalizedQuery = query.trim().toLocaleLowerCase();
-    return entries
-        .map((entry, index) => ({ entry, index, relevance: catalogueQueryRelevance(entry, normalizedQuery) }))
-        .sort((left, right) => Number(right.entry.available) - Number(left.entry.available) ||
-        left.relevance - right.relevance ||
-        left.index - right.index)
-        .map(({ entry }) => entry);
-}
-function catalogueQueryRelevance(entry, normalizedQuery) {
-    if (!normalizedQuery)
-        return 0;
-    const name = entry.name.trim().toLocaleLowerCase();
-    if (name === normalizedQuery)
-        return 0;
-    if (name.startsWith(normalizedQuery))
-        return 1;
-    if (name.includes(normalizedQuery))
-        return 2;
-    return 3;
-}
 function chunksOf(values, size) {
     const chunks = [];
     for (let index = 0; index < values.length; index += size)
@@ -1852,17 +1837,6 @@ async function yieldBetweenEquipmentPreparationChunks() {
         return;
     }
     await new Promise((resolve) => setTimeout(resolve, 0));
-}
-function catalogueFilters(entries, filters, requested, titanMauler) {
-    const facet = (key) => buildEquipmentCatalogueFacetOptions(entries, filters, key, requested[key]);
-    return [
-        ...facet("availability"),
-        ...facet("type"),
-        ...facet("rarity"),
-        ...facet("source"),
-        ...facet("trait"),
-        ...(titanMauler.required && titanMauler.selectedSourceUuid === null ? facet("titan-mauler") : []),
-    ];
 }
 function effectiveCatalogueFilters(requested, filters, titanMauler) {
     const { "titan-mauler": _inactiveTitanMauler, ...activeRequested } = requested;

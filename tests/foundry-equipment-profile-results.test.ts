@@ -5,12 +5,17 @@ import { describe, expect, it } from "vitest";
 import { resolveEvidencePaths } from "../tools/foundry-interaction/build-equipment-profile-evidence.mjs";
 import {
   compactEquipmentEvidence,
+  expectedEquipmentMountedRows,
   qualifyEquipmentEvidenceRuns,
+  resultWindowBrowserViewport,
   summarizeEquipmentProfile,
   validateEquipmentBudgets,
   validateEquipmentFixture,
   validateEquipmentProfile,
+  validateEquipmentResultWindowObservation,
+  validateEquipmentResultWindows,
   validateEquipmentSample,
+  validateEquipmentScrollProbe,
 } from "../tools/foundry-interaction/equipment-profile-results.mjs";
 import { buildEquipmentProfileResult } from "../tools/foundry-interaction/run-equipment-profile.mjs";
 
@@ -41,19 +46,42 @@ describe("equipment catalogue performance profile", () => {
       maxP95MsPerActionWidth: 75,
       maxDomElementCount: 850,
       maxResultDomElementCount: 434,
-      maxMountedResultCount: 36,
+      maxMountedResultCount: 144,
+      maxDefaultMountedResultCount: 36,
       maxResultDomElementsPerMountedRow: 12,
       maxResultChromeDomElementCount: 2,
+      maxAdaptiveResultDomElementCount: 1730,
+      maxNonResultChromeDomElementCount: 416,
       maxImageRequestsPerSample: 0,
       maxLongTaskCountPerActionWidth: 0,
     });
     expect(profile.resultWindowProfiles).toEqual([
-      { id: "default", appHeight: 820, expectedMountedRows: 12 },
-      { id: "expanded", appHeight: 1200, expectedMountedRows: 24 },
-      { id: "tall", appHeight: 1500, expectedMountedRows: 36 },
+      { id: "default", appHeight: 820 },
+      { id: "expanded", appHeight: 1200 },
+      { id: "tall", appHeight: 1500 },
     ]);
+    expect(profile.resultWindowSizing).toEqual({
+      baselineMountedRows: 36,
+      viewportMultiplier: 3,
+      overscanRows: 24,
+      hydrationChunkRows: 12,
+      maximumMountedRows: 144,
+    });
+    expect(profile.resultWindowSampling).toEqual({
+      appWidth: 1240,
+      browserViewportPaddingPx: 100,
+      observationsPerProfile: 1,
+    });
+    expect(profile.scrollSampling).toEqual({
+      resultWindowProfileId: "tall",
+      rapidFullScreenScrollsWhilePending: 1,
+      framesWhilePending: 3,
+      maxVisibleGapPx: 2,
+    });
+    expect(profile.samplingSemantics.performance).toContain("default 820px");
+    expect(profile.samplingSemantics.resultWindows).toContain("not timing samples");
     expect(profile.expectedCatalogueCounts).toEqual({ indexed: 5856, levelQualified: 2283, matching: 1, visible: 1 });
-    expect(profile.schemaVersion).toBe(2);
+    expect(profile.schemaVersion).toBe(3);
   });
 
   it("rejects weakened sample depth, widths, budgets, and preview caching", () => {
@@ -65,6 +93,10 @@ describe("equipment catalogue performance profile", () => {
     changed.postSettleMs = 0;
     changed.timingSemantics.rapidSearchPrimary = "whole-typing-sequence";
     changed.actions.at(-1).repeatPreviewHydrations = 1;
+    changed.resultWindowSampling.observationsPerProfile = 0;
+    changed.resultWindowSizing.maximumMountedRows = 36;
+    changed.scrollSampling.rapidFullScreenScrollsWhilePending = 0;
+    changed.samplingSemantics.resultWindows = "all height profiles are timing samples";
     changed.actions.find((action: { id: string }) => action.id === "rapid-search").maxPlanBuilds = 999_999;
     expect(validateEquipmentProfile(changed)).toEqual(
       expect.arrayContaining([
@@ -76,6 +108,10 @@ describe("equipment catalogue performance profile", () => {
         expect.stringContaining("exact Wizard"),
         expect.stringContaining("350ms"),
         expect.stringContaining("timing semantics"),
+        expect.stringContaining("result-window profile once"),
+        expect.stringContaining("36-to-144-row"),
+        expect.stringContaining("pending-prefetch full-screen scroll"),
+        expect.stringContaining("sampling semantics"),
       ])
     );
   });
@@ -158,8 +194,24 @@ describe("equipment catalogue performance profile", () => {
       browserProfile.indexOf("async function reopen("),
       browserProfile.indexOf("async function ensureSprayPelletsCart(")
     );
-    expect(reopenSource).toContain("currentApp().setPosition?.({ width })");
+    expect(reopenSource).toContain("currentApp().setPosition?.({ height, width })");
     expect(reopenSource).not.toContain("await frames(2)");
+  });
+
+  it("resizes both the browser viewport and Foundry application for the bounded height probes", () => {
+    expect(runner).toContain("await playerPage.setViewportSize(browserViewport)");
+    expect(runner).toContain("__wayfinderEquipmentProfile.inspectResultWindow(payload)");
+    expect(runner).toContain("await playerPage.setViewportSize(profile.viewport)");
+    expect(browserProfile).toContain("async resize({ height, width })");
+    expect(browserProfile).toContain("app.setPosition?.({ height, width })");
+    expect(browserProfile).toContain(
+      "async probePendingPrefetchScroll({ framesWhilePending, height, settleTimeoutMs, width })"
+    );
+    expect(browserProfile).toContain("await waitUntil(() => counters.pendingEquipmentPackDocument > 0");
+    expect(browserProfile).toContain("shelvesWhilePending.push(visibleShelfSnapshot())");
+    expect(browserProfile).toContain('querySelector("[data-equipment-skeleton-band]")');
+    expect(browserProfile).toContain('querySelectorAll("[data-equipment-result-skeleton]")');
+    expect(browserProfile).toContain('hasAttribute("data-equipment-loading-index")');
   });
 
   it("reads compact leaf identities and adds the exact selected Spray Pellets preview", () => {
@@ -215,12 +267,66 @@ describe("equipment catalogue performance profile", () => {
     const cold = sample("cold-open");
     (cold.actionOutcome as { searchDisabled: boolean }).searchDisabled = true;
     expect(validateEquipmentSample(cold, profile)).toContain(
-      "cold-open did not record the exact enabled, healthy 12-row catalogue outcome."
+      "cold-open did not record the exact enabled, healthy geometry-derived catalogue outcome."
     );
     const cart = sample("cart-quantity");
     const cartOutcome = cart.actionOutcome as { observedQuantity: number; previousQuantity: number };
     cartOutcome.observedQuantity = cartOutcome.previousQuantity;
     expect(validateEquipmentSample(cart, profile)).toContain("Cart quantity did not record the exact line increment.");
+  });
+
+  it("requires one truthful mounted-window observation at every declared app height", () => {
+    const observations = resultWindowObservations();
+    expect(validateEquipmentResultWindows(profile, observations)).toEqual([]);
+    expect(observations.map((entry) => entry.browserViewport.height)).toEqual([1000, 1300, 1600]);
+    expect(observations.map((entry) => entry.mountedResultCount)).toEqual([36, 36, 72]);
+    expect(expectedEquipmentMountedRows(profile, { listClientHeight: 4000, measuredRowHeightPx: 48 })).toBe(144);
+
+    const wrongHeight = structuredClone(observations[2]);
+    wrongHeight.actualAppHeight = 1000;
+    wrongHeight.browserViewport.height = 1000;
+    wrongHeight.trailingSpacerPx = 0;
+    expect(validateEquipmentResultWindowObservation(wrongHeight, profile)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("wrong browser viewport"),
+        expect.stringContaining("height did not match"),
+        expect.stringContaining("trailing spacer"),
+      ])
+    );
+
+    const oversizedRoot = structuredClone(observations[2]);
+    oversizedRoot.domElementCount = 9999;
+    expect(validateEquipmentResultWindowObservation(oversizedRoot, profile)).toContain(
+      "tall root DOM exceeded its 1282-element size-specific limit."
+    );
+
+    const missing = observations.slice(0, 2);
+    expect(validateEquipmentResultWindows(profile, missing)).toContain(
+      "Result-window evidence is missing observation tall|1."
+    );
+  });
+
+  it("rejects an empty shelf during a full-screen scroll with prior prefetch still pending", () => {
+    const probe = pendingPrefetchScrollProbe();
+    expect(validateEquipmentScrollProbe(profile, probe)).toEqual([]);
+
+    const skeletonCovered = structuredClone(probe);
+    skeletonCovered.shelvesWhilePending[1].visibleResultCount = 0;
+    skeletonCovered.shelvesWhilePending[1].visibleSkeletonCount = 18;
+    expect(validateEquipmentScrollProbe(profile, skeletonCovered)).toEqual([]);
+
+    const gap = structuredClone(probe);
+    gap.shelvesWhilePending[1].visibleResultCount = 0;
+    gap.shelvesWhilePending[1].maxVisibleGapPx = gap.shelvesWhilePending[1].viewportHeight;
+    expect(validateEquipmentScrollProbe(profile, gap)).toContain(
+      "Equipment scroll probe exposed an empty shelf or visible result gap."
+    );
+
+    const settledEarly = structuredClone(probe);
+    settledEarly.shelvesWhilePending[0].pendingDocumentReads = 0;
+    expect(validateEquipmentScrollProbe(profile, settledEarly)).toContain(
+      "Equipment scroll shelf observations did not remain bound to pending and settled prefetch state."
+    );
   });
 
   it("refuses to overwrite either evidence input", () => {
@@ -395,11 +501,16 @@ describe("equipment catalogue performance profile", () => {
       runtime: fixture().runtime,
       fixture: fixture(),
       runId: "run-1",
+      resultWindowObservations: resultWindowObservations(),
+      scrollProbe: pendingPrefetchScrollProbe(),
       summary,
     });
     expect(compact.runIds).toEqual(["run-1"]);
-    expect(compact.schemaVersion).toBe(2);
+    expect(compact.schemaVersion).toBe(3);
     expect(compact.profile.timingSemantics).toEqual(profile.timingSemantics);
+    expect(compact.profile.samplingSemantics).toEqual(profile.samplingSemantics);
+    expect(compact.resultWindowObservations).toHaveLength(3);
+    expect(compact.scrollProbe.failures).toEqual([]);
     expect(compact.byActionWidth).toHaveLength(28);
     expect(compact).not.toHaveProperty("samples");
   });
@@ -431,9 +542,9 @@ describe("equipment catalogue performance profile", () => {
     );
 
     const oldSchema = qualifiedResult("run-2");
-    oldSchema.schemaVersion = 1;
+    oldSchema.schemaVersion = 2;
     expect(qualifyEquipmentEvidenceRuns([result, oldSchema]).failures).toContain(
-      "Run 2 does not use equipment evidence schemaVersion 2."
+      "Run 2 does not use equipment evidence schemaVersion 3."
     );
 
     const malformed = qualifiedResult("run-2");
@@ -496,18 +607,19 @@ function fixture(runId = "run-1") {
 }
 
 function sample(actionId: string) {
+  const broadMountedValues = mountedResultValues(36);
   const outcomes = {
     "cold-open": {
       searchDisabled: false,
       diagnosticCount: 0,
       catalogueStatePresent: false,
-      visibleResultValues: [...profile.expectedBroadResultValues],
+      visibleResultValues: broadMountedValues,
     },
     "warm-reopen": {
       searchDisabled: false,
       diagnosticCount: 0,
       catalogueStatePresent: false,
-      visibleResultValues: [...profile.expectedBroadResultValues],
+      visibleResultValues: broadMountedValues,
     },
     "facet-change": { filterKey: "rarity", filterValue: "common", previousPressed: false, observedPressed: true },
     "cart-quantity": { lineId: "line-1", previousQuantity: 1, observedQuantity: 2 },
@@ -529,9 +641,13 @@ function sample(actionId: string) {
         : [{ kind: actionId, startedAt: 110, completedAt: 135 }];
   const semanticCompletedAt = actionIntervals.at(-1)?.completedAt ?? 0;
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     actionId,
+    browserViewport: structuredClone(profile.viewport),
+    resultWindowProfileId: "default",
+    requestedAppHeight: 820,
     requestedAppWidth: 1240,
+    actualAppHeight: 820,
     actualAppWidth: 1240,
     sampleKind: "measured",
     sampleIndex: 1,
@@ -554,10 +670,12 @@ function sample(actionId: string) {
     staleFlashCount: 0,
     actionOutcome: outcomes[actionId as keyof typeof outcomes] ?? null,
     domElementCount: 300,
-    resultDomElementCount: 12,
-    mountedResultCount: 1,
+    listClientHeight: 192,
+    measuredRowHeightPx: 48,
+    resultDomElementCount: ["cold-open", "warm-reopen"].includes(actionId) ? 362 : 12,
+    mountedResultCount: ["cold-open", "warm-reopen"].includes(actionId) ? 36 : 1,
     resultOffset: 0,
-    resultEnd: 1,
+    resultEnd: ["cold-open", "warm-reopen"].includes(actionId) ? 36 : 1,
     imageRequestCount: 0,
     longTaskSupported: true,
     observedLongTasks: [],
@@ -603,8 +721,10 @@ function qualifiedResult(runId: string) {
   );
   const qualifiedFixture = fixture(runId);
   qualifiedFixture.catalogueCounts = structuredClone(qualifiedProfile.expectedCatalogueCounts);
+  const windows = resultWindowObservations();
+  const scroll = pendingPrefetchScrollProbe();
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     status: "completed",
     profile: qualifiedProfile,
     runId,
@@ -632,10 +752,102 @@ function qualifiedResult(runId: string) {
       languageUnchanged: true,
       policyRestored: true,
     },
+    resultWindowObservations: windows,
+    scrollProbe: scroll,
     samples,
     summary: summarizeEquipmentProfile(qualifiedProfile, samples),
-    qualification: validateEquipmentBudgets(qualifiedProfile, summarizeEquipmentProfile(qualifiedProfile, samples)),
+    qualification: validateEquipmentBudgets(qualifiedProfile, summarizeEquipmentProfile(qualifiedProfile, samples), {
+      resultWindowObservations: windows,
+      scrollProbe: scroll,
+    }),
   };
+}
+
+function resultWindowObservations() {
+  return profile.resultWindowProfiles.map((windowProfile: { appHeight: number; id: string }, index: number) => {
+    const listClientHeight = [192, 500, 1000][index];
+    const measuredRowHeightPx = 48;
+    const expectedMountedRows = expectedEquipmentMountedRows(profile, { listClientHeight, measuredRowHeightPx });
+    const values = mountedResultValues(expectedMountedRows);
+    const observation = {
+      schemaVersion: 3,
+      resultWindowProfileId: windowProfile.id,
+      observationIndex: 1,
+      browserViewport: resultWindowBrowserViewport(profile, windowProfile),
+      requestedAppWidth: profile.resultWindowSampling.appWidth,
+      requestedAppHeight: windowProfile.appHeight,
+      actualAppWidth: profile.resultWindowSampling.appWidth,
+      actualAppHeight: windowProfile.appHeight,
+      domElementCount: expectedMountedRows * 10 + 300,
+      listClientHeight,
+      measuredRowHeightPx,
+      totalResultCount: profile.expectedCatalogueCounts.levelQualified,
+      resultLimit: expectedMountedRows,
+      mountedResultCount: expectedMountedRows,
+      resultOffset: 0,
+      resultEnd: expectedMountedRows,
+      firstMountedResultIndex: 0,
+      lastMountedResultIndex: expectedMountedRows - 1,
+      firstMountedSourceUuid: values[0],
+      lastMountedSourceUuid: values.at(-1),
+      mountedResultValues: values,
+      leadingSpacerPx: 0,
+      trailingSpacerPx: (profile.expectedCatalogueCounts.levelQualified - expectedMountedRows) * 48,
+      resultDomElementCount: expectedMountedRows * 10 + 2,
+    };
+    return { ...observation, failures: validateEquipmentResultWindowObservation(observation, profile) };
+  });
+}
+
+function mountedResultValues(count: number) {
+  return [
+    ...profile.expectedBroadResultValues,
+    ...Array.from(
+      { length: count - profile.expectedBroadResultValues.length },
+      (_, resultIndex) => `Compendium.pf2e.equipment-srd.Item.synthetic-${resultIndex + 13}`
+    ),
+  ];
+}
+
+function pendingPrefetchScrollProbe() {
+  const windowProfile = profile.resultWindowProfiles.find(
+    (entry: { id: string }) => entry.id === profile.scrollSampling.resultWindowProfileId
+  );
+  const pendingShelf = {
+    scrollTop: 1700,
+    viewportHeight: 900,
+    visibleResultCount: 18,
+    visibleSkeletonCount: 0,
+    maxVisibleGapPx: 0,
+    pendingDocumentReads: 4,
+    skeletonContractValid: true,
+  };
+  const probe = {
+    schemaVersion: 3,
+    resultWindowProfileId: windowProfile.id,
+    browserViewport: resultWindowBrowserViewport(profile, windowProfile),
+    requestedAppWidth: profile.resultWindowSampling.appWidth,
+    requestedAppHeight: windowProfile.appHeight,
+    rapidFullScreenScrollCount: 1,
+    initialWindow: {
+      mountedResultCount: 72,
+      resultOffset: 0,
+      listClientHeight: 1000,
+      measuredRowHeightPx: 48,
+    },
+    firstTargetScrollTop: 800,
+    rapidTargetScrollTop: 1700,
+    requestedScrollDeltaPx: 900,
+    observedScrollDeltaPx: 900,
+    pendingBeforeRapidScroll: 4,
+    pendingAfterRapidScroll: 4,
+    maxPendingDocumentReads: 4,
+    shelvesWhilePending: [structuredClone(pendingShelf), structuredClone(pendingShelf), structuredClone(pendingShelf)],
+    pendingAfterSettle: 0,
+    settledWindow: { resultOffset: 36 },
+    settledShelf: { ...pendingShelf, pendingDocumentReads: 0 },
+  };
+  return { ...probe, failures: validateEquipmentScrollProbe(profile, probe) };
 }
 
 function driverProvenance() {

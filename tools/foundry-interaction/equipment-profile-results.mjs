@@ -13,17 +13,44 @@ const REQUIRED_ACTIONS = [
 const FROZEN_VIEWPORT = { width: 1440, height: 1000 };
 const FROZEN_APP_WIDTHS = [1240, 1180, 980, 760];
 const FROZEN_RESULT_WINDOW_PROFILES = [
-  { id: "default", appHeight: 820, expectedMountedRows: 12 },
-  { id: "expanded", appHeight: 1200, expectedMountedRows: 24 },
-  { id: "tall", appHeight: 1500, expectedMountedRows: 36 },
+  { id: "default", appHeight: 820 },
+  { id: "expanded", appHeight: 1200 },
+  { id: "tall", appHeight: 1500 },
 ];
+const FROZEN_RESULT_WINDOW_SIZING = {
+  baselineMountedRows: 36,
+  viewportMultiplier: 3,
+  overscanRows: 24,
+  hydrationChunkRows: 12,
+  maximumMountedRows: 144,
+};
+const FROZEN_RESULT_WINDOW_SAMPLING = {
+  appWidth: 1240,
+  browserViewportPaddingPx: 100,
+  observationsPerProfile: 1,
+};
+const FROZEN_SCROLL_SAMPLING = {
+  resultWindowProfileId: "tall",
+  rapidFullScreenScrollsWhilePending: 1,
+  framesWhilePending: 3,
+  maxVisibleGapPx: 2,
+};
+const FROZEN_SAMPLING_SEMANTICS = {
+  performance:
+    "Each required action is sampled at every app width using the default 820px result-window profile and the frozen 1440x1000 browser viewport; warmup and measured depths apply per action-width cell, and mounted rows are derived from the live list height and measured row height.",
+  resultWindows:
+    "One settled broad-catalogue layout observation is recorded per result-window profile at 1240px app width; these probes are not timing samples, browser height is max(1000px, app height plus 100px), mounted rows are max(36, three viewport heights, visible rows plus 24) rounded to 12 and capped at 144, and the tall probe adds one full-screen scroll while a prior prefetch is held pending.",
+};
 const FROZEN_BUDGETS = Object.freeze({
   maxP95MsPerActionWidth: 75,
   maxDomElementCount: 850,
   maxResultDomElementCount: 434,
-  maxMountedResultCount: 36,
+  maxMountedResultCount: 144,
+  maxDefaultMountedResultCount: 36,
   maxResultDomElementsPerMountedRow: 12,
   maxResultChromeDomElementCount: 2,
+  maxAdaptiveResultDomElementCount: 1730,
+  maxNonResultChromeDomElementCount: 416,
   maxImageRequestsPerSample: 0,
   maxLongTaskCountPerActionWidth: 0,
 });
@@ -93,7 +120,7 @@ const COUNTER_LIMITS = [
   ["fullPrepareContextCount", "maxFullContextPreparations", "full context preparations"],
 ];
 const FROZEN_ACTION_CONTRACTS = [
-  ["cold-open", 1, 12, 1, 1, 1],
+  ["cold-open", 1, 36, 1, 1, 1],
   ["warm-reopen", 0, 12, 1, 1, 1],
   ["rapid-search", 0, 12, 0, 0, 0],
   ["facet-change", 0, 12, 0, 0, 0],
@@ -104,8 +131,8 @@ const FROZEN_ACTION_CONTRACTS = [
 
 export function validateEquipmentProfile(profile) {
   const failures = [];
-  if (profile?.schemaVersion !== 2 || !nonempty(profile.id) || !nonempty(profile.smokeCaseId)) {
-    failures.push("Equipment profile requires schemaVersion 2, id, and smokeCaseId.");
+  if (profile?.schemaVersion !== 3 || !nonempty(profile.id) || !nonempty(profile.smokeCaseId)) {
+    failures.push("Equipment profile requires schemaVersion 3, id, and smokeCaseId.");
   }
   if (
     stableJson({
@@ -138,7 +165,19 @@ export function validateEquipmentProfile(profile) {
     failures.push("Equipment profile must freeze app widths 1240, 1180, 980, and 760 in order.");
   }
   if (stableJson(profile?.resultWindowProfiles) !== stableJson(FROZEN_RESULT_WINDOW_PROFILES)) {
-    failures.push("Equipment profile must freeze default, expanded, and tall 12/24/36-row result windows.");
+    failures.push("Equipment profile must freeze the default, expanded, and tall application heights.");
+  }
+  if (stableJson(profile?.resultWindowSizing) !== stableJson(FROZEN_RESULT_WINDOW_SIZING)) {
+    failures.push("Equipment profile must freeze the adaptive 36-to-144-row result-window formula.");
+  }
+  if (stableJson(profile?.resultWindowSampling) !== stableJson(FROZEN_RESULT_WINDOW_SAMPLING)) {
+    failures.push("Equipment profile must probe every result-window profile once at 1240px with 100px viewport padding.");
+  }
+  if (stableJson(profile?.scrollSampling) !== stableJson(FROZEN_SCROLL_SAMPLING)) {
+    failures.push("Equipment profile must freeze one pending-prefetch full-screen scroll probe at the tall height.");
+  }
+  if (stableJson(profile?.samplingSemantics) !== stableJson(FROZEN_SAMPLING_SEMANTICS)) {
+    failures.push("Equipment profile sampling semantics must distinguish default-height timing samples from layout probes.");
   }
   if (profile?.warmupSamplesPerActionWidth !== 2 || profile?.measuredSamplesPerActionWidth !== 30) {
     failures.push("Equipment profile must freeze two warmups and 30 measured samples per action and width.");
@@ -198,8 +237,11 @@ export function validateEquipmentProfile(profile) {
     "maxDomElementCount",
     "maxResultDomElementCount",
     "maxMountedResultCount",
+    "maxDefaultMountedResultCount",
     "maxResultDomElementsPerMountedRow",
     "maxResultChromeDomElementCount",
+    "maxAdaptiveResultDomElementCount",
+    "maxNonResultChromeDomElementCount",
     "maxImageRequestsPerSample",
     "maxLongTaskCountPerActionWidth",
   ]) {
@@ -263,8 +305,16 @@ export function validateEquipmentSample(sample, profile) {
   const failures = [];
   const action = profile.actions?.find((entry) => entry.id === sample?.actionId);
   if (!action) return [`Unknown equipment profile action ${sample?.actionId ?? "<missing>"}.`];
-  if (sample?.schemaVersion !== 2) failures.push("Equipment sample requires timing schemaVersion 2.");
+  if (sample?.schemaVersion !== 3) failures.push("Equipment sample requires timing schemaVersion 3.");
   if (!profile.appWidths.includes(sample.requestedAppWidth)) failures.push("Sample app width is not frozen by the profile.");
+  const defaultWindow = profile.resultWindowProfiles?.find((entry) => entry.id === "default");
+  if (
+    sample.resultWindowProfileId !== "default" ||
+    sample.requestedAppHeight !== defaultWindow?.appHeight ||
+    stableJson(sample.browserViewport) !== stableJson(profile.viewport)
+  ) {
+    failures.push("Timing samples must use the default result-window height and frozen browser viewport.");
+  }
   failures.push(...validateSampleTiming(sample, profile));
   if (sample.semanticPassed !== true) failures.push("Sample did not reach its exact semantic DOM oracle.");
   if (sample.actionId === "rapid-search") {
@@ -284,14 +334,16 @@ export function validateEquipmentSample(sample, profile) {
     }
   }
   const outcome = sample.actionOutcome;
+  const expectedMountedRows = expectedEquipmentMountedRows(profile, sample);
   if (
     ["cold-open", "warm-reopen"].includes(sample.actionId) &&
     (outcome?.searchDisabled !== false ||
       outcome?.diagnosticCount !== 0 ||
       outcome?.catalogueStatePresent !== false ||
-      !sameStrings(outcome?.visibleResultValues ?? [], profile.expectedBroadResultValues))
+      outcome?.visibleResultValues?.length !== expectedMountedRows ||
+      !sameStrings(outcome?.visibleResultValues?.slice(0, profile.expectedBroadResultValues.length) ?? [], profile.expectedBroadResultValues))
   ) {
-    failures.push(`${sample.actionId} did not record the exact enabled, healthy 12-row catalogue outcome.`);
+    failures.push(`${sample.actionId} did not record the exact enabled, healthy geometry-derived catalogue outcome.`);
   }
   if (sample.actionId === "facet-change") {
     if (!nonempty(outcome?.filterKey) || !nonempty(outcome?.filterValue)) {
@@ -320,6 +372,9 @@ export function validateEquipmentSample(sample, profile) {
   if (!nonnegativeFinite(sample.actualAppWidth) || Math.abs(sample.actualAppWidth - sample.requestedAppWidth) > 2) {
     failures.push("Sample app width did not match the requested application width.");
   }
+  if (!nonnegativeFinite(sample.actualAppHeight) || Math.abs(sample.actualAppHeight - sample.requestedAppHeight) > 2) {
+    failures.push("Sample app height did not match the requested application height.");
+  }
   for (const key of ["domElementCount", "resultDomElementCount", "imageRequestCount"]) {
     if (!nonnegativeInteger(sample[key])) failures.push(`Sample ${key} is missing or invalid.`);
   }
@@ -327,6 +382,13 @@ export function validateEquipmentSample(sample, profile) {
     if (!nonnegativeInteger(sample[key])) failures.push(`Sample ${key} is missing or invalid.`);
   }
   if (nonnegativeInteger(sample.mountedResultCount)) {
+    const expectedMountedRows = expectedEquipmentMountedRows(profile, sample);
+    if (
+      (["cold-open", "warm-reopen"].includes(sample.actionId) && sample.mountedResultCount !== expectedMountedRows) ||
+      sample.mountedResultCount > profile.budgets.maxDefaultMountedResultCount
+    ) {
+      failures.push("Default-height timing sample did not preserve its geometry-derived mounted-row budget.");
+    }
     if (sample.mountedResultCount > profile.budgets.maxMountedResultCount) {
       failures.push(`Sample mounted ${sample.mountedResultCount} results; limit ${profile.budgets.maxMountedResultCount}.`);
     }
@@ -386,6 +448,235 @@ export function validateEquipmentSample(sample, profile) {
     }
   }
   return failures;
+}
+
+export function validateEquipmentResultWindowObservation(observation, profile) {
+  const failures = [];
+  const windowProfile = profile.resultWindowProfiles?.find(
+    (entry) => entry.id === observation?.resultWindowProfileId,
+  );
+  if (!windowProfile) return [`Unknown equipment result-window profile ${observation?.resultWindowProfileId ?? "<missing>"}.`];
+  if (observation?.schemaVersion !== 3) failures.push("Equipment result-window observation requires schemaVersion 3.");
+  const expectedViewport = resultWindowBrowserViewport(profile, windowProfile);
+  if (stableJson(observation?.browserViewport) !== stableJson(expectedViewport)) {
+    failures.push(`${windowProfile.id} result-window observation used the wrong browser viewport.`);
+  }
+  if (observation?.requestedAppWidth !== profile.resultWindowSampling.appWidth) {
+    failures.push(`${windowProfile.id} result-window observation used the wrong application width.`);
+  }
+  if (observation?.requestedAppHeight !== windowProfile.appHeight) {
+    failures.push(`${windowProfile.id} result-window observation used the wrong application height.`);
+  }
+  if (
+    !nonnegativeFinite(observation?.actualAppWidth) ||
+    Math.abs(observation.actualAppWidth - observation.requestedAppWidth) > 2
+  ) {
+    failures.push(`${windowProfile.id} result-window application width did not match its request.`);
+  }
+  if (
+    !nonnegativeFinite(observation?.actualAppHeight) ||
+    Math.abs(observation.actualAppHeight - observation.requestedAppHeight) > 2
+  ) {
+    failures.push(`${windowProfile.id} result-window application height did not match its request.`);
+  }
+  if (!nonnegativeFinite(observation?.listClientHeight) || observation.listClientHeight <= 0) {
+    failures.push(`${windowProfile.id} result-window list height is missing or invalid.`);
+  }
+  const expectedMountedRows = expectedEquipmentMountedRows(profile, observation);
+  if (!nonnegativeInteger(expectedMountedRows)) {
+    failures.push(`${windowProfile.id} result-window could not derive mounted rows from live geometry.`);
+  }
+  if (
+    observation?.mountedResultCount !== expectedMountedRows ||
+    observation?.resultLimit !== expectedMountedRows ||
+    observation?.resultOffset !== 0 ||
+    observation?.resultEnd !== expectedMountedRows ||
+    observation?.firstMountedResultIndex !== 0 ||
+    observation?.lastMountedResultIndex !== expectedMountedRows - 1
+  ) {
+    failures.push(
+      `${windowProfile.id} result-window observation did not mount the geometry-derived 0-${expectedMountedRows - 1} window.`,
+    );
+  }
+  if (observation?.totalResultCount !== profile.expectedCatalogueCounts?.levelQualified) {
+    failures.push(`${windowProfile.id} result-window total disagreed with the frozen level-qualified catalogue count.`);
+  }
+  const values = observation?.mountedResultValues;
+  if (
+    !Array.isArray(values) ||
+    values.length !== expectedMountedRows ||
+    values.some((value) => !nonempty(value)) ||
+    !sameStrings(values?.slice(0, profile.expectedBroadResultValues.length) ?? [], profile.expectedBroadResultValues) ||
+    observation?.firstMountedSourceUuid !== values?.[0] ||
+    observation?.lastMountedSourceUuid !== values?.at(-1)
+  ) {
+    failures.push(`${windowProfile.id} result-window mounted identities were incomplete or drifted.`);
+  }
+  if (!nonnegativeFinite(observation?.leadingSpacerPx) || !nearlyEqual(observation.leadingSpacerPx, 0)) {
+    failures.push(`${windowProfile.id} result-window leading spacer was not the exact top-of-list zero.`);
+  }
+  if (!nonnegativeFinite(observation?.trailingSpacerPx) || observation.trailingSpacerPx <= 0) {
+    failures.push(`${windowProfile.id} result-window trailing spacer did not preserve the unmounted catalogue extent.`);
+  }
+  const resultDomLimit =
+    expectedMountedRows * profile.budgets.maxResultDomElementsPerMountedRow +
+    profile.budgets.maxResultChromeDomElementCount;
+  if (
+    resultDomLimit > profile.budgets.maxAdaptiveResultDomElementCount ||
+    !nonnegativeInteger(observation?.resultDomElementCount) ||
+    observation.resultDomElementCount > resultDomLimit
+  ) {
+    failures.push(`${windowProfile.id} result-window DOM exceeded its ${resultDomLimit}-element mounted-window limit.`);
+  }
+  const rootDomLimit = resultDomLimit + profile.budgets.maxNonResultChromeDomElementCount;
+  if (!nonnegativeInteger(observation?.domElementCount) || observation.domElementCount > rootDomLimit) {
+    failures.push(`${windowProfile.id} root DOM exceeded its ${rootDomLimit}-element size-specific limit.`);
+  }
+  if (expectedMountedRows > profile.budgets.maxMountedResultCount) {
+    failures.push(`${windowProfile.id} result-window exceeded the frozen mounted-row budget.`);
+  }
+  return failures;
+}
+
+export function validateEquipmentResultWindows(profile, observations) {
+  const failures = [];
+  const expectedKeys = new Set();
+  for (const windowProfile of profile.resultWindowProfiles ?? []) {
+    for (let index = 1; index <= profile.resultWindowSampling?.observationsPerProfile; index += 1) {
+      expectedKeys.add(`${windowProfile.id}|${index}`);
+    }
+  }
+  const observedKeys = new Set();
+  for (const observation of observations ?? []) {
+    const key = `${observation?.resultWindowProfileId}|${observation?.observationIndex}`;
+    if (!expectedKeys.has(key)) failures.push(`Result-window evidence contains out-of-scenario observation ${key}.`);
+    if (observedKeys.has(key)) failures.push(`Result-window evidence duplicates observation ${key}.`);
+    observedKeys.add(key);
+    failures.push(...validateEquipmentResultWindowObservation(observation, profile));
+  }
+  for (const key of expectedKeys) {
+    if (!observedKeys.has(key)) failures.push(`Result-window evidence is missing observation ${key}.`);
+  }
+  const ordered = (observations ?? [])
+    .filter((entry) => profile.resultWindowProfiles?.some((profileEntry) => profileEntry.id === entry.resultWindowProfileId))
+    .sort(
+      (left, right) =>
+        profile.resultWindowProfiles.findIndex((entry) => entry.id === left.resultWindowProfileId) -
+        profile.resultWindowProfiles.findIndex((entry) => entry.id === right.resultWindowProfileId),
+    );
+  for (let index = 1; index < ordered.length; index += 1) {
+    if (ordered[index].actualAppHeight <= ordered[index - 1].actualAppHeight) {
+      failures.push("Result-window application heights did not grow in profile order.");
+    }
+    if (ordered[index].listClientHeight <= ordered[index - 1].listClientHeight) {
+      failures.push("Result-window list heights did not grow in profile order.");
+    }
+  }
+  return failures;
+}
+
+export function validateEquipmentScrollProbe(profile, probe) {
+  const failures = [];
+  const windowProfile = profile.resultWindowProfiles?.find(
+    (entry) => entry.id === profile.scrollSampling?.resultWindowProfileId,
+  );
+  if (probe?.schemaVersion !== 3) failures.push("Equipment pending-prefetch scroll probe requires schemaVersion 3.");
+  if (!windowProfile || probe?.resultWindowProfileId !== windowProfile.id) {
+    failures.push("Equipment pending-prefetch scroll probe used the wrong result-window profile.");
+    return failures;
+  }
+  if (stableJson(probe?.browserViewport) !== stableJson(resultWindowBrowserViewport(profile, windowProfile))) {
+    failures.push("Equipment pending-prefetch scroll probe used the wrong browser viewport.");
+  }
+  if (
+    probe?.requestedAppWidth !== profile.resultWindowSampling.appWidth ||
+    probe?.requestedAppHeight !== windowProfile.appHeight
+  ) {
+    failures.push("Equipment pending-prefetch scroll probe used the wrong application size.");
+  }
+  if (
+    !nonnegativeFinite(probe?.requestedScrollDeltaPx) ||
+    probe.requestedScrollDeltaPx <= 0 ||
+    !nonnegativeFinite(probe?.observedScrollDeltaPx) ||
+    probe.observedScrollDeltaPx + 2 < probe.requestedScrollDeltaPx ||
+    probe?.rapidFullScreenScrollCount !== profile.scrollSampling.rapidFullScreenScrollsWhilePending
+  ) {
+    failures.push("Equipment pending-prefetch probe did not perform the exact full-screen scroll while pending.");
+  }
+  if (
+    !nonnegativeInteger(probe?.pendingBeforeRapidScroll) ||
+    probe.pendingBeforeRapidScroll < 1 ||
+    !nonnegativeInteger(probe?.pendingAfterRapidScroll) ||
+    probe.pendingAfterRapidScroll < 1 ||
+    !nonnegativeInteger(probe?.maxPendingDocumentReads) ||
+    probe.maxPendingDocumentReads < probe.pendingBeforeRapidScroll ||
+    probe?.pendingAfterSettle !== 0
+  ) {
+    failures.push("Equipment scroll probe did not prove a prior prefetch stayed pending through the rapid scroll and settled.");
+  }
+  if (
+    probe?.initialWindow?.mountedResultCount !== expectedEquipmentMountedRows(profile, probe?.initialWindow) ||
+    !nonnegativeInteger(probe?.initialWindow?.resultOffset) ||
+    !nonnegativeInteger(probe?.settledWindow?.resultOffset) ||
+    probe.settledWindow.resultOffset <= probe.initialWindow.resultOffset
+  ) {
+    failures.push("Equipment scroll probe did not advance from the declared mounted window.");
+  }
+  const rawPendingShelves = probe?.shelvesWhilePending;
+  const pendingShelves = Array.isArray(rawPendingShelves) ? rawPendingShelves : [];
+  const shelves = [...pendingShelves, probe?.settledShelf].filter(Boolean);
+  if (
+    !Array.isArray(rawPendingShelves) ||
+    pendingShelves.length !== profile.scrollSampling.framesWhilePending ||
+    shelves.some(
+      (shelf) =>
+        !nonnegativeFinite(shelf?.viewportHeight) ||
+        shelf.viewportHeight <= 0 ||
+        !nonnegativeInteger(shelf?.visibleResultCount) ||
+        !nonnegativeInteger(shelf?.visibleSkeletonCount) ||
+        shelf.visibleResultCount + shelf.visibleSkeletonCount < 1 ||
+        !nonnegativeFinite(shelf?.maxVisibleGapPx) ||
+        shelf.maxVisibleGapPx > profile.scrollSampling.maxVisibleGapPx ||
+        shelf.skeletonContractValid !== true,
+    )
+  ) {
+    failures.push("Equipment scroll probe exposed an empty shelf or visible result gap.");
+  }
+  if (
+    !Array.isArray(probe?.shelvesWhilePending) ||
+    probe.shelvesWhilePending.some((shelf) => shelf?.pendingDocumentReads < 1) ||
+    probe?.settledShelf?.pendingDocumentReads !== 0
+  ) {
+    failures.push("Equipment scroll shelf observations did not remain bound to pending and settled prefetch state.");
+  }
+  return failures;
+}
+
+export function resultWindowBrowserViewport(profile, windowProfile) {
+  return {
+    width: profile.viewport.width,
+    height: Math.max(
+      profile.viewport.height,
+      windowProfile.appHeight + profile.resultWindowSampling.browserViewportPaddingPx,
+    ),
+  };
+}
+
+export function expectedEquipmentMountedRows(profile, geometry) {
+  const listHeight = geometry?.listClientHeight;
+  const rowHeight = geometry?.measuredRowHeightPx;
+  if (!nonnegativeFinite(listHeight) || listHeight <= 0 || !nonnegativeFinite(rowHeight) || rowHeight <= 0) return null;
+  const visibleRows = Math.ceil(listHeight / rowHeight);
+  const sizing = profile.resultWindowSizing;
+  const target = Math.max(
+    sizing.baselineMountedRows,
+    Math.ceil(visibleRows * sizing.viewportMultiplier),
+    visibleRows + sizing.overscanRows,
+  );
+  return Math.min(
+    sizing.maximumMountedRows,
+    Math.ceil(target / sizing.hydrationChunkRows) * sizing.hydrationChunkRows,
+  );
 }
 
 function validateSampleTiming(sample, profile) {
@@ -591,7 +882,10 @@ export function summarizeEquipmentProfile(profile, samples) {
 }
 
 export function validateEquipmentBudgets(profile, summary, options = {}) {
-  const failures = [];
+  const failures = Array.isArray(options.resultWindowObservations)
+    ? validateEquipmentResultWindows(profile, options.resultWindowObservations)
+    : [];
+  if (options.scrollProbe !== undefined) failures.push(...validateEquipmentScrollProbe(profile, options.scrollProbe));
   const required = options.requireQualificationSamples === false ? null : profile.measuredSamplesPerActionWidth;
   for (const row of summary.byActionWidth ?? []) {
     const label = `${row.actionId} at ${row.requestedAppWidth}px`;
@@ -620,17 +914,22 @@ export function validateEquipmentBudgets(profile, summary, options = {}) {
 
 export function compactEquipmentEvidence(result) {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     profile: {
       id: result.profile.id,
       viewport: result.profile.viewport,
       appWidths: result.profile.appWidths,
+      resultWindowProfiles: result.profile.resultWindowProfiles,
+      resultWindowSizing: result.profile.resultWindowSizing,
+      resultWindowSampling: result.profile.resultWindowSampling,
+      scrollSampling: result.profile.scrollSampling,
       sampleDepth: {
         warmup: result.profile.warmupSamplesPerActionWidth,
         measured: result.profile.measuredSamplesPerActionWidth,
       },
       budgets: result.profile.budgets,
       timingSemantics: result.profile.timingSemantics,
+      samplingSemantics: result.profile.samplingSemantics,
       counts: result.fixture.catalogueCounts,
       countSemantics: result.profile.catalogueCountSemantics,
       finalResultValues: result.profile.expectedFinalResultValues,
@@ -645,6 +944,8 @@ export function compactEquipmentEvidence(result) {
     runtime: result.runtime,
     users: result.fixture.users,
     runIds: [result.runId],
+    resultWindowObservations: result.resultWindowObservations,
+    scrollProbe: result.scrollProbe,
     byActionWidth: result.summary.byActionWidth,
   };
 }
@@ -668,7 +969,7 @@ export function qualifyEquipmentEvidenceRuns(results) {
       ),
     );
     if (result?.runMode !== "qualification") failures.push(`${label} is not a qualification-depth run.`);
-    if (result?.schemaVersion !== 2) failures.push(`${label} does not use equipment evidence schemaVersion 2.`);
+    if (result?.schemaVersion !== 3) failures.push(`${label} does not use equipment evidence schemaVersion 3.`);
     if (result?.profile?.expectedCatalogueCounts === null) failures.push(`${label} did not freeze live catalogue counts.`);
     failures.push(...deriveQualifiedRun(result, label));
     failures.push(...validateProvenance(result, label));
@@ -744,8 +1045,23 @@ function deriveQualifiedRun(result, label) {
   for (const key of expectedKeys) {
     if (!observedKeys.has(key)) failures.push(`${label} is missing sample ${key}.`);
   }
+  const observations = Array.isArray(result?.resultWindowObservations) ? result.resultWindowObservations : [];
+  for (const observation of observations) {
+    const key = `${observation?.resultWindowProfileId}|${observation?.observationIndex}`;
+    const derivedFailures = validateEquipmentResultWindowObservation(observation, profile);
+    if (stableJson(observation?.failures ?? []) !== stableJson(derivedFailures)) {
+      failures.push(`${label} stored failures disagree with derived validation for result-window ${key}.`);
+    }
+  }
+  const scrollFailures = validateEquipmentScrollProbe(profile, result?.scrollProbe);
+  if (stableJson(result?.scrollProbe?.failures ?? []) !== stableJson(scrollFailures)) {
+    failures.push(`${label} stored failures disagree with derived validation for the pending-prefetch scroll probe.`);
+  }
   const summary = summarizeEquipmentProfile(profile, samples);
-  const qualification = validateEquipmentBudgets(profile, summary);
+  const qualification = validateEquipmentBudgets(profile, summary, {
+    resultWindowObservations: observations,
+    scrollProbe: result?.scrollProbe,
+  });
   if (stableJson(result?.summary) !== stableJson(summary)) failures.push(`${label} stored summary disagrees with raw samples.`);
   if (stableJson(result?.qualification) !== stableJson(qualification)) {
     failures.push(`${label} stored qualification disagrees with raw samples.`);

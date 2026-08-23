@@ -12,10 +12,13 @@ import { smokeCases } from "../foundry-smoke/class-cases.mjs";
 import { loginToFoundryWorld, resolveFoundryChromePath } from "../foundry-smoke/browser-session.mjs";
 import { loadWayfinderBrowserSuite } from "../foundry-smoke/shared-browser-suite-lifecycle.mjs";
 import {
+  resultWindowBrowserViewport,
   summarizeEquipmentProfile,
   validateEquipmentBudgets,
   validateEquipmentFixture,
   validateEquipmentProfile,
+  validateEquipmentResultWindowObservation,
+  validateEquipmentScrollProbe,
   validateEquipmentSample,
 } from "./equipment-profile-results.mjs";
 
@@ -103,6 +106,8 @@ async function main() {
   let observedRuntime = null;
   const cleanupFailures = [];
   const samples = [];
+  const resultWindowObservations = [];
+  let scrollProbe = null;
   try {
     candidate = inspectCandidate(options.moduleRoot, options.moduleRef);
     failureStage = "driver-provenance";
@@ -217,9 +222,71 @@ async function main() {
     const fixtureFailures = validateEquipmentFixture(profile, liveFixture, options.expectedWorldId);
     if (fixtureFailures.length > 0) throw new Error(fixtureFailures.join(" "));
 
+    failureStage = "result-window-observations";
+    for (const windowProfile of profile.resultWindowProfiles) {
+      const browserViewport = resultWindowBrowserViewport(profile, windowProfile);
+      for (let observationIndex = 1; observationIndex <= profile.resultWindowSampling.observationsPerProfile; observationIndex += 1) {
+        await playerPage.setViewportSize(browserViewport);
+        const observed = await playerPage.evaluate(
+          (payload) => globalThis.__wayfinderEquipmentProfile.inspectResultWindow(payload),
+          {
+            height: windowProfile.appHeight,
+            resultWindowSizing: profile.resultWindowSizing,
+            settleTimeoutMs: profile.settleTimeoutMs,
+            width: profile.resultWindowSampling.appWidth,
+          },
+        );
+        const observation = {
+          ...observed,
+          browserViewport,
+          observationIndex,
+          requestedAppHeight: windowProfile.appHeight,
+          requestedAppWidth: profile.resultWindowSampling.appWidth,
+          resultWindowProfileId: windowProfile.id,
+        };
+        observation.failures = validateEquipmentResultWindowObservation(observation, profile);
+        resultWindowObservations.push(observation);
+        console.log(
+          `Equipment result window ${windowProfile.id} ${observation.actualAppWidth}x${observation.actualAppHeight}px mounted ${observation.mountedResultCount}.`,
+        );
+      }
+    }
+
+    failureStage = "pending-prefetch-scroll";
+    const scrollWindowProfile = profile.resultWindowProfiles.find(
+      (entry) => entry.id === profile.scrollSampling.resultWindowProfileId,
+    );
+    if (!scrollWindowProfile) throw new Error("Equipment profile scroll sampling names an unknown result-window profile.");
+    const scrollBrowserViewport = resultWindowBrowserViewport(profile, scrollWindowProfile);
+    await playerPage.setViewportSize(scrollBrowserViewport);
+    const observedScroll = await playerPage.evaluate(
+      (payload) => globalThis.__wayfinderEquipmentProfile.probePendingPrefetchScroll(payload),
+      {
+        framesWhilePending: profile.scrollSampling.framesWhilePending,
+        height: scrollWindowProfile.appHeight,
+        settleTimeoutMs: profile.settleTimeoutMs,
+        width: profile.resultWindowSampling.appWidth,
+      },
+    );
+    scrollProbe = {
+      ...observedScroll,
+      browserViewport: scrollBrowserViewport,
+      rapidFullScreenScrollCount: profile.scrollSampling.rapidFullScreenScrollsWhilePending,
+      requestedAppHeight: scrollWindowProfile.appHeight,
+      requestedAppWidth: profile.resultWindowSampling.appWidth,
+      resultWindowProfileId: scrollWindowProfile.id,
+    };
+    scrollProbe.failures = validateEquipmentScrollProbe(profile, scrollProbe);
+
     failureStage = "sampling";
+    const defaultWindow = profile.resultWindowProfiles.find((entry) => entry.id === "default");
+    if (!defaultWindow) throw new Error("Equipment profile has no default result-window profile.");
+    await playerPage.setViewportSize(profile.viewport);
     for (const requestedAppWidth of profile.appWidths) {
-      await playerPage.evaluate((width) => globalThis.__wayfinderEquipmentProfile.resize({ width }), requestedAppWidth);
+      await playerPage.evaluate(
+        (payload) => globalThis.__wayfinderEquipmentProfile.resize(payload),
+        { height: defaultWindow.appHeight, width: requestedAppWidth },
+      );
       for (const action of profile.actions) {
         const total = profile.warmupSamplesPerActionWidth + profile.measuredSamplesPerActionWidth;
         for (let index = 0; index < total; index += 1) {
@@ -233,10 +300,20 @@ async function main() {
               keyDelayMs: profile.keyDelayMs,
               postSettleMs: profile.postSettleMs,
               querySequence: profile.querySequence,
+              resultWindowSizing: profile.resultWindowSizing,
               settleTimeoutMs: profile.settleTimeoutMs,
             },
           );
-          const sample = { ...observed, actionId: action.id, requestedAppWidth, sampleIndex, sampleKind };
+          const sample = {
+            ...observed,
+            actionId: action.id,
+            browserViewport: profile.viewport,
+            requestedAppHeight: defaultWindow.appHeight,
+            requestedAppWidth,
+            resultWindowProfileId: defaultWindow.id,
+            sampleIndex,
+            sampleKind,
+          };
           sample.failures = validateEquipmentSample(sample, profile);
           samples.push(sample);
           if (sampleIndex === 1 || sampleIndex % 10 === 0 || sampleIndex === profile.measuredSamplesPerActionWidth) {
@@ -313,6 +390,8 @@ async function main() {
     preflight,
     profile,
     routeFailures,
+    resultWindowObservations,
+    scrollProbe,
     runId,
     samples,
     servedFiles: [...servedFiles.values()].sort((left, right) => left.path.localeCompare(right.path)),
@@ -343,6 +422,8 @@ export function buildEquipmentProfileResult({
   preflight,
   profile,
   routeFailures,
+  resultWindowObservations = [],
+  scrollProbe = null,
   runId,
   samples,
   servedFiles,
@@ -353,6 +434,8 @@ export function buildEquipmentProfileResult({
   const developmentOverride = options.samples !== null || options.warmups !== null;
   const derivedQualification = validateEquipmentBudgets(profile, summary, {
     requireQualificationSamples: !developmentOverride,
+    resultWindowObservations,
+    scrollProbe,
   });
   const failed = Boolean(orchestrationFailure) || cleanupFailures.length > 0 || routeFailures.length > 0;
   const failure =
@@ -372,7 +455,7 @@ export function buildEquipmentProfileResult({
       }
     : derivedQualification;
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     status: failed ? "failed" : "completed",
     failure,
     runId,
@@ -406,6 +489,8 @@ export function buildEquipmentProfileResult({
     cleanupFailures,
     servedRouteFailures: [...routeFailures],
     servedModuleFiles: servedFiles,
+    resultWindowObservations,
+    scrollProbe,
     samples,
     summary,
     qualification,

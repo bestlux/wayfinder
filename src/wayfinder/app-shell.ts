@@ -121,6 +121,7 @@ import {
   getFoundryEquipmentAcquisitionRuntime,
 } from "./application/equipment-acquisition-runtime-service.js";
 import { createEquipmentAcquisitionExecutionSession } from "./application/equipment-acquisition-session-service.js";
+import { profileEquipmentStage } from "./application/equipment-performance-profiler.js";
 import { assertEquipmentApplyAuthority } from "./application/equipment-policy-service.js";
 import { parseMaterializedEquipmentQuantity } from "./application/equipment-quantity-entry.js";
 import {
@@ -615,26 +616,25 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         };
       }
       const authorityStore = getEquipmentPolicyJudgmentStoreSetting();
-      const pane = buildStartingEquipmentPane(
+      const catalogue = await this.#projectStartingEquipmentCatalogue(
         session.step,
-        draft,
-        session.evaluation,
-        await this.#projectStartingEquipmentCatalogue(
-          session.step,
-          {
-            offset: equipmentRequest.offset,
-            limit: equipmentRequest.limit,
-          },
-          this.#equipmentProjectionSignalByViewRevision.get(equipmentRequest.viewRevision)
-        ),
-        localizeAcquisition,
         {
-          worldPolicy: getEquipmentWorldPolicySetting(),
-          judgments: authorityStore.judgments,
-          requestDecisions: authorityStore.requestDecisions,
-          isGm: game.user?.isGM === true,
-          locale: String(game.i18n.lang ?? ""),
-        }
+          offset: equipmentRequest.offset,
+          limit: equipmentRequest.limit,
+        },
+        this.#equipmentProjectionSignalByViewRevision.get(equipmentRequest.viewRevision)
+      );
+      const pane = profileEquipmentStage(
+        "equipment-pane-assembly",
+        () =>
+          buildStartingEquipmentPane(session.step, draft, session.evaluation, catalogue, localizeAcquisition, {
+            worldPolicy: getEquipmentWorldPolicySetting(),
+            judgments: authorityStore.judgments,
+            requestDecisions: authorityStore.requestDecisions,
+            isGm: game.user?.isGM === true,
+            locale: String(game.i18n.lang ?? ""),
+          }),
+        () => ({ recordCount: catalogue.records.length, matchedRecordCount: catalogue.matchedRecordCount })
       );
       if (!this.#canCommitStartingEquipmentRender(equipmentRequest)) {
         options.wayfinderSkippedReplacement = true;
@@ -979,7 +979,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
           null
         );
       }
-      this.#mountEquipmentStableCatalogue(root, committedSession);
+      profileEquipmentStage(
+        "mounted-row-projection",
+        () => this.#mountEquipmentStableCatalogue(root, committedSession),
+        () => ({ matchedRecordCount: committedSession?.pane.catalogue.totalResultCount ?? 0 })
+      );
       if (this.#pendingEquipmentFocusIds) {
         restoreEquipmentFocus(root, this.#pendingEquipmentFocusIds);
       }
@@ -1017,7 +1021,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       this.#scrollById,
       this.#pendingSearchFocus
     ).pendingSearchFocus;
-    this.#mountEquipmentStableCatalogue(root, context.equipmentRenderSession);
+    profileEquipmentStage(
+      "mounted-row-projection",
+      () => this.#mountEquipmentStableCatalogue(root, context.equipmentRenderSession),
+      () => ({ matchedRecordCount: context.equipmentRenderSession?.pane.catalogue.totalResultCount ?? 0 })
+    );
     const pendingStepFocusId = this.#pendingStepFocusId;
     const pendingControlFocusId = this.#pendingControlFocusId;
     if (this.#pendingActiveStepVisibility) {
@@ -1879,19 +1887,18 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
 
     if (step.kind === "starting-equipment") {
       const authorityStore = getEquipmentPolicyJudgmentStoreSetting();
-      return buildStartingEquipmentPane(
-        step,
-        this.#requireDraft(),
-        stepEvaluation,
-        await this.#projectStartingEquipmentCatalogue(step),
-        localizeAcquisition,
-        {
-          worldPolicy: getEquipmentWorldPolicySetting(),
-          judgments: authorityStore.judgments,
-          requestDecisions: authorityStore.requestDecisions,
-          isGm: game.user?.isGM === true,
-          locale: String(game.i18n.lang ?? ""),
-        }
+      const catalogue = await this.#projectStartingEquipmentCatalogue(step);
+      return profileEquipmentStage(
+        "equipment-pane-assembly",
+        () =>
+          buildStartingEquipmentPane(step, this.#requireDraft(), stepEvaluation, catalogue, localizeAcquisition, {
+            worldPolicy: getEquipmentWorldPolicySetting(),
+            judgments: authorityStore.judgments,
+            requestDecisions: authorityStore.requestDecisions,
+            isGm: game.user?.isGM === true,
+            locale: String(game.i18n.lang ?? ""),
+          }),
+        () => ({ recordCount: catalogue.records.length, matchedRecordCount: catalogue.matchedRecordCount })
       );
     }
 

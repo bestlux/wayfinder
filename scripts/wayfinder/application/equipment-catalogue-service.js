@@ -1,6 +1,7 @@
 import { cloneData } from "../../shared/cloning.js";
 import { ADVENTURERS_PACK_SOURCE_UUID } from "../domain/acquisition-types.js";
 import { evaluateEquipmentItemAuthority, resolveEquipmentItemExceptionJudgmentIds, } from "../domain/equipment-policy.js";
+import { profileEquipmentStage } from "./equipment-performance-profiler.js";
 import { sortEquipmentSourceDiagnostics, sourceDiagnostic, } from "./equipment-source-policy.js";
 export const EQUIPMENT_CATALOGUE_PROJECTION_VERSION = 1;
 export const WF_080_21_DAGGER_UUID = "Compendium.pf2e.equipment-srd.Item.rQWaJhI5Bko5x14Z";
@@ -144,21 +145,25 @@ export class EquipmentCatalogueService {
         let evaluatedByPolicy = this.#evaluatedEntriesByMaterial.get(loaded);
         let entries = evaluatedByPolicy?.get(evaluatedKey);
         if (entries === undefined) {
-            const sharedAuthority = context.policy.gmJudgments.some((judgment) => judgment.kind === "rarity-source-exception")
-                ? null
-                : new Map();
-            const evaluatedEntries = [];
-            for (let index = 0; index < loaded.candidates.length; index += 1) {
-                evaluatedEntries.push(this.#evaluateCandidate(context, loaded.candidates[index], null, sharedAuthority));
-                if ((index + 1) % LARGE_PACK_NORMALIZATION_CHUNK === 0)
+            let evaluatedEntryCount = 0;
+            entries = await profileEquipmentStage("catalogue-policy-evaluation", async () => {
+                const sharedAuthority = context.policy.gmJudgments.some((judgment) => judgment.kind === "rarity-source-exception")
+                    ? null
+                    : new Map();
+                const evaluatedEntries = [];
+                for (let index = 0; index < loaded.candidates.length; index += 1) {
+                    evaluatedEntries.push(this.#evaluateCandidate(context, loaded.candidates[index], null, sharedAuthority));
+                    if ((index + 1) % LARGE_PACK_NORMALIZATION_CHUNK === 0)
+                        await yieldProjectionTask();
+                }
+                if (evaluatedEntries.length % LARGE_PACK_NORMALIZATION_CHUNK !== 0)
                     await yieldProjectionTask();
-            }
-            if (evaluatedEntries.length % LARGE_PACK_NORMALIZATION_CHUNK !== 0)
-                await yieldProjectionTask();
-            evaluatedEntries.sort(compareEntries);
-            if (evaluatedEntries.length > 0)
-                await yieldProjectionTask();
-            entries = Object.freeze(evaluatedEntries);
+                evaluatedEntries.sort(compareEntries);
+                if (evaluatedEntries.length > 0)
+                    await yieldProjectionTask();
+                evaluatedEntryCount = evaluatedEntries.length;
+                return Object.freeze(evaluatedEntries);
+            }, () => ({ candidateCount: loaded.candidates.length, entryCount: evaluatedEntryCount, cacheHit: false }));
             evaluatedByPolicy ??= new Map();
             setBoundedCache(evaluatedByPolicy, evaluatedKey, entries, PROJECTION_SNAPSHOT_LIMIT);
             this.#evaluatedEntriesByMaterial.set(loaded, evaluatedByPolicy);
@@ -528,7 +533,7 @@ export function createEquipmentCatalogueService(options) {
 async function loadPackProjection(pack, packId, normalizationSnapshot) {
     let index;
     try {
-        index = await pack.getIndex({ fields: [...INDEX_FIELDS] });
+        index = await profileEquipmentStage("catalogue-index-wait", () => pack.getIndex({ fields: [...INDEX_FIELDS] }), () => ({ packId, requestedFieldCount: INDEX_FIELDS.length }));
     }
     catch {
         return projectionFailure(sourceDiagnostic("equipment-pack-index-failed", packId, null, `Equipment pack ${packId} could not be indexed. Check the installed package and retry.`), false);
@@ -537,8 +542,13 @@ async function loadPackProjection(pack, packId, normalizationSnapshot) {
         return projectionFailure(sourceDiagnostic("equipment-pack-index-corrupt", packId, null, `Equipment pack ${packId} returned a malformed index and was excluded.`));
     }
     let entries;
+    let materializedEntryCount = 0;
     try {
-        entries = Array.from(index);
+        entries = profileEquipmentStage("catalogue-index-materialization", () => {
+            const materialized = Array.from(index);
+            materializedEntryCount = materialized.length;
+            return materialized;
+        }, () => ({ packId, entryCount: materializedEntryCount }));
     }
     catch {
         return projectionFailure(sourceDiagnostic("equipment-pack-index-corrupt", packId, null, `Equipment pack ${packId} returned an unreadable index and was excluded.`));
@@ -546,29 +556,38 @@ async function loadPackProjection(pack, packId, normalizationSnapshot) {
     const candidates = [];
     const diagnostics = [];
     let normalizationWork = 0;
-    for (let index = 0; index < entries.length; index += 1) {
-        const entry = entries[index];
-        const cached = isRecord(entry) ? normalizationSnapshot?.get(entry) : undefined;
-        const witness = isRecord(entry) ? indexNormalizationWitness(entry) : null;
-        if (cached && witness !== null && cached.witness === witness) {
-            candidates.push(cached.candidate);
-            continue;
-        }
-        const normalized = normalizeIndexEntry(entry, packId, index, pack.indexedBrowsePricing === "pf2e-physical-source-v1");
-        if ("diagnostic" in normalized)
-            diagnostics.push(normalized.diagnostic);
-        else {
-            candidates.push(normalized.candidate);
-            if (isRecord(entry) && witness !== null) {
-                normalizationSnapshot?.set(entry, Object.freeze({ candidate: normalized.candidate, witness }));
+    await profileEquipmentStage("catalogue-normalization", async () => {
+        for (let index = 0; index < entries.length; index += 1) {
+            const entry = entries[index];
+            const cached = isRecord(entry) ? normalizationSnapshot?.get(entry) : undefined;
+            const witness = isRecord(entry) ? indexNormalizationWitness(entry) : null;
+            if (cached && witness !== null && cached.witness === witness) {
+                candidates.push(cached.candidate);
+                continue;
             }
+            const normalized = normalizeIndexEntry(entry, packId, index, pack.indexedBrowsePricing === "pf2e-physical-source-v1");
+            if ("diagnostic" in normalized)
+                diagnostics.push(normalized.diagnostic);
+            else {
+                candidates.push(normalized.candidate);
+                if (isRecord(entry) && witness !== null) {
+                    normalizationSnapshot?.set(entry, Object.freeze({ candidate: normalized.candidate, witness }));
+                }
+            }
+            normalizationWork += 1;
+            if (normalizationWork % LARGE_PACK_NORMALIZATION_CHUNK === 0)
+                await yieldProjectionTask();
         }
-        normalizationWork += 1;
-        if (normalizationWork % LARGE_PACK_NORMALIZATION_CHUNK === 0)
+        if (normalizationWork % LARGE_PACK_NORMALIZATION_CHUNK !== 0)
             await yieldProjectionTask();
-    }
-    if (normalizationWork % LARGE_PACK_NORMALIZATION_CHUNK !== 0)
-        await yieldProjectionTask();
+    }, () => ({
+        packId,
+        entryCount: entries.length,
+        normalizedCount: normalizationWork,
+        reusedNormalizationCount: entries.length - normalizationWork,
+        candidateCount: candidates.length,
+        diagnosticCount: diagnostics.length,
+    }));
     return Object.freeze({
         candidates: Object.freeze(candidates),
         diagnostics: Object.freeze(sortEquipmentSourceDiagnostics(diagnostics)),

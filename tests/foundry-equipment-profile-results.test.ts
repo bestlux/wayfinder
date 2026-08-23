@@ -17,6 +17,7 @@ import {
   validateEquipmentResultWindows,
   validateEquipmentSample,
   validateEquipmentScrollProbe,
+  validateEquipmentStageTiming,
 } from "../tools/foundry-interaction/equipment-profile-results.mjs";
 import { buildEquipmentProfileResult } from "../tools/foundry-interaction/run-equipment-profile.mjs";
 
@@ -159,6 +160,69 @@ describe("equipment catalogue performance profile", () => {
     const preview = sample("preview-change");
     preview.repeatPreviewHydrationCount = 1;
     expect(validateEquipmentSample(preview, profile)).toContain("Unchanged preview hydrated 1 time(s); expected 0.");
+  });
+
+  it("fails closed on incomplete, misattributed, or partially overlapping stage timing", () => {
+    const observed = sample("cold-open");
+    expect(validateEquipmentStageTiming(observed)).toEqual([]);
+
+    const pending = structuredClone(observed);
+    pending.stageTiming.pendingCount = 1;
+    expect(validateEquipmentStageTiming(pending)).toContain(
+      "Equipment stage timing counters are incomplete, late, or disagree with raw intervals."
+    );
+
+    const misattributed = structuredClone(observed);
+    misattributed.stageTiming.intervals[0].startedAt = 1;
+    misattributed.stageTiming.intervals[0].completedAt = 2;
+    misattributed.stageTiming.intervals[0].durationMs = 1;
+    expect(validateEquipmentStageTiming(misattributed)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("outside the sample"),
+        expect.stringContaining("not attributable"),
+      ])
+    );
+
+    const partial = structuredClone(observed);
+    partial.stageTiming.intervals[0] = {
+      ...partial.stageTiming.intervals[0],
+      startedAt: 111,
+      completedAt: 120,
+      durationMs: 9,
+    };
+    partial.stageTiming.intervals[1] = {
+      ...partial.stageTiming.intervals[1],
+      startedAt: 115,
+      completedAt: 125,
+      durationMs: 10,
+    };
+    expect(validateEquipmentStageTiming(partial)).toEqual(
+      expect.arrayContaining([expect.stringContaining("partially overlap without containment")])
+    );
+
+    const missing = structuredClone(observed);
+    missing.stageTiming.intervals = missing.stageTiming.intervals.filter(
+      (entry: { stage: string }) => entry.stage !== "catalogue-normalization"
+    );
+    missing.stageTiming.startedCount -= 1;
+    missing.stageTiming.completedCount -= 1;
+    expect(validateEquipmentStageTiming(missing)).toContain("cold-open stage timing lacks catalogue-normalization.");
+  });
+
+  it("summarizes raw stage intervals without changing the action budgets", () => {
+    const summary = summarizeEquipmentProfile(profile, [sample("cold-open"), sample("facet-change")]);
+    const cold = summary.byActionWidth.find(
+      (entry: { actionId: string; requestedAppWidth: number }) =>
+        entry.actionId === "cold-open" && entry.requestedAppWidth === 1240
+    );
+    expect(cold.stageTiming).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ stage: "catalogue-index-wait", intervalCount: 1, sampleCount: 1 }),
+        expect.objectContaining({ stage: "actor-pricing-fingerprint", intervalCount: 1, sampleCount: 1 }),
+        expect.objectContaining({ stage: "foundry-on-render-layout", intervalCount: 1, sampleCount: 1 }),
+      ])
+    );
+    expect(profile.budgets.maxP95MsPerActionWidth).toBe(75);
   });
 
   it("rederives final-input search timing and split preview timing", () => {
@@ -759,6 +823,7 @@ function sample(actionId: string) {
         ? [{ kind: "rapid-final-query", startedAt: 150, completedAt: 175 }]
         : [{ kind: actionId, startedAt: 110, completedAt: 135 }];
   const semanticCompletedAt = actionIntervals.at(-1)?.completedAt ?? 0;
+  const stageTiming = equipmentStageTiming(actionId, sampleStartedAt, semanticCompletedAt + 350, actionIntervals);
   return {
     schemaVersion: 3,
     actionId,
@@ -814,6 +879,7 @@ function sample(actionId: string) {
     planBuildCounterSupported: true,
     fullRenderCallCount: 0,
     fullPrepareContextCount: 0,
+    stageTiming,
     newPreviewHydrationCount: actionId === "preview-change" ? 1 : undefined,
     repeatPreviewHydrationCount: actionId === "preview-change" ? 0 : undefined,
     newPreviewDurationMs: actionId === "preview-change" ? 20 : undefined,
@@ -822,6 +888,62 @@ function sample(actionId: string) {
     repeatPreviewRenderScheduled: actionId === "preview-change" ? true : undefined,
     repeatPreviewDetailReplaced: actionId === "preview-change" ? true : undefined,
     failures: [],
+  };
+}
+
+function equipmentStageTiming(
+  actionId: string,
+  sampleStartedAt: number,
+  observationCompletedAt: number,
+  actionIntervals: Array<{ kind: string; startedAt: number; completedAt: number }>
+) {
+  const cold = [
+    "catalogue-index-wait",
+    "catalogue-index-materialization",
+    "catalogue-normalization",
+    "catalogue-policy-evaluation",
+  ];
+  const projection = [
+    "actor-pricing-fingerprint",
+    "drafted-size-resolution",
+    "criteria-filter-facet-projection",
+    "browse-record-projection",
+    "criteria-rank",
+    "equipment-ui-projection",
+    "equipment-pane-assembly",
+    "mounted-row-projection",
+    "foundry-prepare-context",
+    "foundry-template-render",
+    "foundry-html-replacement",
+    "foundry-on-render-layout",
+  ];
+  const stages = actionId === "cold-open" ? [...cold, ...projection] : actionId === "facet-change" ? projection : [];
+  const action = actionIntervals[0] ?? { startedAt: sampleStartedAt, completedAt: observationCompletedAt };
+  const startedAt = action.startedAt + 1;
+  const completedAt = Math.max(startedAt, action.completedAt - 1);
+  const intervals = stages.map((stage, index) => ({
+    id: index + 1,
+    stage,
+    startedAt,
+    completedAt,
+    durationMs: completedAt - startedAt,
+    status: "completed",
+    details:
+      stage === "actor-pricing-fingerprint"
+        ? { itemCount: 2, effectCount: 0, sourceCharacterCount: 2048 }
+        : stage === "drafted-size-resolution"
+          ? { actorPricingFingerprintAvailable: true }
+          : {},
+  }));
+  return {
+    schemaVersion: 1,
+    observerEnabled: true,
+    startedCount: intervals.length,
+    completedCount: intervals.length,
+    pendingCount: 0,
+    lateCompletionCount: 0,
+    intervals,
+    closed: true,
   };
 }
 

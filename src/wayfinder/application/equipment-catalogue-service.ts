@@ -7,6 +7,7 @@ import {
   evaluateEquipmentItemAuthority,
   resolveEquipmentItemExceptionJudgmentIds,
 } from "../domain/equipment-policy.js";
+import { profileEquipmentStage } from "./equipment-performance-profiler.js";
 import {
   type EquipmentSourceDiagnostic,
   sortEquipmentSourceDiagnostics,
@@ -376,18 +377,28 @@ export class EquipmentCatalogueService {
     let evaluatedByPolicy = this.#evaluatedEntriesByMaterial.get(loaded);
     let entries = evaluatedByPolicy?.get(evaluatedKey);
     if (entries === undefined) {
-      const sharedAuthority = context.policy.gmJudgments.some((judgment) => judgment.kind === "rarity-source-exception")
-        ? null
-        : new Map<string, CachedCandidateAuthority>();
-      const evaluatedEntries: EquipmentCatalogueEntry[] = [];
-      for (let index = 0; index < loaded.candidates.length; index += 1) {
-        evaluatedEntries.push(this.#evaluateCandidate(context, loaded.candidates[index]!, null, sharedAuthority));
-        if ((index + 1) % LARGE_PACK_NORMALIZATION_CHUNK === 0) await yieldProjectionTask();
-      }
-      if (evaluatedEntries.length % LARGE_PACK_NORMALIZATION_CHUNK !== 0) await yieldProjectionTask();
-      evaluatedEntries.sort(compareEntries);
-      if (evaluatedEntries.length > 0) await yieldProjectionTask();
-      entries = Object.freeze(evaluatedEntries);
+      let evaluatedEntryCount = 0;
+      entries = await profileEquipmentStage(
+        "catalogue-policy-evaluation",
+        async () => {
+          const sharedAuthority = context.policy.gmJudgments.some(
+            (judgment) => judgment.kind === "rarity-source-exception"
+          )
+            ? null
+            : new Map<string, CachedCandidateAuthority>();
+          const evaluatedEntries: EquipmentCatalogueEntry[] = [];
+          for (let index = 0; index < loaded.candidates.length; index += 1) {
+            evaluatedEntries.push(this.#evaluateCandidate(context, loaded.candidates[index]!, null, sharedAuthority));
+            if ((index + 1) % LARGE_PACK_NORMALIZATION_CHUNK === 0) await yieldProjectionTask();
+          }
+          if (evaluatedEntries.length % LARGE_PACK_NORMALIZATION_CHUNK !== 0) await yieldProjectionTask();
+          evaluatedEntries.sort(compareEntries);
+          if (evaluatedEntries.length > 0) await yieldProjectionTask();
+          evaluatedEntryCount = evaluatedEntries.length;
+          return Object.freeze(evaluatedEntries);
+        },
+        () => ({ candidateCount: loaded.candidates.length, entryCount: evaluatedEntryCount, cacheHit: false })
+      );
       evaluatedByPolicy ??= new Map();
       setBoundedCache(evaluatedByPolicy, evaluatedKey, entries, PROJECTION_SNAPSHOT_LIMIT);
       this.#evaluatedEntriesByMaterial.set(loaded, evaluatedByPolicy);
@@ -852,7 +863,11 @@ async function loadPackProjection(
 ): Promise<PackProjectionResult> {
   let index: Iterable<unknown> | null | undefined;
   try {
-    index = await pack.getIndex({ fields: [...INDEX_FIELDS] });
+    index = await profileEquipmentStage(
+      "catalogue-index-wait",
+      () => pack.getIndex({ fields: [...INDEX_FIELDS] }),
+      () => ({ packId, requestedFieldCount: INDEX_FIELDS.length })
+    );
   } catch {
     return projectionFailure(
       sourceDiagnostic(
@@ -875,8 +890,17 @@ async function loadPackProjection(
     );
   }
   let entries: unknown[];
+  let materializedEntryCount = 0;
   try {
-    entries = Array.from(index);
+    entries = profileEquipmentStage(
+      "catalogue-index-materialization",
+      () => {
+        const materialized = Array.from(index);
+        materializedEntryCount = materialized.length;
+        return materialized;
+      },
+      () => ({ packId, entryCount: materializedEntryCount })
+    );
   } catch {
     return projectionFailure(
       sourceDiagnostic(
@@ -890,31 +914,44 @@ async function loadPackProjection(
   const candidates: CachedProjectionCandidate[] = [];
   const diagnostics: EquipmentSourceDiagnostic[] = [];
   let normalizationWork = 0;
-  for (let index = 0; index < entries.length; index += 1) {
-    const entry = entries[index];
-    const cached = isRecord(entry) ? normalizationSnapshot?.get(entry) : undefined;
-    const witness = isRecord(entry) ? indexNormalizationWitness(entry) : null;
-    if (cached && witness !== null && cached.witness === witness) {
-      candidates.push(cached.candidate);
-      continue;
-    }
-    const normalized = normalizeIndexEntry(
-      entry,
-      packId,
-      index,
-      pack.indexedBrowsePricing === "pf2e-physical-source-v1"
-    );
-    if ("diagnostic" in normalized) diagnostics.push(normalized.diagnostic);
-    else {
-      candidates.push(normalized.candidate);
-      if (isRecord(entry) && witness !== null) {
-        normalizationSnapshot?.set(entry, Object.freeze({ candidate: normalized.candidate, witness }));
+  await profileEquipmentStage(
+    "catalogue-normalization",
+    async () => {
+      for (let index = 0; index < entries.length; index += 1) {
+        const entry = entries[index];
+        const cached = isRecord(entry) ? normalizationSnapshot?.get(entry) : undefined;
+        const witness = isRecord(entry) ? indexNormalizationWitness(entry) : null;
+        if (cached && witness !== null && cached.witness === witness) {
+          candidates.push(cached.candidate);
+          continue;
+        }
+        const normalized = normalizeIndexEntry(
+          entry,
+          packId,
+          index,
+          pack.indexedBrowsePricing === "pf2e-physical-source-v1"
+        );
+        if ("diagnostic" in normalized) diagnostics.push(normalized.diagnostic);
+        else {
+          candidates.push(normalized.candidate);
+          if (isRecord(entry) && witness !== null) {
+            normalizationSnapshot?.set(entry, Object.freeze({ candidate: normalized.candidate, witness }));
+          }
+        }
+        normalizationWork += 1;
+        if (normalizationWork % LARGE_PACK_NORMALIZATION_CHUNK === 0) await yieldProjectionTask();
       }
-    }
-    normalizationWork += 1;
-    if (normalizationWork % LARGE_PACK_NORMALIZATION_CHUNK === 0) await yieldProjectionTask();
-  }
-  if (normalizationWork % LARGE_PACK_NORMALIZATION_CHUNK !== 0) await yieldProjectionTask();
+      if (normalizationWork % LARGE_PACK_NORMALIZATION_CHUNK !== 0) await yieldProjectionTask();
+    },
+    () => ({
+      packId,
+      entryCount: entries.length,
+      normalizedCount: normalizationWork,
+      reusedNormalizationCount: entries.length - normalizationWork,
+      candidateCount: candidates.length,
+      diagnosticCount: diagnostics.length,
+    })
+  );
   return Object.freeze({
     candidates: Object.freeze(candidates),
     diagnostics: Object.freeze(sortEquipmentSourceDiagnostics(diagnostics)),

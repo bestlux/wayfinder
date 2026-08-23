@@ -17,6 +17,56 @@ const CATALOGUE_VIEWPORT_ACTIONS = new Set([
   "cart-quantity",
   "preview-change",
 ]);
+const EQUIPMENT_STAGE_NAMES = new Set([
+  "catalogue-index-wait",
+  "catalogue-index-materialization",
+  "catalogue-normalization",
+  "catalogue-policy-evaluation",
+  "actor-pricing-fingerprint",
+  "drafted-size-resolution",
+  "criteria-filter-facet-projection",
+  "browse-record-projection",
+  "criteria-rank",
+  "equipment-ui-projection",
+  "equipment-pane-assembly",
+  "mounted-row-projection",
+  "foundry-prepare-context",
+  "foundry-template-render",
+  "foundry-html-replacement",
+  "foundry-on-render-layout",
+]);
+const REQUIRED_COLD_STAGE_NAMES = [
+  "catalogue-index-wait",
+  "catalogue-index-materialization",
+  "catalogue-normalization",
+  "catalogue-policy-evaluation",
+  "actor-pricing-fingerprint",
+  "drafted-size-resolution",
+  "criteria-filter-facet-projection",
+  "browse-record-projection",
+  "criteria-rank",
+  "equipment-ui-projection",
+  "equipment-pane-assembly",
+  "mounted-row-projection",
+  "foundry-prepare-context",
+  "foundry-template-render",
+  "foundry-html-replacement",
+  "foundry-on-render-layout",
+];
+const REQUIRED_FACET_STAGE_NAMES = [
+  "actor-pricing-fingerprint",
+  "drafted-size-resolution",
+  "criteria-filter-facet-projection",
+  "browse-record-projection",
+  "criteria-rank",
+  "equipment-ui-projection",
+  "equipment-pane-assembly",
+  "mounted-row-projection",
+  "foundry-prepare-context",
+  "foundry-template-render",
+  "foundry-html-replacement",
+  "foundry-on-render-layout",
+];
 
 const FROZEN_VIEWPORT = { width: 1440, height: 1000 };
 const FROZEN_APP_WIDTHS = [1240, 1180, 980, 760];
@@ -368,6 +418,7 @@ export function validateEquipmentSample(sample, profile) {
     failures.push("Timing samples must use the default result-window height and frozen browser viewport.");
   }
   failures.push(...validateSampleTiming(sample, profile));
+  failures.push(...validateEquipmentStageTiming(sample));
   if (sample.semanticPassed !== true) failures.push("Sample did not reach its exact semantic DOM oracle.");
   if (sample.actionId === "rapid-search") {
     const finalQuery = profile.querySequence.at(-1);
@@ -525,6 +576,102 @@ export function validateEquipmentSample(sample, profile) {
     }
   }
   return failures;
+}
+
+export function validateEquipmentStageTiming(sample) {
+  const failures = [];
+  const timing = sample?.stageTiming;
+  if (
+    timing?.schemaVersion !== 1 ||
+    timing.observerEnabled !== true ||
+    timing.closed !== true ||
+    !Array.isArray(timing.intervals)
+  ) {
+    return ["Equipment sample lacks closed stage timing schema 1 evidence."];
+  }
+  if (
+    !nonnegativeInteger(timing.startedCount) ||
+    !nonnegativeInteger(timing.completedCount) ||
+    !nonnegativeInteger(timing.pendingCount) ||
+    !nonnegativeInteger(timing.lateCompletionCount) ||
+    timing.startedCount !== timing.completedCount ||
+    timing.completedCount !== timing.intervals.length ||
+    timing.pendingCount !== 0 ||
+    timing.lateCompletionCount !== 0
+  ) {
+    failures.push("Equipment stage timing counters are incomplete, late, or disagree with raw intervals.");
+  }
+  const ids = new Set();
+  for (const interval of timing.intervals) {
+    if (!Number.isInteger(interval?.id) || interval.id === 0 || ids.has(interval.id)) {
+      failures.push("Equipment stage timing interval identities are missing or duplicated.");
+    } else {
+      ids.add(interval.id);
+    }
+    if (!EQUIPMENT_STAGE_NAMES.has(interval?.stage)) {
+      failures.push(`Equipment stage timing contains unknown stage ${interval?.stage ?? "<missing>"}.`);
+    }
+    if (
+      !nonnegativeFinite(interval?.startedAt) ||
+      !nonnegativeFinite(interval?.completedAt) ||
+      !nonnegativeFinite(interval?.durationMs) ||
+      interval.completedAt < interval.startedAt ||
+      !nearlyEqual(interval.durationMs, interval.completedAt - interval.startedAt) ||
+      interval.startedAt < sample.sampleStartedAt ||
+      interval.completedAt > sample.observationCompletedAt ||
+      interval.status !== "completed" ||
+      !plainRecord(interval.details) ||
+      interval.details?.detailCaptureFailed === true
+    ) {
+      failures.push(`${interval?.stage ?? "Equipment stage"} timing evidence is invalid or outside the sample.`);
+    }
+    if (
+      interval?.stage === "actor-pricing-fingerprint" &&
+      (!nonnegativeInteger(interval.details?.itemCount) ||
+        !nonnegativeInteger(interval.details?.effectCount) ||
+        !Number.isInteger(interval.details?.sourceCharacterCount) ||
+        interval.details.sourceCharacterCount < 1)
+    ) {
+      failures.push("Actor-pricing stage lacks exact embedded-document and source-size counters.");
+    }
+    if (
+      interval?.stage === "drafted-size-resolution" &&
+      typeof interval.details?.actorPricingFingerprintAvailable !== "boolean"
+    ) {
+      failures.push("Drafted-size stage lacks actor-pricing fingerprint availability.");
+    }
+    if (
+      Array.isArray(sample.actionIntervals) &&
+      !sample.actionIntervals.some((action) =>
+        intervalsOverlap(interval.startedAt, interval.completedAt, action.startedAt, action.completedAt)
+      )
+    ) {
+      failures.push(`${interval?.stage ?? "Equipment stage"} timing was not attributable to a primary action interval.`);
+    }
+  }
+  for (let leftIndex = 0; leftIndex < timing.intervals.length; leftIndex += 1) {
+    const left = timing.intervals[leftIndex];
+    for (let rightIndex = leftIndex + 1; rightIndex < timing.intervals.length; rightIndex += 1) {
+      const right = timing.intervals[rightIndex];
+      if (!intervalsOverlap(left.startedAt, left.completedAt, right.startedAt, right.completedAt)) continue;
+      const leftContainsRight = left.startedAt <= right.startedAt && left.completedAt >= right.completedAt;
+      const rightContainsLeft = right.startedAt <= left.startedAt && right.completedAt >= left.completedAt;
+      if (!leftContainsRight && !rightContainsLeft) {
+        failures.push(`${left.stage} and ${right.stage} stage timings partially overlap without containment.`);
+      }
+    }
+  }
+  const observedStages = new Set(timing.intervals.map((interval) => interval.stage));
+  const required =
+    sample?.actionId === "cold-open"
+      ? REQUIRED_COLD_STAGE_NAMES
+      : sample?.actionId === "facet-change"
+        ? REQUIRED_FACET_STAGE_NAMES
+        : [];
+  for (const stage of required) {
+    if (!observedStages.has(stage)) failures.push(`${sample.actionId} stage timing lacks ${stage}.`);
+  }
+  return [...new Set(failures)];
 }
 
 export function validateEquipmentResultWindowObservation(observation, profile) {
@@ -970,6 +1117,7 @@ export function summarizeEquipmentProfile(profile, samples) {
         longTaskCount: selected.reduce((total, sample) => total + (sample.qualifyingLongTasks?.length ?? 0), 0),
         observedLongTaskCount: selected.reduce((total, sample) => total + (sample.observedLongTasks?.length ?? 0), 0),
         postSettleLongTaskCount: selected.reduce((total, sample) => total + (sample.postSettleLongTasks?.length ?? 0), 0),
+        stageTiming: summarizeStageTiming(selected),
         endToEndTypingDiagnosticP50Ms:
           action.id === "rapid-search"
             ? percentile(
@@ -1065,6 +1213,31 @@ export function summarizeEquipmentProfile(profile, samples) {
     p95Ms: percentile(measured.map((sample) => sample.durationMs), 0.95),
     byActionWidth,
   };
+}
+
+function summarizeStageTiming(samples) {
+  const intervals = samples.flatMap((sample) => sample.stageTiming?.intervals ?? []);
+  return [...EQUIPMENT_STAGE_NAMES]
+    .map((stage) => {
+      const selected = intervals.filter((interval) => interval.stage === stage);
+      return {
+        stage,
+        intervalCount: selected.length,
+        sampleCount: samples.filter((sample) =>
+          sample.stageTiming?.intervals?.some((interval) => interval.stage === stage)
+        ).length,
+        p50Ms: percentile(
+          selected.map((interval) => interval.durationMs),
+          0.5,
+        ),
+        p95Ms: percentile(
+          selected.map((interval) => interval.durationMs),
+          0.95,
+        ),
+        maxMs: selected.length > 0 ? Math.max(...selected.map((interval) => interval.durationMs)) : null,
+      };
+    })
+    .filter((entry) => entry.intervalCount > 0);
 }
 
 export function validateEquipmentBudgets(profile, summary, options = {}) {
@@ -1372,6 +1545,10 @@ function nonnegativeInteger(value) {
 
 function nonnegativeFinite(value) {
   return Number.isFinite(value) && value >= 0;
+}
+
+function plainRecord(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function nearlyEqual(left, right) {

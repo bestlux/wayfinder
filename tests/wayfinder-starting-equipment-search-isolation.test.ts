@@ -85,7 +85,8 @@ describe("starting equipment search isolation", () => {
     );
     expect(stableCatalogue).toContain("new ResizeObserverConstructor(this.#onResize)");
     expect(stableCatalogue).toContain("this.#resizeObserver?.observe(this.#viewport);");
-    expect(appShell).toContain("#mountEquipmentStableCatalogue(root, context.equipmentRenderSession);");
+    expect(appShell).toContain('"mounted-row-projection"');
+    expect(appShell).toContain("() => this.#mountEquipmentStableCatalogue(root, context.equipmentRenderSession)");
     expect(appShell).toContain("this.#equipmentStableCatalogue.controller.setProjection({");
     const mountStart = appShell.indexOf("  #mountEquipmentStableCatalogue(");
     const mountEnd = appShell.indexOf("  #equipmentResultWindowState(", mountStart);

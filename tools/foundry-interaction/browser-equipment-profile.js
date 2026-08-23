@@ -13,6 +13,9 @@ let configured = false;
 let documentReadGate = null;
 let orderedCatalogueSourceUuids = null;
 let readyDraftSnapshot = null;
+let activeStageSample = null;
+let nextHarnessStageId = -1;
+let pendingTemplateStage = null;
 
 globalThis.__wayfinderEquipmentProfile = {
   async configure(payload) {
@@ -569,6 +572,16 @@ function beginSample({ finalQuery, finalResultValues }) {
     observer.observe({ type: "longtask", buffered: false });
   }
   const root = currentRoot();
+  const stageTiming = {
+    schemaVersion: 1,
+    observerEnabled: true,
+    startedCount: 0,
+    completedCount: 0,
+    pendingCount: 0,
+    lateCompletionCount: 0,
+    intervals: [],
+    closed: false,
+  };
   const sample = {
     startedAt: performance.now(),
     actionIntervals: [],
@@ -587,7 +600,9 @@ function beginSample({ finalQuery, finalResultValues }) {
     focusListener: null,
     inputListener: null,
     mutationObserver: null,
+    stageTiming,
   };
+  activeStageSample = stageTiming;
   sample.focusListener = (event) => {
     if (event.target?.matches?.(SEARCH_SELECTOR)) sample.focusLossCount += 1;
   };
@@ -663,6 +678,8 @@ function finishSample(sample, semanticPassed, previewSplit, actionOutcome) {
   const primaryDurations = completedIntervals.map(intervalDuration);
   const durationMs = primaryDurations.length > 0 ? Math.max(...primaryDurations) : null;
   const geometry = appGeometry();
+  sample.stageTiming.closed = true;
+  if (activeStageSample === sample.stageTiming) activeStageSample = null;
   return {
     schemaVersion: 3,
     sampleStartedAt: sample.startedAt,
@@ -719,6 +736,7 @@ function finishSample(sample, semanticPassed, previewSplit, actionOutcome) {
     fullPrepareContextCount: counters.fullPrepareContext - sample.counterStart.fullPrepareContext,
     equipmentRenderCallCount: counters.equipmentRender - sample.counterStart.equipmentRender,
     equipmentPrepareContextCount: counters.equipmentPrepareContext - sample.counterStart.equipmentPrepareContext,
+    stageTiming: sample.stageTiming,
     actionOutcome,
     ...previewSplit,
   };
@@ -729,7 +747,23 @@ function intervalsOverlap(leftStart, leftEnd, rightStart, rightEnd) {
 }
 
 async function instrumentAppPrototype() {
-  const { WayfinderApp } = await import("/modules/wayfinder-pf2e/scripts/wayfinder/app-shell.js");
+  const [{ WayfinderApp }, profiler, adapterModule] = await Promise.all([
+    import("/modules/wayfinder-pf2e/scripts/wayfinder/app-shell.js"),
+    import("/modules/wayfinder-pf2e/scripts/wayfinder/application/equipment-performance-profiler.js"),
+    import("/modules/wayfinder-pf2e/scripts/wayfinder/application/starting-equipment-ui-adapter.js"),
+  ]);
+  profiler.registerEquipmentProfileStageObserver({
+    start: captureStageStart,
+    complete: captureStageCompletion,
+  });
+  const equipmentAdapter = adapterModule.getStartingEquipmentUiAdapter();
+  if (!equipmentAdapter.__wayfinderEquipmentProfileInstrumented) {
+    Object.defineProperty(equipmentAdapter, "__wayfinderEquipmentProfileInstrumented", { value: true });
+    const project = equipmentAdapter.project;
+    equipmentAdapter.project = function (...args) {
+      return captureHarnessStage("equipment-ui-projection", () => project.apply(this, args));
+    };
+  }
   const prototype = WayfinderApp.prototype;
   if (prototype.__wayfinderEquipmentProfileInstrumented) return;
   Object.defineProperty(prototype, "__wayfinderEquipmentProfileInstrumented", { value: true });
@@ -743,11 +777,25 @@ async function instrumentAppPrototype() {
   };
   const prepare = prototype._prepareContext;
   prototype._prepareContext = async function (...args) {
-    const context = await prepare.apply(this, args);
-    if (this.actor?.id === actorId) {
+    if (this.actor?.id !== actorId) return prepare.apply(this, args);
+    const context = await captureHarnessStage("foundry-prepare-context", async () => {
+      const context = await prepare.apply(this, args);
       counters[context?.wayfinderRenderScope === "equipment" ? "equipmentPrepareContext" : "fullPrepareContext"] += 1;
-    }
+      return context;
+    });
+    pendingTemplateStage = beginHarnessStage("foundry-template-render");
     return context;
+  };
+  const replace = prototype._replaceHTML;
+  prototype._replaceHTML = function (...args) {
+    if (this.actor?.id !== actorId) return replace.apply(this, args);
+    completePendingTemplateStage();
+    return captureHarnessStage("foundry-html-replacement", () => replace.apply(this, args));
+  };
+  const onRender = prototype._onRender;
+  prototype._onRender = async function (...args) {
+    if (this.actor?.id !== actorId) return onRender.apply(this, args);
+    return captureHarnessStage("foundry-on-render-layout", () => onRender.apply(this, args));
   };
   if (typeof prototype._buildRenderPlan === "function") {
     counters.planBuildCounterSupported = true;
@@ -757,6 +805,70 @@ async function instrumentAppPrototype() {
       return build.apply(this, args);
     };
   }
+}
+
+function captureHarnessStage(stage, operation) {
+  const pending = beginHarnessStage(stage);
+  try {
+    const result = operation();
+    if (result && typeof result.then === "function") {
+      return Promise.resolve(result).then(
+        (value) => {
+          completeHarnessStage(pending, "completed");
+          return value;
+        },
+        (error) => {
+          completeHarnessStage(pending, "failed");
+          throw error;
+        },
+      );
+    }
+    completeHarnessStage(pending, "completed");
+    return result;
+  } catch (error) {
+    completeHarnessStage(pending, "failed");
+    throw error;
+  }
+}
+
+function beginHarnessStage(stage) {
+  const start = { id: nextHarnessStageId--, stage, startedAt: performance.now() };
+  return { start, owner: captureStageStart(start) };
+}
+
+function completeHarnessStage(pending, status) {
+  if (!pending) return;
+  const { start, owner } = pending;
+  const completedAt = performance.now();
+  captureStageCompletion(
+    { ...start, completedAt, durationMs: completedAt - start.startedAt, status, details: {} },
+    owner,
+  );
+}
+
+function completePendingTemplateStage() {
+  const pending = pendingTemplateStage;
+  pendingTemplateStage = null;
+  completeHarnessStage(pending, "completed");
+}
+
+function captureStageStart() {
+  const owner = activeStageSample;
+  if (!owner || owner.closed) return null;
+  owner.startedCount += 1;
+  owner.pendingCount += 1;
+  return owner;
+}
+
+function captureStageCompletion(event, owner) {
+  if (!owner) return;
+  owner.pendingCount = Math.max(0, owner.pendingCount - 1);
+  if (owner.closed) {
+    owner.lateCompletionCount += 1;
+    return;
+  }
+  owner.completedCount += 1;
+  owner.intervals.push(event);
 }
 
 function instrumentPacks() {

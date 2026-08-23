@@ -68,6 +68,7 @@ import {
   type EquipmentCataloguePackLike,
   type EquipmentCatalogueService,
 } from "./equipment-catalogue-service.js";
+import { profileEquipmentStage } from "./equipment-performance-profiler.js";
 import {
   resolveCurrentEquipmentSourceDiagnostics,
   resolveEquipmentPolicyForActor,
@@ -507,7 +508,11 @@ export function createEquipmentAcquisitionRuntime(
           indexEntries(projection.entries)
         );
         const actorPricingFingerprint = fingerprintActorPricingContext(request.actor);
-        const targetSize = await cachedDraftedEquipmentSize(request.actor, request.draft, actorPricingFingerprint);
+        const targetSize = await profileEquipmentStage(
+          "drafted-size-resolution",
+          () => cachedDraftedEquipmentSize(request.actor, request.draft, actorPricingFingerprint),
+          () => ({ actorPricingFingerprintAvailable: actorPricingFingerprint !== null })
+        );
         throwIfStartingEquipmentProjectionAborted(request.signal);
         const normalizedFilters = normalizeEquipmentCatalogueFilters({
           query: request.query,
@@ -535,39 +540,68 @@ export function createEquipmentAcquisitionRuntime(
           browseProjectionCache.delete(browseProjectionKey);
           browseProjectionCache.set(browseProjectionKey, browseSnapshot);
         } else {
-          const filterProjection = projectEquipmentCatalogueFilters({
-            entries,
-            filters: normalizedFilters,
-            selectedValues: request.filters,
-            includeTitanMaulerFacet: titanMauler.required && titanMauler.selectedSourceUuid === null,
-          });
-          const matchedEntries = Object.freeze(
-            rankEquipmentCatalogueMatches(filterProjection.matchedEntries, request.query)
+          let filteredEntryCount = 0;
+          let projectedFacetCount = 0;
+          const filterProjection = profileEquipmentStage(
+            "criteria-filter-facet-projection",
+            () => {
+              const projected = projectEquipmentCatalogueFilters({
+                entries,
+                filters: normalizedFilters,
+                selectedValues: request.filters,
+                includeTitanMaulerFacet: titanMauler.required && titanMauler.selectedSourceUuid === null,
+              });
+              filteredEntryCount = projected.matchedEntries.length;
+              projectedFacetCount = projected.facets.length;
+              return projected;
+            },
+            () => ({ inputEntryCount: entries.length, filteredEntryCount, projectedFacetCount })
           );
-          const records = Object.freeze(
-            matchedEntries.map((entry) => {
-              if (
-                entry.price.kind !== "priced" ||
-                entry.unavailableReasons.some(
-                  (reason) => reason.code !== "source-not-allowed" && reason.code !== "rarity-not-available"
-                )
-              ) {
-                return cachedUiRecord(entry);
-              }
-              const browseCacheKey = actorPricingFingerprint
-                ? equipmentBrowsePreparedRecordCacheKey({
-                    projectionCacheKey: projection.cacheKey,
-                    entry,
-                    actorPricingFingerprint,
-                    accessFactsFingerprint: context.draft.accessFactsFingerprint,
-                    targetLevel: policy.targetLevel,
-                    targetSize,
-                  })
-                : null;
-              const cached = browseCacheKey ? cachedBrowseRecord(browseCacheKey) : null;
-              const indexedPrice = indexedBrowsePrice(entry, targetSize);
-              return cached ?? (indexedPrice ? cachedUiRecord(entry, indexedPrice) : cachedPendingUiRecord(entry));
-            })
+          let matchedEntryCount = 0;
+          const matchedEntries = profileEquipmentStage(
+            "criteria-rank",
+            () => {
+              const matches = Object.freeze(
+                rankEquipmentCatalogueMatches(filterProjection.matchedEntries, request.query)
+              );
+              matchedEntryCount = matches.length;
+              return matches;
+            },
+            () => ({ inputEntryCount: filterProjection.matchedEntries.length, matchedEntryCount })
+          );
+          let projectedRecordCount = 0;
+          const records = profileEquipmentStage(
+            "browse-record-projection",
+            () => {
+              const projected = Object.freeze(
+                matchedEntries.map((entry) => {
+                  if (
+                    entry.price.kind !== "priced" ||
+                    entry.unavailableReasons.some(
+                      (reason) => reason.code !== "source-not-allowed" && reason.code !== "rarity-not-available"
+                    )
+                  ) {
+                    return cachedUiRecord(entry);
+                  }
+                  const browseCacheKey = actorPricingFingerprint
+                    ? equipmentBrowsePreparedRecordCacheKey({
+                        projectionCacheKey: projection.cacheKey,
+                        entry,
+                        actorPricingFingerprint,
+                        accessFactsFingerprint: context.draft.accessFactsFingerprint,
+                        targetLevel: policy.targetLevel,
+                        targetSize,
+                      })
+                    : null;
+                  const cached = browseCacheKey ? cachedBrowseRecord(browseCacheKey) : null;
+                  const indexedPrice = indexedBrowsePrice(entry, targetSize);
+                  return cached ?? (indexedPrice ? cachedUiRecord(entry, indexedPrice) : cachedPendingUiRecord(entry));
+                })
+              );
+              projectedRecordCount = projected.length;
+              return projected;
+            },
+            () => ({ matchedEntryCount: matchedEntries.length, recordCount: projectedRecordCount })
           );
           const nextSnapshot: BrowseProjectionSnapshot = {
             orderKey,
@@ -2415,22 +2449,41 @@ function isDraftedEquipmentSizeSingletonChoice(slotId: string): boolean {
 }
 
 function fingerprintActorPricingContext(actor: unknown): string | null {
-  try {
-    const actorRecord = record(actor);
-    const toObject = actorRecord.toObject;
-    const source =
-      typeof toObject === "function" ? (toObject as (source?: boolean) => unknown).call(actor, true) : actor;
-    const actorSource = record(source);
-    return fingerprintRuntimeMaterial("equipment-actor-pricing-v1", {
-      type: actorSource.type ?? actorRecord.type ?? null,
-      system: cloneData(actorSource.system ?? actorRecord.system ?? {}),
-      items: pricingEmbeddedDocuments(actorSource.items ?? actorRecord.items),
-      effects: pricingEmbeddedDocuments(actorSource.effects ?? actorRecord.effects),
-      flags: flagsWithoutWayfinder(actorSource.flags ?? actorRecord.flags),
-    });
-  } catch {
-    return null;
-  }
+  let itemCount = 0;
+  let effectCount = 0;
+  let fingerprintMaterial: Readonly<Record<string, unknown>> | null = null;
+  return profileEquipmentStage(
+    "actor-pricing-fingerprint",
+    () => {
+      try {
+        const actorRecord = record(actor);
+        const toObject = actorRecord.toObject;
+        const source =
+          typeof toObject === "function" ? (toObject as (source?: boolean) => unknown).call(actor, true) : actor;
+        const actorSource = record(source);
+        const items = pricingEmbeddedDocuments(actorSource.items ?? actorRecord.items);
+        const effects = pricingEmbeddedDocuments(actorSource.effects ?? actorRecord.effects);
+        const material = {
+          type: actorSource.type ?? actorRecord.type ?? null,
+          system: cloneData(actorSource.system ?? actorRecord.system ?? {}),
+          items,
+          effects,
+          flags: flagsWithoutWayfinder(actorSource.flags ?? actorRecord.flags),
+        };
+        itemCount = items.length;
+        effectCount = effects.length;
+        fingerprintMaterial = material;
+        return fingerprintRuntimeMaterial("equipment-actor-pricing-v1", material);
+      } catch {
+        return null;
+      }
+    },
+    () => ({
+      itemCount,
+      effectCount,
+      sourceCharacterCount: fingerprintMaterial ? canonicalJson(fingerprintMaterial).length : 0,
+    })
+  );
 }
 
 function pricingEmbeddedDocuments(value: unknown): readonly unknown[] {

@@ -75,51 +75,37 @@ export function createStartingEquipmentResultWindowLoadState(committed = {
     offset: 0,
     limit: STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize,
 }) {
-    return { committed: { ...committed }, pending: null, queued: null };
+    return { committed: { ...committed }, pending: null };
 }
 export function requestStartingEquipmentResultWindow(state, target) {
     if (state.pending) {
-        const queued = sameStartingEquipmentResultWindow(state.pending, target) ? null : { ...target };
+        if (sameStartingEquipmentResultWindow(state.pending, target))
+            return { state, scheduled: null };
+        const scheduled = { ...target };
         return {
-            state: { ...state, queued },
-            scheduled: null,
+            state: { committed: state.committed, pending: scheduled },
+            scheduled,
         };
     }
     if (sameStartingEquipmentResultWindow(state.committed, target))
         return { state, scheduled: null };
     const scheduled = { ...target };
     return {
-        state: { committed: state.committed, pending: scheduled, queued: null },
+        state: { committed: state.committed, pending: scheduled },
         scheduled,
     };
 }
 export function commitStartingEquipmentResultWindow(state, completed, committed = completed) {
     if (!state.pending || !sameStartingEquipmentResultWindow(state.pending, completed)) {
-        return { state: createStartingEquipmentResultWindowLoadState(committed), scheduled: null };
+        return { state, scheduled: null };
     }
-    const queued = state.queued && !sameStartingEquipmentResultWindow(state.queued, committed) ? state.queued : null;
     return {
-        state: {
-            committed: { ...committed },
-            pending: queued ? { ...queued } : null,
-            queued: null,
-        },
-        scheduled: queued ? { ...queued } : null,
+        state: createStartingEquipmentResultWindowLoadState(committed),
+        scheduled: null,
     };
 }
 export function recoverStartingEquipmentResultWindowAfterFailure(state) {
-    const queued = state.queued && !sameStartingEquipmentResultWindow(state.queued, state.committed) ? state.queued : null;
-    if (!queued) {
-        return { state: createStartingEquipmentResultWindowLoadState(state.committed), scheduled: null };
-    }
-    return {
-        state: {
-            committed: state.committed,
-            pending: { ...queued },
-            queued: null,
-        },
-        scheduled: { ...queued },
-    };
+    return { state: createStartingEquipmentResultWindowLoadState(state.committed), scheduled: null };
 }
 export function sameStartingEquipmentResultWindow(left, right) {
     return left.offset === right.offset && left.limit === right.limit;

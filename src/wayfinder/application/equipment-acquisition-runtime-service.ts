@@ -391,6 +391,7 @@ export function createEquipmentAcquisitionRuntime(
 
   const uiAdapter: StartingEquipmentUiAdapter = {
     async project(request) {
+      throwIfStartingEquipmentProjectionAborted(request.signal);
       const acquisition = request.draft.acquisition;
       const titanMauler = titanMaulerProjection(request.draft);
       if (!acquisition) {
@@ -411,23 +412,27 @@ export function createEquipmentAcquisitionRuntime(
       try {
         const { policy, context } = currentContext(request.actor, request.draft, acquisition);
         const { catalogue, projection } = await requireHealthyCatalogue(policy, context);
+        throwIfStartingEquipmentProjectionAborted(request.signal);
         let projectedEntries = projection.entries;
         let projectedPreview: EquipmentPreviewProjection | null = null;
         let hydratedPreviewEntry: EquipmentCatalogueEntry | null = null;
         if (request.previewSourceUuid) {
           const preview = await catalogue.hydratePreview(request.previewSourceUuid, context);
+          throwIfStartingEquipmentProjectionAborted(request.signal);
           if (preview?.entry) {
             hydratedPreviewEntry = preview.entry;
             projectedEntries = projection.entries.map((entry) =>
               entry.sourceUuid === preview.entry!.sourceUuid ? preview.entry! : entry
             );
             projectedPreview = await previewProjector.project(preview);
+            throwIfStartingEquipmentProjectionAborted(request.signal);
           }
         }
         const maximumLevel = policy.recipe.kind === "permanent-items" ? policy.targetLevel : policy.targetLevel - 1;
         const entries = projectedEntries.filter((entry) => entry.level <= maximumLevel);
         const actorPricingFingerprint = fingerprintActorPricingContext(request.actor);
         const targetSize = await cachedDraftedEquipmentSize(request.actor, request.draft, actorPricingFingerprint);
+        throwIfStartingEquipmentProjectionAborted(request.signal);
         const normalizedFilters = normalizeEquipmentCatalogueFilters({
           query: request.query,
           filters: request.filters,
@@ -473,10 +478,12 @@ export function createEquipmentAcquisitionRuntime(
             chunksOf(pendingRows, STARTING_EQUIPMENT_RESULT_WINDOW.hydrationChunkSize),
             STARTING_EQUIPMENT_RESULT_WINDOW.prefetchConcurrency,
             async (pendingChunk) => {
+              throwIfStartingEquipmentProjectionAborted(request.signal);
               const browseResolutions = await catalogue.resolveManyForBrowse(
                 context,
                 pendingChunk.map(({ entry }) => entry.sourceUuid)
               );
+              throwIfStartingEquipmentProjectionAborted(request.signal);
               if (
                 browseResolutions.length !== pendingChunk.length ||
                 browseResolutions.some((result, index) => result.sourceUuid !== pendingChunk[index]?.entry.sourceUuid)
@@ -491,7 +498,8 @@ export function createEquipmentAcquisitionRuntime(
                 }
                 return { ...row, resolved: result.resolution };
               });
-            }
+            },
+            request.signal
           )
         ).flat() as Array<PendingBrowseRow & { readonly resolved: EquipmentCatalogueApplyResolution }>;
         const batchRows = resolvedRows.filter(({ resolved }) => usesBrowsePhysicalPreparation(resolved));
@@ -500,7 +508,9 @@ export function createEquipmentAcquisitionRuntime(
           chunksOf(batchRows, STARTING_EQUIPMENT_RESULT_WINDOW.hydrationChunkSize),
           STARTING_EQUIPMENT_RESULT_WINDOW.prefetchConcurrency,
           async (batchChunk, chunkIndex) => {
+            throwIfStartingEquipmentProjectionAborted(request.signal);
             if (chunkIndex > 0) await yieldBetweenEquipmentPreparationChunks();
+            throwIfStartingEquipmentProjectionAborted(request.signal);
             const batchResults = await prepareBrowsePhysicalItems({
               actor: request.actor,
               targetLevel: policy.targetLevel,
@@ -510,6 +520,7 @@ export function createEquipmentAcquisitionRuntime(
                 source: resolved.source,
               })),
             });
+            throwIfStartingEquipmentProjectionAborted(request.signal);
             if (
               batchResults.length !== batchChunk.length ||
               batchResults.some((result, index) => result.key !== batchChunk[index]?.entry.sourceUuid)
@@ -517,7 +528,8 @@ export function createEquipmentAcquisitionRuntime(
               throw new Error("PF2E browse equipment preparation returned unstable entry mapping.");
             }
             return batchResults;
-          }
+          },
+          request.signal
         );
         for (const batchResults of preparedChunks) {
           for (const result of batchResults) batchResultByKey.set(result.key, result);
@@ -527,9 +539,12 @@ export function createEquipmentAcquisitionRuntime(
           chunksOf(resolvedRows, STARTING_EQUIPMENT_RESULT_WINDOW.hydrationChunkSize),
           STARTING_EQUIPMENT_RESULT_WINDOW.prefetchConcurrency,
           async (resolvedChunk, chunkIndex) => {
+            throwIfStartingEquipmentProjectionAborted(request.signal);
             if (chunkIndex > 0) await yieldBetweenEquipmentPreparationChunks();
+            throwIfStartingEquipmentProjectionAborted(request.signal);
             await Promise.all(
               resolvedChunk.map(async ({ entry, browseCacheKey, resolved }) => {
+                throwIfStartingEquipmentProjectionAborted(request.signal);
                 try {
                   const batchResult = batchResultByKey.get(entry.sourceUuid);
                   let price: AcquisitionPriceSnapshot;
@@ -555,6 +570,7 @@ export function createEquipmentAcquisitionRuntime(
                         preparePhysicalItem,
                       })
                     ).price;
+                    throwIfStartingEquipmentProjectionAborted(request.signal);
                   }
                   const record = toUiRecord(entry, price);
                   if (browseCacheKey) cacheBrowseRecord(browseCacheKey, record);
@@ -576,7 +592,9 @@ export function createEquipmentAcquisitionRuntime(
                 }
               })
             );
-          }
+            throwIfStartingEquipmentProjectionAborted(request.signal);
+          },
+          request.signal
         );
         const records = browseRows.map((row) => {
           if (row.kind === "record") return row.record;
@@ -584,6 +602,7 @@ export function createEquipmentAcquisitionRuntime(
           if (!prepared) throw new Error("PF2E browse equipment preparation omitted a projected record.");
           return prepared;
         });
+        throwIfStartingEquipmentProjectionAborted(request.signal);
         const visibleSourceUuids = new Set(records.map((record) => record.sourceUuid));
         const projectedEntryByUuid = new Map(projectedEntries.map((entry) => [entry.sourceUuid, entry]));
         const lineRecordSourceUuids = new Set(visibleSourceUuids);
@@ -615,6 +634,7 @@ export function createEquipmentAcquisitionRuntime(
           titanMauler,
         };
       } catch (error) {
+        if (request.signal?.aborted) throwStartingEquipmentProjectionAbort(request.signal);
         return {
           state: "error",
           message:
@@ -1968,22 +1988,38 @@ function chunksOf<T>(values: readonly T[], size: number): T[][] {
 async function mapChunksWithConcurrency<T, R>(
   chunks: readonly T[],
   concurrency: number,
-  worker: (chunk: T, index: number) => Promise<R>
+  worker: (chunk: T, index: number) => Promise<R>,
+  signal?: AbortSignal
 ): Promise<R[]> {
+  throwIfStartingEquipmentProjectionAborted(signal);
   if (chunks.length === 0) return [];
   const results = new Array<R>(chunks.length);
   let nextIndex = 0;
   const runWorker = async (): Promise<void> => {
     while (nextIndex < chunks.length) {
+      throwIfStartingEquipmentProjectionAborted(signal);
       const index = nextIndex;
       nextIndex += 1;
       results[index] = await worker(chunks[index]!, index);
+      throwIfStartingEquipmentProjectionAborted(signal);
     }
   };
   await Promise.all(
     Array.from({ length: Math.min(Math.max(1, Math.floor(concurrency)), chunks.length) }, () => runWorker())
   );
   return results;
+}
+
+function throwIfStartingEquipmentProjectionAborted(signal?: AbortSignal): void {
+  if (!signal?.aborted) return;
+  throwStartingEquipmentProjectionAbort(signal);
+}
+
+function throwStartingEquipmentProjectionAbort(signal: AbortSignal): never {
+  if (typeof signal.throwIfAborted === "function") signal.throwIfAborted();
+  const error = new Error("The starting-equipment projection was replaced by a newer request.");
+  error.name = "AbortError";
+  throw error;
 }
 
 async function yieldBetweenEquipmentPreparationChunks(): Promise<void> {

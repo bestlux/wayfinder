@@ -7,6 +7,7 @@ import type {
   equipmentResultAnchorAtViewport as resultAnchorAtViewport,
   transferEquipmentResultFocusToSentinel as transferFocusToSentinel,
 } from "../src/wayfinder/application/equipment-virtual-list-dom";
+import type { PickerSearchScheduler as PickerSearchSchedulerType } from "../src/wayfinder/application/picker-search-scheduler";
 import type { STARTING_EQUIPMENT_RESULT_WINDOW as resultWindowContract } from "../src/wayfinder/starting-equipment-result-window";
 
 const chromePath = [
@@ -39,6 +40,9 @@ const virtualListScript = readFileSync(resolve("scripts/wayfinder/application/eq
     "\nwindow.renderEquipmentResultSkeletonBand = renderEquipmentResultSkeletonBand;",
     "\nwindow.transferEquipmentResultFocusToSentinel = transferEquipmentResultFocusToSentinel;"
   );
+const pickerSchedulerScript = readFileSync(resolve("scripts/wayfinder/application/picker-search-scheduler.js"), "utf8")
+  .replaceAll("export ", "")
+  .concat("\nwindow.PickerSearchScheduler = PickerSearchScheduler;");
 
 it("binds the production virtual list to render identity, focus, and noninteractive skeleton contracts", () => {
   for (const contract of [
@@ -148,6 +152,86 @@ browserIt(
   }
 );
 
+browserIt("keeps focus and commits only the latest equipment lifecycle after preemption and rejection", async () => {
+  const browser = await chromium.launch({ executablePath: chromePath, headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1000, height: 800 } });
+    await page.setContent(fixture());
+    await page.addScriptTag({ content: resultWindowScript });
+    await page.addScriptTag({ content: virtualListScript });
+    await page.addScriptTag({ content: pickerSchedulerScript });
+
+    const outcome = await page.evaluate(async () => {
+      const list = document.querySelector<HTMLElement>("[data-wayfinder-equipment-virtual-list]")!;
+      const focusedRow = list.querySelector<HTMLButtonElement>("[data-result-index='0'] button")!;
+      focusedRow.focus({ preventScroll: true });
+      window.transferEquipmentResultFocusToSentinel(list);
+      let releaseObsolete!: () => void;
+      const obsoleteGate = new Promise<void>((resolve) => {
+        releaseObsolete = resolve;
+      });
+      const events: string[] = [];
+      const signals: AbortSignal[] = [];
+      let errors = 0;
+      const scheduler = new window.PickerSearchScheduler({
+        delayMs: 0,
+        preemptInFlight: true,
+        render: async (request, context) => {
+          events.push(`start:${request.viewRevision}`);
+          signals.push(context.signal);
+          if (request.viewRevision === 1) await obsoleteGate;
+          if (request.query === "reject") throw new Error("current rejection");
+          if (!context.isCurrent()) {
+            events.push(`stale:${request.viewRevision}`);
+            return;
+          }
+          list.dataset.resultOffset = String(request.viewRevision * 12);
+          events.push(`commit:${request.viewRevision}`);
+        },
+        onError: () => {
+          errors += 1;
+        },
+      });
+      const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 5));
+
+      scheduler.schedule("starting-equipment-level-1", "");
+      await settle();
+      // A facet/window revision can replace work without changing the query.
+      scheduler.schedule("starting-equipment-level-1", "");
+      await settle();
+      const latestOffset = list.dataset.resultOffset;
+      const obsoleteAborted = signals[0]?.aborted;
+      releaseObsolete();
+      await settle();
+
+      scheduler.schedule("starting-equipment-level-1", "reject");
+      await settle();
+      scheduler.schedule("starting-equipment-level-1", "retry");
+      await settle();
+
+      return {
+        errors,
+        events,
+        focusedSentinel: document.activeElement === list,
+        latestOffset,
+        obsoleteAborted,
+        recoveredOffset: list.dataset.resultOffset,
+      };
+    });
+
+    expect(outcome).toEqual({
+      errors: 1,
+      events: ["start:1", "start:2", "commit:2", "stale:1", "start:3", "start:4", "commit:4"],
+      focusedSentinel: true,
+      latestOffset: "24",
+      obsoleteAborted: true,
+      recoveredOffset: "48",
+    });
+  } finally {
+    await browser.close();
+  }
+});
+
 function fixture(): string {
   const rows = Array.from(
     { length: 36 },
@@ -174,5 +258,6 @@ declare global {
     equipmentResultAnchorAtViewport: typeof resultAnchorAtViewport;
     renderEquipmentResultSkeletonBand: typeof renderSkeletonBand;
     transferEquipmentResultFocusToSentinel: typeof transferFocusToSentinel;
+    PickerSearchScheduler: typeof PickerSearchSchedulerType;
   }
 }

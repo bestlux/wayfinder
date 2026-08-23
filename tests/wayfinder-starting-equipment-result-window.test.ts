@@ -130,11 +130,11 @@ describe("starting equipment result window", () => {
     }
   });
 
-  it("keeps committed rows populated while rapid multi-screen targets coalesce behind one load", () => {
+  it("keeps committed rows populated while rapid multi-screen targets preempt obsolete loads", () => {
     const initial = createStartingEquipmentResultWindowLoadState({ offset: 0, limit: 36 });
     const first = requestStartingEquipmentResultWindow(initial, { offset: 12, limit: 36 });
     expect(first).toMatchObject({
-      state: { committed: { offset: 0, limit: 36 }, pending: { offset: 12, limit: 36 }, queued: null },
+      state: { committed: { offset: 0, limit: 36 }, pending: { offset: 12, limit: 36 } },
       scheduled: { offset: 12, limit: 36 },
     });
 
@@ -142,47 +142,42 @@ describe("starting equipment result window", () => {
     expect(rapid).toMatchObject({
       state: {
         committed: { offset: 0, limit: 36 },
-        pending: { offset: 12, limit: 36 },
-        queued: { offset: 60, limit: 36 },
+        pending: { offset: 60, limit: 36 },
       },
-      scheduled: null,
+      scheduled: { offset: 60, limit: 36 },
     });
     expect(Array.from({ length: rapid.state.committed.limit }, (_, index) => index)).toHaveLength(36);
 
     const reversed = requestStartingEquipmentResultWindow(rapid.state, initial.committed);
     expect(reversed.state).toMatchObject({
       committed: initial.committed,
-      pending: { offset: 12, limit: 36 },
-      queued: initial.committed,
+      pending: initial.committed,
     });
     expect(commitStartingEquipmentResultWindow(reversed.state, { offset: 12, limit: 36 })).toMatchObject({
-      state: { committed: { offset: 12, limit: 36 }, pending: initial.committed, queued: null },
-      scheduled: initial.committed,
+      state: reversed.state,
+      scheduled: null,
     });
 
-    const committed = commitStartingEquipmentResultWindow(rapid.state, { offset: 12, limit: 36 });
+    const stale = commitStartingEquipmentResultWindow(rapid.state, { offset: 12, limit: 36 });
+    expect(stale).toEqual({ state: rapid.state, scheduled: null });
+    const committed = commitStartingEquipmentResultWindow(rapid.state, { offset: 60, limit: 36 });
     expect(committed).toMatchObject({
       state: {
-        committed: { offset: 12, limit: 36 },
-        pending: { offset: 60, limit: 36 },
-        queued: null,
+        committed: { offset: 60, limit: 36 },
+        pending: null,
       },
-      scheduled: { offset: 60, limit: 36 },
+      scheduled: null,
     });
   });
 
-  it("recovers a failed window with the latest queued target without wedging the committed rows", () => {
+  it("recovers a failed latest window without wedging the committed rows", () => {
     const initial = createStartingEquipmentResultWindowLoadState({ offset: 0, limit: 36 });
     const pending = requestStartingEquipmentResultWindow(initial, { offset: 12, limit: 36 }).state;
-    const queued = requestStartingEquipmentResultWindow(pending, { offset: 60, limit: 36 }).state;
+    const latest = requestStartingEquipmentResultWindow(pending, { offset: 60, limit: 36 }).state;
 
-    expect(recoverStartingEquipmentResultWindowAfterFailure(queued)).toEqual({
-      state: {
-        committed: { offset: 0, limit: 36 },
-        pending: { offset: 60, limit: 36 },
-        queued: null,
-      },
-      scheduled: { offset: 60, limit: 36 },
+    expect(recoverStartingEquipmentResultWindowAfterFailure(latest)).toEqual({
+      state: initial,
+      scheduled: null,
     });
     expect(recoverStartingEquipmentResultWindowAfterFailure(pending)).toEqual({
       state: initial,

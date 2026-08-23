@@ -47,4 +47,59 @@ describe("equipment search input service", () => {
       cursor: 13,
     });
   });
+
+  it("aborts obsolete equipment work and starts the latest target before it settles", async () => {
+    const first = deferred<void>();
+    const rendered: PickerSearchRequest[] = [];
+    const signals: AbortSignal[] = [];
+    const scheduler = createEquipmentSearchScheduler({
+      render: async (request, context) => {
+        rendered.push(request);
+        signals.push(context.signal);
+        if (rendered.length === 1) await first.promise;
+      },
+    });
+
+    const obsolete = scheduler.schedule("starting-equipment-level-5", "");
+    await vi.advanceTimersByTimeAsync(EQUIPMENT_SEARCH_DELAY_MS);
+    expect(rendered).toEqual([obsolete]);
+
+    // Window and facet changes deliberately reuse the same query text.
+    const latest = scheduler.schedule("starting-equipment-level-5", "");
+    expect(signals[0]?.aborted).toBe(true);
+    await vi.advanceTimersByTimeAsync(EQUIPMENT_SEARCH_DELAY_MS);
+    expect(rendered).toEqual([obsolete, latest]);
+
+    first.resolve();
+    await vi.runAllTimersAsync();
+    expect(signals[1]?.aborted).toBe(false);
+  });
+
+  it("reports a current failure once and remains available for an immediate retry", async () => {
+    const errors: unknown[] = [];
+    let calls = 0;
+    const scheduler = createEquipmentSearchScheduler({
+      render: async () => {
+        calls += 1;
+        if (calls === 1) throw new Error("current projection failed");
+      },
+      onError: (error) => errors.push(error),
+    });
+
+    scheduler.schedule("starting-equipment-level-5", "");
+    await vi.advanceTimersByTimeAsync(EQUIPMENT_SEARCH_DELAY_MS);
+    expect(errors).toEqual([new Error("current projection failed")]);
+
+    scheduler.schedule("starting-equipment-level-5", "");
+    await vi.advanceTimersByTimeAsync(EQUIPMENT_SEARCH_DELAY_MS);
+    expect(calls).toBe(2);
+  });
 });
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}

@@ -12,6 +12,8 @@ export interface StartingEquipmentUiRequest {
   readonly offset: number;
   readonly limit: number;
   readonly previewSourceUuid: string | null;
+  /** Aborts replaceable browse projections; authoritative commands do not use this signal. */
+  readonly signal?: AbortSignal;
 }
 
 export interface StartingEquipmentUiAdapter {

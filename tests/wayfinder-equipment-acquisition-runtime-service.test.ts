@@ -903,6 +903,45 @@ describe("equipment acquisition runtime", () => {
     expect(prepareDraftedActor).toHaveBeenCalledTimes(2);
   });
 
+  it("lets a latest window finish while obsolete PF2E browse preparation cooperatively aborts", async () => {
+    let releaseObsolete!: () => void;
+    const obsoleteGate = new Promise<void>((resolve) => {
+      releaseObsolete = resolve;
+    });
+    let preparationCall = 0;
+    const prepareBrowsePhysicalItems = vi.fn<PrepareBrowsePhysicalItems>(async (input) => {
+      preparationCall += 1;
+      if (preparationCall <= STARTING_EQUIPMENT_RESULT_WINDOW.prefetchConcurrency) await obsoleteGate;
+      return prepareTestBrowsePhysicalItems(input);
+    });
+    const sources = Array.from({ length: 72 }, (_, index) =>
+      dagger({ id: `preemption-${index}`, name: `Preemption ${index}` })
+    );
+    const { runtime, request } = fixture(
+      {
+        getIndex: vi.fn(async () => sources),
+        getDocument: vi.fn(async (id) => document(sources.find((source) => source._id === id)!)),
+      },
+      { prepareBrowsePhysicalItems }
+    );
+    const obsoleteController = new AbortController();
+    const obsolete = runtime.uiAdapter.project({ ...request, signal: obsoleteController.signal });
+    await vi.waitFor(() =>
+      expect(prepareBrowsePhysicalItems).toHaveBeenCalledTimes(STARTING_EQUIPMENT_RESULT_WINDOW.prefetchConcurrency)
+    );
+
+    obsoleteController.abort();
+    const latest = runtime.uiAdapter.project({
+      ...request,
+      offset: 36,
+      signal: new AbortController().signal,
+    });
+    await expect(latest).resolves.toMatchObject({ state: "ready", offset: 36 });
+
+    releaseObsolete();
+    await expect(obsolete).rejects.toMatchObject({ name: "AbortError" });
+  });
+
   it("does not retain drafted size under an actor fingerprint that changed during preparation", async () => {
     let releasePreparation!: () => void;
     const preparationGate = new Promise<void>((resolve) => {

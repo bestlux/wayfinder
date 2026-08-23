@@ -5,28 +5,40 @@ export interface PickerSearchRequest {
   readonly query: string;
 }
 
+export interface PickerSearchRenderContext {
+  readonly signal: AbortSignal;
+  readonly isCurrent: () => boolean;
+}
+
 interface PickerSearchSchedulerOptions {
   delayMs: number;
-  render: (request: PickerSearchRequest) => Promise<void>;
+  render: (request: PickerSearchRequest, context: PickerSearchRenderContext) => Promise<void>;
   onError?: (error: unknown, request: PickerSearchRequest) => void;
+  /**
+   * Start the latest settled request without waiting for obsolete work to finish.
+   * The replaced render is aborted cooperatively through its context signal.
+   */
+  preemptInFlight?: boolean;
 }
 
 export class PickerSearchScheduler {
   readonly #delayMs: number;
   readonly #render: PickerSearchSchedulerOptions["render"];
   readonly #onError: NonNullable<PickerSearchSchedulerOptions["onError"]>;
+  readonly #preemptInFlight: boolean;
   #viewRevision = 0;
   #sourceRevision = 0;
   #timer: ReturnType<typeof setTimeout> | null = null;
   #pending: PickerSearchRequest | null = null;
   #ready = false;
-  #inFlight = false;
+  #inFlight = new Map<number, AbortController>();
   #disposed = false;
 
   constructor(options: PickerSearchSchedulerOptions) {
     this.#delayMs = Math.max(0, options.delayMs);
     this.#render = options.render;
     this.#onError = options.onError ?? (() => undefined);
+    this.#preemptInFlight = options.preemptInFlight === true;
   }
 
   get sourceRevision(): number {
@@ -50,6 +62,7 @@ export class PickerSearchScheduler {
     };
     this.#pending = request;
     this.#ready = false;
+    if (this.#preemptInFlight) this.#abortInFlight();
     this.#clearTimer();
     this.#timer = setTimeout(() => {
       this.#timer = null;
@@ -94,6 +107,7 @@ export class PickerSearchScheduler {
     this.#pending = null;
     this.#ready = false;
     this.#clearTimer();
+    this.#abortInFlight();
   }
 
   #clearTimer(): void {
@@ -104,25 +118,35 @@ export class PickerSearchScheduler {
   }
 
   async #drain(): Promise<void> {
-    if (this.#disposed || this.#inFlight || !this.#ready || !this.#pending) {
+    if (this.#disposed || (!this.#preemptInFlight && this.#inFlight.size > 0) || !this.#ready || !this.#pending) {
       return;
     }
 
     const request = this.#pending;
     this.#pending = null;
     this.#ready = false;
-    this.#inFlight = true;
+    const controller = new AbortController();
+    this.#inFlight.set(request.viewRevision, controller);
     try {
-      await this.#render(request);
+      await this.#render(request, {
+        signal: controller.signal,
+        isCurrent: () => !controller.signal.aborted && this.isCurrent(request),
+      });
     } catch (error) {
-      if (this.isCurrent(request)) {
+      if (!controller.signal.aborted && this.isCurrent(request)) {
         this.#onError(error, request);
       }
     } finally {
-      this.#inFlight = false;
-      if (this.#ready && this.#pending) {
+      if (this.#inFlight.get(request.viewRevision) === controller) {
+        this.#inFlight.delete(request.viewRevision);
+      }
+      if (!this.#preemptInFlight && this.#ready && this.#pending) {
         void this.#drain();
       }
     }
+  }
+
+  #abortInFlight(): void {
+    for (const controller of this.#inFlight.values()) controller.abort();
   }
 }

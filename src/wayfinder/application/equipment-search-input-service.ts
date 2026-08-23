@@ -1,4 +1,8 @@
-import { type PickerSearchRequest, PickerSearchScheduler } from "./picker-search-scheduler.js";
+import {
+  type PickerSearchRenderContext,
+  type PickerSearchRequest,
+  PickerSearchScheduler,
+} from "./picker-search-scheduler.js";
 
 export const EQUIPMENT_SEARCH_DELAY_MS = 24;
 
@@ -15,12 +19,12 @@ export interface EquipmentSearchInputState {
 }
 
 interface EquipmentSearchSchedulerOptions {
-  readonly render: (request: PickerSearchRequest) => Promise<void>;
+  readonly render: (request: PickerSearchRequest, context: PickerSearchRenderContext) => Promise<void>;
   readonly onError?: (error: unknown, request: PickerSearchRequest) => void;
 }
 
 export function createEquipmentSearchScheduler(options: EquipmentSearchSchedulerOptions): PickerSearchScheduler {
-  return new PickerSearchScheduler({ delayMs: EQUIPMENT_SEARCH_DELAY_MS, ...options });
+  return new PickerSearchScheduler({ delayMs: EQUIPMENT_SEARCH_DELAY_MS, preemptInFlight: true, ...options });
 }
 
 export function scheduleEquipmentSearchInput(

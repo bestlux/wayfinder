@@ -41,7 +41,7 @@ describe("starting equipment search isolation", () => {
     const scopedEquipmentPrepare = prepare.slice(equipmentBranch, actorInspection);
     expect(scopedEquipmentPrepare).toContain("this.#projectStartingEquipmentCatalogue");
     expect(scopedEquipmentPrepare).toMatch(
-      /this\.#projectStartingEquipmentCatalogue\(session\.step,\s*\{\s*offset: equipmentRequest\.offset,\s*limit: equipmentRequest\.limit,\s*\}\)/
+      /this\.#projectStartingEquipmentCatalogue\(\s*session\.step,\s*\{\s*offset: equipmentRequest\.offset,\s*limit: equipmentRequest\.limit,\s*\},\s*this\.#equipmentProjectionSignalByViewRevision\.get\(equipmentRequest\.viewRevision\)\s*\)/
     );
     expect(scopedEquipmentPrepare).toContain('wayfinderRenderScope: "equipment"');
     expect(scopedEquipmentPrepare).not.toContain("this._buildRenderPlan");

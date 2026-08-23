@@ -142,6 +142,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     #lastDraftSavePhase = "idle";
     #pickerRenderSession = null;
     #equipmentRenderSession = null;
+    #equipmentProjectionSignalByViewRevision = new Map();
     #pickerSearchScheduler = new PickerSearchScheduler({
         delayMs: PICKER_SEARCH_DELAY_MS,
         render: (request) => this.#renderPickerSearch(request),
@@ -151,7 +152,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         },
     });
     #equipmentSearchScheduler = createEquipmentSearchScheduler({
-        render: (request) => this.#renderStartingEquipmentSearch(request),
+        render: (request, context) => this.#renderStartingEquipmentSearch(request, context.signal),
         onError: (error, request) => {
             console.error("PF2E Wayfinder equipment search render failed", error);
             ui.notifications.error(localizeAcquisition("wayfinder-pf2e.StartingEquipment.Errors.Search"));
@@ -302,7 +303,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             const pane = buildStartingEquipmentPane(session.step, draft, session.evaluation, await this.#projectStartingEquipmentCatalogue(session.step, {
                 offset: equipmentRequest.offset,
                 limit: equipmentRequest.limit,
-            }), localizeAcquisition, {
+            }, this.#equipmentProjectionSignalByViewRevision.get(equipmentRequest.viewRevision)), localizeAcquisition, {
                 worldPolicy: getEquipmentWorldPolicySetting(),
                 judgments: authorityStore.judgments,
                 requestDecisions: authorityStore.requestDecisions,
@@ -1105,7 +1106,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         this.#equipmentScheduledRenderIntent = "facet";
         this.#equipmentSearchScheduler.schedule(stepId, this.#equipmentSearchByStepId.get(stepId) ?? "");
     };
-    async #renderStartingEquipmentSearch(request) {
+    async #renderStartingEquipmentSearch(request, signal) {
         const intent = this.#equipmentScheduledRenderIntent;
         const announceWindow = intent !== "window" || this.#equipmentWindowAnnouncementPending;
         this.#equipmentWindowAnnouncementPending = false;
@@ -1121,11 +1122,19 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         };
         if (!this.#canCommitStartingEquipmentRender(equipmentRequest))
             return;
-        await this.render({
-            parts: [...startingEquipmentPartsForIntent(equipmentRequest.intent)],
-            wayfinderEquipmentUpdate: true,
-            wayfinderEquipmentRequest: equipmentRequest,
-        });
+        this.#equipmentProjectionSignalByViewRevision.set(equipmentRequest.viewRevision, signal);
+        try {
+            await this.render({
+                parts: [...startingEquipmentPartsForIntent(equipmentRequest.intent)],
+                wayfinderEquipmentUpdate: true,
+                wayfinderEquipmentRequest: equipmentRequest,
+            });
+        }
+        finally {
+            if (this.#equipmentProjectionSignalByViewRevision.get(equipmentRequest.viewRevision) === signal) {
+                this.#equipmentProjectionSignalByViewRevision.delete(equipmentRequest.viewRevision);
+            }
+        }
     }
     #renderStartingEquipmentPartial(stepId, intent) {
         this.#cancelEquipmentResultWindowRequests(stepId);
@@ -1437,7 +1446,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         }
         throw new Error(`Unsupported pane step kind: ${step.kind}`);
     }
-    #startingEquipmentUiRequest(step, resultWindow = this.#equipmentResultWindow(step.id)) {
+    #startingEquipmentUiRequest(step, resultWindow = this.#equipmentResultWindow(step.id), signal) {
         return {
             actor: this.actor,
             draft: this.#requireDraft(),
@@ -1446,11 +1455,12 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             filters: this.#equipmentFiltersByStepId.get(step.id) ?? {},
             ...resultWindow,
             previewSourceUuid: this.#equipmentPreviewByStepId.get(step.id) ?? null,
+            signal,
         };
     }
-    async #projectStartingEquipmentCatalogue(step, resultWindow) {
+    async #projectStartingEquipmentCatalogue(step, resultWindow, signal) {
         return {
-            ...(await getStartingEquipmentUiAdapter().project(this.#startingEquipmentUiRequest(step, resultWindow))),
+            ...(await getStartingEquipmentUiAdapter().project(this.#startingEquipmentUiRequest(step, resultWindow, signal))),
             openFilterPanel: this.#equipmentFilterPanelByStepId.get(step.id) ?? null,
             facetFilterQueries: {
                 source: this.#equipmentSourceSearchByStepId.get(step.id) ?? "",

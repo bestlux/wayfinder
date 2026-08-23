@@ -2,17 +2,19 @@ export class PickerSearchScheduler {
     #delayMs;
     #render;
     #onError;
+    #preemptInFlight;
     #viewRevision = 0;
     #sourceRevision = 0;
     #timer = null;
     #pending = null;
     #ready = false;
-    #inFlight = false;
+    #inFlight = new Map();
     #disposed = false;
     constructor(options) {
         this.#delayMs = Math.max(0, options.delayMs);
         this.#render = options.render;
         this.#onError = options.onError ?? (() => undefined);
+        this.#preemptInFlight = options.preemptInFlight === true;
     }
     get sourceRevision() {
         return this.#sourceRevision;
@@ -32,6 +34,8 @@ export class PickerSearchScheduler {
         };
         this.#pending = request;
         this.#ready = false;
+        if (this.#preemptInFlight)
+            this.#abortInFlight();
         this.#clearTimer();
         this.#timer = setTimeout(() => {
             this.#timer = null;
@@ -69,6 +73,7 @@ export class PickerSearchScheduler {
         this.#pending = null;
         this.#ready = false;
         this.#clearTimer();
+        this.#abortInFlight();
     }
     #clearTimer() {
         if (this.#timer !== null) {
@@ -77,27 +82,37 @@ export class PickerSearchScheduler {
         }
     }
     async #drain() {
-        if (this.#disposed || this.#inFlight || !this.#ready || !this.#pending) {
+        if (this.#disposed || (!this.#preemptInFlight && this.#inFlight.size > 0) || !this.#ready || !this.#pending) {
             return;
         }
         const request = this.#pending;
         this.#pending = null;
         this.#ready = false;
-        this.#inFlight = true;
+        const controller = new AbortController();
+        this.#inFlight.set(request.viewRevision, controller);
         try {
-            await this.#render(request);
+            await this.#render(request, {
+                signal: controller.signal,
+                isCurrent: () => !controller.signal.aborted && this.isCurrent(request),
+            });
         }
         catch (error) {
-            if (this.isCurrent(request)) {
+            if (!controller.signal.aborted && this.isCurrent(request)) {
                 this.#onError(error, request);
             }
         }
         finally {
-            this.#inFlight = false;
-            if (this.#ready && this.#pending) {
+            if (this.#inFlight.get(request.viewRevision) === controller) {
+                this.#inFlight.delete(request.viewRevision);
+            }
+            if (!this.#preemptInFlight && this.#ready && this.#pending) {
                 void this.#drain();
             }
         }
+    }
+    #abortInFlight() {
+        for (const controller of this.#inFlight.values())
+            controller.abort();
     }
 }
 //# sourceMappingURL=picker-search-scheduler.js.map

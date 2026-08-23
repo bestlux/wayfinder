@@ -1,7 +1,7 @@
-import { PickerSearchScheduler } from "./picker-search-scheduler.js";
+import { PickerSearchScheduler, } from "./picker-search-scheduler.js";
 export const EQUIPMENT_SEARCH_DELAY_MS = 24;
 export function createEquipmentSearchScheduler(options) {
-    return new PickerSearchScheduler({ delayMs: EQUIPMENT_SEARCH_DELAY_MS, ...options });
+    return new PickerSearchScheduler({ delayMs: EQUIPMENT_SEARCH_DELAY_MS, preemptInFlight: true, ...options });
 }
 export function scheduleEquipmentSearchInput(input, scheduler, capture) {
     const stepId = input.dataset.stepId;

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.4 - 2026-08-23
+
+- Fixed level-1 kit confirmation when the cart contains level-1 items. The final acquisition ledger now uses the same recipe-aware item-level boundary as catalogue browsing and prepared acquisition instead of rejecting an at-level item after allowing it into the cart.
+
 ## 0.8.3 - 2026-08-23
 
 - Level-1 Starting Equipment now includes common level-1 items such as minor healing potions and elixirs of life. Both official level-1 recipe selections can spend the 15 gp budget on those items, while higher-level residual and lump-sum currency remains limited to items below the character's target level.

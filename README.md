@@ -25,15 +25,16 @@ Character creation and leveling in PF2E means juggling class tables, compendium 
 - **Resumable drafts.** Progress is saved on the actor, so you can leave mid-build and come back later.
 - **Honest about its limits.** When Wayfinder can't model a step confidently, it says so and points you at the right native PF2E control instead of silently guessing.
 
-## What's new in 0.8.3
+## What's new in 0.8.4
 
+- **Level-1 kits confirm correctly.** The final ledger now accepts the same common level-1 items that the catalogue and prepared purchase path allow, so a cart containing minor healing potions or elixirs no longer fails at **Confirm this kit**.
 - **Level-1 consumables are on the shelf.** A fresh level-1 character can spend the official 15 gp budget on common level-1 items such as minor healing potions and elixirs of life. Higher-level residual and lump-sum currency still follows the separate below-target-level rule.
 - **The whole outfitter, with no blank-scroll wait.** Starting Equipment keeps the complete matching shelf in memory and mounts a bounded adaptive window around the viewport, including additional rows when Wayfinder is made taller.
 - **Useful ways to narrow the shelf.** Results prioritize policy-available and query-relevant gear and can be filtered by availability, level, type, rarity, source, traits, and contextual Titan Mauler eligibility.
 - **Enough detail to make the purchase.** Item previews show enriched rules text, Bulk, and hands, and cart quantities accept direct numeric entry for ammunition and other bulk purchases.
 - **Browse speed without weaker Apply checks.** The catalogue reuses lightweight compendium facts and materializes only mounted rows. Preview and Apply still resolve current PF2E documents, prices, world policy, and authority before anything is purchased or written.
 
-Release 0.8.3 is available from the [GitHub release page](https://github.com/bestlux/wayfinder/releases/tag/v0.8.3). Its exact Foundry/PF2E qualification and package evidence are recorded in the [live smoke log](docs/coverage/beta-readiness-smoke.md#2026-08-23-release-083).
+Release 0.8.4 is available from the [GitHub release page](https://github.com/bestlux/wayfinder/releases/tag/v0.8.4). Its targeted qualification and package evidence are recorded in the [live smoke log](docs/coverage/beta-readiness-smoke.md#2026-08-23-084-targeted-patch-qualification).
 
 ## Installation
 

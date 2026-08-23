@@ -1,10 +1,10 @@
 # Wayfinder Roadmap
 
-Updated 2026-08-23 after the 0.8.3 Starting Equipment rules correction. This is the forward-looking product plan; shipped behavior and exact evidence live in the [coverage matrices](coverage/) and [release smoke log](coverage/beta-readiness-smoke.md).
+Updated 2026-08-23 after the 0.8.4 Starting Equipment ledger correction. This is the forward-looking product plan; shipped behavior and exact evidence live in the [coverage matrices](coverage/) and [release smoke log](coverage/beta-readiness-smoke.md).
 
 ## Where Wayfinder stands
 
-Release 0.8.0 added reviewed Starting Equipment to Wayfinder's existing guided creation and level-up flow. Releases 0.8.1 through 0.8.3 stabilize real-player request, stacking, cold-template, catalogue-reachability, interaction-performance, and level-1 item-eligibility paths without weakening acquisition authority. The adaptive catalogue retains the complete lightweight matching shelf, mounts a bounded window around the viewport, and keeps preview and Apply on fresh PF2E authority. A shared recipe-aware item-level boundary now governs catalogue visibility, picker affordability, and prepared acquisition: level-1 characters can spend their 15 gp on common level-0 and level-1 items, while higher-level residual and lump-sum currency retains the below-target-level rule. Wayfinder continues to guide 27 maintained PF2E classes through level 5 along one maintained path, five representative profiles through level 10, and Fighter through level 20. Necromancer and Runesmith base classes remain outside that maintained class matrix.
+Release 0.8.0 added reviewed Starting Equipment to Wayfinder's existing guided creation and level-up flow. Releases 0.8.1 through 0.8.4 stabilize real-player request, stacking, cold-template, catalogue-reachability, interaction-performance, and level-1 item-eligibility paths without weakening acquisition authority. The adaptive catalogue retains the complete lightweight matching shelf, mounts a bounded window around the viewport, and keeps preview and Apply on fresh PF2E authority. A shared recipe-aware item-level boundary now governs catalogue visibility, picker affordability, prepared acquisition, and final ledger review: level-1 characters can spend their 15 gp on common level-0 and level-1 items, while higher-level residual and lump-sum currency retains the below-target-level rule. Wayfinder continues to guide 27 maintained PF2E classes through level 5 along one maintained path, five representative profiles through level 10, and Fighter through level 20. Necromancer and Runesmith base classes remain outside that maintained class matrix.
 
 The common mechanical path now includes ancestry, heritage, background, class, supported class branches and class archetypes, feats, boosts, skills, languages, spells, Free Archetype, Ancestry Paragon and other PF2E campaign feat sections, Gradual Ability Boosts, and creation-time Starting Equipment. Archetype legality is checked against projected draft state where PF2E data is structured. Existing characters can be mapped and their spell progression audited without mutation. Adjacent 0.8.0 player-trust hardening also projects PF2E-prepared fixed ancestry flaws before later ability and skill choices (issue #32).
 
@@ -91,6 +91,10 @@ The wizard rail now collapses completed levels while reopening invalidated work,
 Starting Equipment now derives catalogue visibility, picker affordability, and prepared acquisition from one recipe-aware item-level policy. Both official level-1 selections resolve to the 15 gp starting-money rule and admit common level-0 and level-1 items, including Healing Potion (Minor) and Elixir of Life (Minor). Higher-level permanent-item residual currency and lump-sum currency continue to admit only items below the character's starting level.
 
 The exact release passed the full 55-execution / 54-scenario coordinator, all Starting Equipment overlays, the focused live level-1 potion proof, package verification, public asset comparison, and Foundry registration. See the [release smoke log](coverage/beta-readiness-smoke.md#2026-08-23-release-083).
+
+### 0.8.4 — Level-1 ledger convergence
+
+The final acquisition ledger now consumes the same recipe-aware item-level boundary as catalogue visibility, picker affordability, and prepared acquisition. This closes the remaining disagreement that allowed a level-1 item into the cart but rejected it when the player confirmed the kit. The patch is qualified at the failing ledger and command boundaries rather than by repeating the unchanged full character-build matrix; see the [targeted patch record](coverage/beta-readiness-smoke.md#2026-08-23-084-targeted-patch-qualification).
 
 ### Next 0.8.x — remaining polish
 

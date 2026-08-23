@@ -47,6 +47,14 @@ The companion static class audit checks the maintained smoke matrix against the 
 npm run audit:classes
 ```
 
+## 2026-08-23 0.8.4 Targeted Patch Qualification
+
+The hosted `Player Character` draft reproduced a final-ledger disagreement after 0.8.3: **Confirm this kit** was enabled on a valid 14 gp 4 sp cart with 6 sp remaining, including two Healing Potions (Minor), but the command returned the generic Starting Equipment update warning. Source tracing showed that catalogue visibility, picker affordability, and prepared acquisition used the shared recipe-aware level boundary while `evaluateAcquisitionLedger` still called the older strictly-below-level predicate.
+
+Two focused regressions reproduce the exact boundary. The ledger test proves a level-1 currency line at item level 1 is valid and reviewable; the command-service test confirms a level-1 kit containing two live-UUID Healing Potions (Minor). Both failed before the fix and pass afterward. The focused item-boundary, ledger, command, and runtime set passed 167/167 tests, and `npm run check` passed 2,082 tests across 189 files with generated scripts current.
+
+This is an intentionally scoped patch qualification. The 55-execution / 54-scenario character-build coordinator was not rerun because the change replaces one final-ledger level predicate with the already-qualified shared boundary and does not alter character planning, source resolution, actor mutation, catalogue virtualization, or higher-level limits. Package and publication evidence is appended after the exact release workflow completes.
+
 ## 2026-08-23 Release 0.8.3
 
 The exact 0.8.3 candidate `11ca9d63b7102377be335b69dd214c383c1bb36b` passed the release coordinator against Foundry VTT 14.366 / PF2E 8.4.1 in `testing-world`. Coordinator root `.wayfinder-smoke/wf51-release-coordinator-c71fafb8-b7b9-4bff-baf5-d5c356a0918c` records 55 executions / 54 unique scenarios, the ten acquisition cases, five Wave 3 cases, three Wave 4 cases, English and Chinese experience coverage, seven focused release cases, and the ordered fifteen-row overlay with no failures, candidate drift, or restoration failure.

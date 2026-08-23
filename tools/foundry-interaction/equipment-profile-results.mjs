@@ -782,6 +782,7 @@ export function validateEquipmentControllerRecoveryProbe(profile, probe) {
   if (
     probe?.forcedEnrichmentFailureCount !== profile.controllerRecoverySampling.forcedEnrichmentFailures ||
     probe?.forcedFailureStage !== "pack-document-read" ||
+    probe?.recoveryFailure !== null ||
     probe?.failedAttemptEquipmentRenderCount !== 1 ||
     probe?.successfulRetryEquipmentRenderCount !== 1 ||
     probe?.fullRenderCallCount !== 0 ||
@@ -795,8 +796,11 @@ export function validateEquipmentControllerRecoveryProbe(profile, probe) {
   const retry = probe?.retryState;
   if (
     !nonempty(probe?.targetSourceUuid) ||
+    !nonnegativeInteger(probe?.targetResultIndex) ||
     initial?.stableHostPreserved !== true ||
     initial?.window?.totalResultCount !== profile.expectedCatalogueCounts?.defaultShelf ||
+    initial?.targetMounted !== true ||
+    initial?.targetResultIndex !== probe.targetResultIndex ||
     initial?.targetPricePending !== true ||
     initial?.visiblePreviewSourceUuid === probe.targetSourceUuid
   ) {
@@ -805,6 +809,8 @@ export function validateEquipmentControllerRecoveryProbe(profile, probe) {
   if (
     pending?.stableHostPreserved !== true ||
     pending?.pendingDocumentReads < 1 ||
+    pending?.targetMounted !== true ||
+    pending?.targetResultIndex !== probe.targetResultIndex ||
     pending?.focusedSourceUuid !== probe.targetSourceUuid ||
     pending?.visiblePreviewSourceUuid === probe.targetSourceUuid
   ) {
@@ -813,6 +819,8 @@ export function validateEquipmentControllerRecoveryProbe(profile, probe) {
   if (
     recovered?.stableHostPreserved !== true ||
     recovered?.pendingDocumentReads !== 0 ||
+    recovered?.targetMounted !== true ||
+    recovered?.targetResultIndex !== probe.targetResultIndex ||
     recovered?.targetPricePending !== true ||
     recovered?.focusedSourceUuid !== probe.targetSourceUuid ||
     recovered?.visiblePreviewSourceUuid === probe.targetSourceUuid
@@ -822,6 +830,8 @@ export function validateEquipmentControllerRecoveryProbe(profile, probe) {
   if (
     retry?.stableHostPreserved !== true ||
     retry?.pendingDocumentReads !== 0 ||
+    retry?.targetMounted !== true ||
+    retry?.targetResultIndex !== probe.targetResultIndex ||
     retry?.targetPricePending !== false ||
     retry?.focusedSourceUuid !== probe.targetSourceUuid ||
     retry?.visiblePreviewSourceUuid !== probe.targetSourceUuid ||

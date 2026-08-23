@@ -52,7 +52,7 @@ import { SemanticCommandQueue } from "./application/semantic-command-queue.js";
 import { executeStartingEquipmentCommand, } from "./application/starting-equipment-command-service.js";
 import { StartingEquipmentErrorFocusCoordinator } from "./application/starting-equipment-error-focus-service.js";
 import { localizeStartingEquipmentError } from "./application/starting-equipment-failure.js";
-import { advanceStartingEquipmentRenderSession, canDeriveStartingEquipmentRender, canUseStartingEquipmentCommandPartial, createStartingEquipmentRenderSession, EQUIPMENT_CART_PART, EQUIPMENT_CATALOGUE_PART, EQUIPMENT_DETAIL_PART, EQUIPMENT_POLICY_PART, EQUIPMENT_STATUS_PART, startingEquipmentPartsForIntent, startingEquipmentRenderIdentity, } from "./application/starting-equipment-render-session.js";
+import { advanceStartingEquipmentRenderSession, canDeriveStartingEquipmentRender, canUseStartingEquipmentCommandPartial, commitStartingEquipmentRenderSession, createStartingEquipmentRenderSession, EQUIPMENT_CART_PART, EQUIPMENT_CATALOGUE_PART, EQUIPMENT_DETAIL_PART, EQUIPMENT_POLICY_PART, EQUIPMENT_STATUS_PART, startingEquipmentPartsForIntent, startingEquipmentRenderIdentity, } from "./application/starting-equipment-render-session.js";
 import { getStartingEquipmentUiAdapter } from "./application/starting-equipment-ui-adapter.js";
 import { buildDraftSaveView, buildWayfinderContext, } from "./application/wayfinder-context-service.js";
 import { buildWayfinderAppPlan, findPlanStepBySlotId } from "./application/wayfinder-plan-builder-service.js";
@@ -547,9 +547,10 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             return;
         }
         if (context.wayfinderRenderScope === "equipment") {
-            this.#equipmentRenderSession = context.equipmentRenderSession;
-            if (context.equipmentRenderSession) {
-                this.#syncEquipmentResultWindow(context.equipmentRenderSession.pane, context.equipmentRequest);
+            const committedSession = commitStartingEquipmentRenderSession(this.#equipmentRenderSession, context.equipmentRenderSession, context.equipmentRequest);
+            this.#equipmentRenderSession = committedSession;
+            if (committedSession) {
+                this.#syncEquipmentResultWindow(committedSession.pane, context.equipmentRequest);
             }
             const renderedParts = startingEquipmentPartsForIntent(context.equipmentRequest.intent);
             for (const part of renderedParts) {
@@ -567,7 +568,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                     onLoreInputChange: this.#onLoreInputChange,
                 }, this.#scrollById, null);
             }
-            this.#mountEquipmentStableCatalogue(root, context.equipmentRenderSession);
+            this.#mountEquipmentStableCatalogue(root, committedSession);
             if (this.#pendingEquipmentFocusIds) {
                 restoreEquipmentFocus(root, this.#pendingEquipmentFocusIds);
             }

@@ -221,6 +221,14 @@ describe("equipment catalogue performance profile", () => {
     expect(browserProfile).toContain("scrollResultList(list.scrollTop)");
     expect(browserProfile).toContain("resultWindowReadyForQualification(lastObservation, { height, width })");
     expect(browserProfile).toContain("Equipment result window did not become observable. Last observation:");
+    expect(browserProfile).toContain("row.getBoundingClientRect().height");
+    expect(browserProfile).toContain("mountedRowClientHeightPx: mountedRowClientHeight(mountedResults)");
+    const pitchMeasurement = browserProfile.slice(
+      browserProfile.indexOf("function measuredRowHeight(rows)"),
+      browserProfile.indexOf("function mountedRowClientHeight(rows)")
+    );
+    expect(pitchMeasurement).toContain("row.getBoundingClientRect().height");
+    expect(pitchMeasurement).not.toContain("row.clientHeight");
     expect(browserProfile).not.toContain("window.mountedResultCount === expectedMountedRows");
     expect(browserProfile).toContain("async probeStableHostScroll({ framesAfterScroll");
     expect(browserProfile).toContain("const immediateShelf = visibleShelfSnapshot()");
@@ -230,6 +238,7 @@ describe("equipment catalogue performance profile", () => {
     expect(browserProfile).toContain("const target = await findUnresolvedPriceRow(settleTimeoutMs)");
     expect(browserProfile).toContain("gate.reject()");
     expect(browserProfile).toContain("targetPricePending");
+    expect(browserProfile).toContain('code: "failed-preview-row-unmounted"');
   });
 
   it("injects recovery failure only at the genuine pack-document enrichment boundary", () => {
@@ -329,6 +338,7 @@ describe("equipment catalogue performance profile", () => {
 
   it("requires one truthful mounted-window observation at every declared app height", () => {
     const observations = resultWindowObservations();
+    for (const observation of observations) observation.mountedRowClientHeightPx = 63;
     expect(validateEquipmentResultWindows(profile, observations)).toEqual([]);
     expect(observations.map((entry) => entry.browserViewport.height)).toEqual([1000, 1300, 1600]);
     expect(observations.map((entry) => entry.mountedResultCount)).toEqual([28, 33, 41]);
@@ -419,6 +429,17 @@ describe("equipment catalogue performance profile", () => {
     extraRecovery.packDocumentReadCount = 3;
     expect(validateEquipmentControllerRecoveryProbe(profile, extraRecovery)).toContain(
       "Equipment controller recovery did not force one enrichment failure and one exact same-row retry."
+    );
+
+    const missingRow = structuredClone(probe);
+    missingRow.recoveryFailure = { code: "failed-preview-row-unmounted" };
+    missingRow.failedState.targetMounted = false;
+    missingRow.retryState = null;
+    expect(validateEquipmentControllerRecoveryProbe(profile, missingRow)).toEqual(
+      expect.arrayContaining([
+        "Equipment controller recovery did not force one enrichment failure and one exact same-row retry.",
+        "Failed preview enrichment did not leave a retryable focused row on the stable host.",
+      ])
     );
   });
 
@@ -995,12 +1016,15 @@ function controllerRecoveryProbe() {
     mountedResultValues: profile.expectedDefaultShelfValues.slice(0, 28),
   };
   const targetSourceUuid = profile.expectedDefaultShelfValues[10];
+  const targetResultIndex = 10;
   const initialState = {
     window: structuredClone(initialWindow),
     stableHostPreserved: true,
     pendingDocumentReads: 0,
     focusedSourceUuid: targetSourceUuid,
     visiblePreviewSourceUuid: null,
+    targetMounted: true,
+    targetResultIndex,
     targetPricePending: true,
   };
   const probe = {
@@ -1010,12 +1034,14 @@ function controllerRecoveryProbe() {
     requestedAppWidth: profile.resultWindowSampling.appWidth,
     requestedAppHeight: windowProfile.appHeight,
     targetSourceUuid,
+    targetResultIndex,
     forcedEnrichmentFailureCount: 1,
     forcedFailureStage: "pack-document-read",
     failedAttemptEquipmentRenderCount: 1,
     successfulRetryEquipmentRenderCount: 1,
     fullRenderCallCount: 0,
     packDocumentReadCount: 2,
+    recoveryFailure: null,
     initialState,
     enrichmentPendingState: {
       ...structuredClone(initialState),

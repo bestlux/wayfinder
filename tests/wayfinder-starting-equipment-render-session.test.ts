@@ -5,6 +5,7 @@ import {
   advanceStartingEquipmentRenderSession,
   canDeriveStartingEquipmentRender,
   canUseStartingEquipmentCommandPartial,
+  commitStartingEquipmentRenderSession,
   createStartingEquipmentRenderSession,
   EQUIPMENT_CART_PART,
   EQUIPMENT_CATALOGUE_PART,
@@ -78,6 +79,37 @@ describe("starting equipment render session", () => {
     expect(() =>
       advanceStartingEquipmentRenderSession(next, request({ viewRevision: 5, sourceRevision: 3 }), pane())
     ).toThrow(/another prepared session/i);
+  });
+
+  it("keeps the last ready catalogue session when preview enrichment fails", () => {
+    const draft = reviewedDraft();
+    const current = createStartingEquipmentRenderSession({
+      identity: startingEquipmentRenderIdentity(draft, STEP.id, 2),
+      viewRevision: 3,
+      step: STEP,
+      evaluation: EVALUATION,
+      pane: pane([{ sourceUuid: "retryable-item" }]),
+    });
+    const failedPreview = advanceStartingEquipmentRenderSession(
+      current,
+      request({ intent: "preview", viewRevision: 4, sourceRevision: 2 }),
+      pane([], "error")
+    );
+
+    expect(
+      commitStartingEquipmentRenderSession(
+        current,
+        failedPreview,
+        request({ intent: "preview", viewRevision: 4, sourceRevision: 2 })
+      )
+    ).toBe(current);
+    expect(
+      commitStartingEquipmentRenderSession(
+        current,
+        failedPreview,
+        request({ intent: "search", viewRevision: 4, sourceRevision: 2 })
+      )
+    ).toBe(failedPreview);
   });
 
   it("maps only steady actions to replaceable equipment parts", () => {
@@ -171,9 +203,12 @@ function request(overrides: Partial<StartingEquipmentRenderRequest> = {}): Start
   };
 }
 
-function pane(items: readonly unknown[] = []): StartingEquipmentStepPane {
+function pane(
+  items: readonly unknown[] = [],
+  state: StartingEquipmentStepPane["catalogue"]["state"] = "ready"
+): StartingEquipmentStepPane {
   return {
     kind: "starting-equipment",
-    catalogue: { items },
+    catalogue: { items, state },
   } as unknown as StartingEquipmentStepPane;
 }

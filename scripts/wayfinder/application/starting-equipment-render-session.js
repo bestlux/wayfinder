@@ -45,6 +45,16 @@ export function advanceStartingEquipmentRenderSession(session, request, pane) {
     }
     return { ...session, viewRevision: request.viewRevision, pane };
 }
+/**
+ * A preview failure only replaces the detail part. Keep the last ready catalogue
+ * session authoritative so the stable host is not reprojected from an error
+ * pane's deliberately empty records and the selected row remains retryable.
+ */
+export function commitStartingEquipmentRenderSession(current, prepared, request) {
+    if (request.intent === "preview" && prepared?.pane.catalogue.state !== "ready")
+        return current;
+    return prepared;
+}
 export function startingEquipmentPartsForIntent(intent) {
     switch (intent) {
         case "search":

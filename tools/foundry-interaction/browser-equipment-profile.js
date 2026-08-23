@@ -134,6 +134,7 @@ globalThis.__wayfinderEquipmentProfile = {
     const stableHost = currentResultList();
     const target = await findUnresolvedPriceRow(settleTimeoutMs);
     const targetSourceUuid = resultSourceUuid(target);
+    const targetResultIndex = Number(target.closest("[data-result-index]")?.dataset.resultIndex ?? -1);
     target.focus({ preventScroll: true });
     const initialState = controllerRecoveryStateSnapshot(stableHost, targetSourceUuid);
     const gate = holdEquipmentDocumentReads();
@@ -150,7 +151,31 @@ globalThis.__wayfinderEquipmentProfile = {
       const failedState = controllerRecoveryStateSnapshot(stableHost, targetSourceUuid);
       const failedAttemptEquipmentRenderCount = counters.equipmentRender - equipmentRendersBefore;
       const retryTarget = resultForSourceUuid(targetSourceUuid);
-      if (!retryTarget) throw new Error("Equipment controller recovery lost the failed preview row.");
+      if (!retryTarget) {
+        return {
+          schemaVersion: 3,
+          targetSourceUuid,
+          targetResultIndex,
+          forcedEnrichmentFailureCount: 1,
+          forcedFailureStage: "pack-document-read",
+          failedAttemptEquipmentRenderCount,
+          successfulRetryEquipmentRenderCount: 0,
+          fullRenderCallCount: counters.fullRender - fullRendersBefore,
+          packDocumentReadCount: counters.equipmentPackDocument - documentReadsBefore,
+          recoveryFailure: {
+            code: "failed-preview-row-unmounted",
+            message: "The failed preview row was not mounted for an exact same-row retry.",
+            stableHostPreserved: currentResultList() === stableHost,
+            equipmentRenderCallCount: counters.equipmentRender - equipmentRendersBefore,
+            fullRenderCallCount: counters.fullRender - fullRendersBefore,
+            packDocumentReadCount: counters.equipmentPackDocument - documentReadsBefore,
+          },
+          initialState,
+          enrichmentPendingState,
+          failedState,
+          retryState: null,
+        };
+      }
       const equipmentRendersBeforeRetry = counters.equipmentRender;
       retryTarget.click();
       await waitUntil(
@@ -163,12 +188,14 @@ globalThis.__wayfinderEquipmentProfile = {
       return {
         schemaVersion: 3,
         targetSourceUuid,
+        targetResultIndex,
         forcedEnrichmentFailureCount: 1,
         forcedFailureStage: "pack-document-read",
         failedAttemptEquipmentRenderCount,
         successfulRetryEquipmentRenderCount: counters.equipmentRender - equipmentRendersBeforeRetry,
         fullRenderCallCount: counters.fullRender - fullRendersBefore,
         packDocumentReadCount: counters.equipmentPackDocument - documentReadsBefore,
+        recoveryFailure: null,
         initialState,
         enrichmentPendingState,
         failedState,
@@ -654,6 +681,7 @@ function finishSample(sample, semanticPassed, previewSplit, actionOutcome) {
     domElementCount: root.querySelectorAll("*").length,
     listClientHeight: resultList?.clientHeight ?? 0,
     measuredRowHeightPx: measuredRowHeight(mountedResults),
+    mountedRowClientHeightPx: mountedRowClientHeight(mountedResults),
     resultDomElementCount: resultList?.querySelectorAll("*").length ?? 0,
     mountedResultCount: mountedResults.length,
     totalResultCount: Number(resultList?.dataset.totalResults ?? 0),
@@ -812,6 +840,7 @@ function resultWindowSnapshot() {
     domElementCount: root.querySelectorAll("*").length,
     listClientHeight: resultList.clientHeight,
     measuredRowHeightPx: measuredRowHeight(mountedResults),
+    mountedRowClientHeightPx: mountedRowClientHeight(mountedResults),
     totalResultCount: Number(resultList.dataset.totalResults ?? 0),
     scrollTop: resultList.scrollTop,
     mountedResultCount: mountedResults.length,
@@ -866,6 +895,16 @@ function resultWindowReadyForQualification(observation, requested) {
 }
 
 function measuredRowHeight(rows) {
+  const heights = rows
+    // The controller advances by the fixed border-box pitch. clientHeight omits
+    // the row border (63px in the live 64px layout) and is not scroll geometry.
+    .map((row) => row.getBoundingClientRect().height)
+    .filter((height) => Number.isFinite(height) && height > 0)
+    .sort((left, right) => left - right);
+  return heights.length > 0 ? heights[Math.floor(heights.length / 2)] : null;
+}
+
+function mountedRowClientHeight(rows) {
   const heights = rows
     .map((row) => row.clientHeight)
     .filter((height) => Number.isFinite(height) && height > 0)
@@ -1012,6 +1051,8 @@ function controllerRecoveryStateSnapshot(stableHost, sourceUuid) {
     pendingDocumentReads: counters.pendingEquipmentPackDocument,
     focusedSourceUuid: document.activeElement?.closest?.("[data-source-uuid]")?.dataset.sourceUuid ?? null,
     visiblePreviewSourceUuid: visiblePreviewUuid(),
+    targetMounted: row !== null,
+    targetResultIndex: root ? Number(root.dataset.resultIndex ?? -1) : null,
     targetPricePending: root?.dataset.pricePending === "true",
   };
 }

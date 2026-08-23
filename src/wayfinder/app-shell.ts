@@ -179,6 +179,7 @@ import {
   advanceStartingEquipmentRenderSession,
   canDeriveStartingEquipmentRender,
   canUseStartingEquipmentCommandPartial,
+  commitStartingEquipmentRenderSession,
   createStartingEquipmentRenderSession,
   EQUIPMENT_CART_PART,
   EQUIPMENT_CATALOGUE_PART,
@@ -949,9 +950,14 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     }
 
     if (context.wayfinderRenderScope === "equipment") {
-      this.#equipmentRenderSession = context.equipmentRenderSession;
-      if (context.equipmentRenderSession) {
-        this.#syncEquipmentResultWindow(context.equipmentRenderSession.pane, context.equipmentRequest);
+      const committedSession = commitStartingEquipmentRenderSession(
+        this.#equipmentRenderSession,
+        context.equipmentRenderSession,
+        context.equipmentRequest
+      );
+      this.#equipmentRenderSession = committedSession;
+      if (committedSession) {
+        this.#syncEquipmentResultWindow(committedSession.pane, context.equipmentRequest);
       }
       const renderedParts = startingEquipmentPartsForIntent(context.equipmentRequest.intent);
       for (const part of renderedParts) {
@@ -973,7 +979,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
           null
         );
       }
-      this.#mountEquipmentStableCatalogue(root, context.equipmentRenderSession);
+      this.#mountEquipmentStableCatalogue(root, committedSession);
       if (this.#pendingEquipmentFocusIds) {
         restoreEquipmentFocus(root, this.#pendingEquipmentFocusIds);
       }

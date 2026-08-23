@@ -500,7 +500,10 @@ export class EquipmentCatalogueService {
     }
     #previewResult(sourceUuid, indexedCandidate, cached, context) {
         const source = cached.source === null ? null : cloneData(cached.source);
-        const current = source === null ? null : normalizeCandidate(source, indexedCandidate.packId, sourceUuid);
+        const pack = this.#packs.get(indexedCandidate.packId);
+        const current = source === null
+            ? null
+            : normalizeCandidate(source, indexedCandidate.packId, sourceUuid, undefined, pack?.indexedBrowsePricing === "pf2e-physical-source-v1");
         return Object.freeze({
             sourceUuid,
             previewIdentity: cached.previewIdentity,

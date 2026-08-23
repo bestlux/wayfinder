@@ -708,9 +708,18 @@ describe("equipment acquisition runtime", () => {
     expect(getDocument).not.toHaveBeenCalled();
     expect(prepareBrowsePhysicalItems).not.toHaveBeenCalled();
 
+    const preview = await runtime.uiAdapter.project({ ...request, previewSourceUuid: DAGGER_UUID });
+    expect(preview).toMatchObject({
+      state: "ready",
+      previewRecord: { name: "Dagger", priceCopper: 200 },
+      records: [{ name: "Dagger", priceCopper: 200 }],
+    });
+    expect(getDocument).toHaveBeenCalledTimes(1);
+    expect(prepareBrowsePhysicalItems).not.toHaveBeenCalled();
+
     const line = await runtime.uiAdapter.prepareLine({ ...request, sourceUuid: DAGGER_UUID });
     expect(line.price.unitPriceCopper).toBe(200);
-    expect(getDocument).toHaveBeenCalledTimes(1);
+    expect(getDocument).toHaveBeenCalledTimes(2);
     expect(preparePhysicalItem).toHaveBeenCalledTimes(1);
   });
 

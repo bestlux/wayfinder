@@ -27,8 +27,13 @@ const INDEX_FIELDS = Object.freeze([
   "system.source.value",
   "system.price.value",
   "system.price.per",
+  "system.price.sizeSensitive",
   "system.quantity",
   "system.rules",
+  "system.runes",
+  "system.material",
+  "system.specific",
+  "system.subitems",
 ]);
 const PHYSICAL_ITEM_TYPES = new Set(["ammo", "armor", "backpack", "consumable", "equipment", "shield", "weapon"]);
 const CONTAINER_ITEM_TYPES = new Set(["kit"]);
@@ -41,6 +46,8 @@ type EquipmentDenomination = (typeof DENOMINATIONS)[number];
 export interface EquipmentCataloguePackLike {
   /** Foundry replaces an index entry object on create/update and removes it on delete. */
   readonly indexEntryIdentity?: "stable-replacement";
+  /** The adapter guarantees that requested PF2E physical-item source fields are complete, not projected guesses. */
+  readonly indexedBrowsePricing?: "pf2e-physical-source-v1";
   readonly documentName?: string;
   readonly metadata?: { readonly type?: string };
   readonly getIndex: (options: { fields: string[] }) => Promise<Iterable<unknown> | null | undefined>;
@@ -73,6 +80,16 @@ export interface NormalizedEquipmentPrice {
   readonly sourceQuantity: number;
 }
 
+/**
+ * Exact browse-only pricing facts that are safe to derive from a PF2E pack index.
+ *
+ * This is intentionally absent for configured, material, magical, rule-bearing, nested,
+ * or otherwise ambiguous sources. Those records retain the prepared-document path.
+ */
+export interface IndexedEquipmentBrowsePriceFacts {
+  readonly sizeSensitive: boolean;
+}
+
 export interface NormalizedEquipmentCatalogueCandidate {
   readonly sourceUuid: string;
   readonly packId: string;
@@ -84,6 +101,7 @@ export interface NormalizedEquipmentCatalogueCandidate {
   readonly rarity: EquipmentRarity;
   readonly publicationSlug: string;
   readonly price: NormalizedEquipmentPrice;
+  readonly indexedBrowsePriceFacts: IndexedEquipmentBrowsePriceFacts | null;
   readonly traits: readonly string[];
   readonly ruleKeys: readonly string[];
   readonly previewIdentity: string;
@@ -858,7 +876,12 @@ async function loadPackProjection(
       candidates.push(cached.candidate);
       continue;
     }
-    const normalized = normalizeIndexEntry(entry, packId, index);
+    const normalized = normalizeIndexEntry(
+      entry,
+      packId,
+      index,
+      pack.indexedBrowsePricing === "pf2e-physical-source-v1"
+    );
     if ("diagnostic" in normalized) diagnostics.push(normalized.diagnostic);
     else {
       candidates.push(normalized.candidate);
@@ -897,8 +920,13 @@ function indexNormalizationWitness(source: Readonly<Record<string, unknown>>): s
     legacySource.value,
     price.value,
     price.per,
+    price.sizeSensitive,
     system.quantity,
     rules?.map((rule) => record(rule).key) ?? null,
+    system.runes,
+    system.material,
+    system.specific,
+    system.subitems,
   ]);
 }
 
@@ -941,7 +969,8 @@ function witnessSequence(kind: "array" | "record", values: readonly unknown[], a
 function normalizeIndexEntry(
   entry: unknown,
   packId: string,
-  index: number
+  index: number,
+  allowIndexedBrowsePriceFacts: boolean
 ): { readonly candidate: CachedProjectionCandidate } | { readonly diagnostic: EquipmentSourceDiagnostic } {
   const value = record(entry);
   const sourceIdentity = indexSourceIdentity(value, packId, index);
@@ -961,7 +990,15 @@ function normalizeIndexEntry(
       ),
     };
   }
-  return { candidate: normalizeCandidate(value, packId, `Compendium.${packId}.Item.${documentId}`, documentId) };
+  return {
+    candidate: normalizeCandidate(
+      value,
+      packId,
+      `Compendium.${packId}.Item.${documentId}`,
+      documentId,
+      allowIndexedBrowsePriceFacts
+    ),
+  };
 }
 
 function projectionFailure(diagnostic: EquipmentSourceDiagnostic, cacheable = true): PackProjectionResult {
@@ -972,7 +1009,8 @@ function normalizeCandidate(
   source: unknown,
   packId: string,
   sourceUuid: string,
-  knownDocumentId?: string
+  knownDocumentId?: string,
+  allowIndexedBrowsePriceFacts = false
 ): NormalizationResult {
   const value = record(source);
   const system = record(value.system);
@@ -994,6 +1032,9 @@ function normalizeCandidate(
     nonEmpty(publication.title) ? publication.title : nonEmpty(legacySource.value) ? legacySource.value : ""
   );
   const price = normalizePrice(system);
+  const indexedBrowsePriceFacts = allowIndexedBrowsePriceFacts
+    ? normalizeIndexedBrowsePriceFacts(system, traitsRoot, itemType, price)
+    : null;
   const level = qualifiedKit ? 0 : nonNegativeInteger(record(system.level).value);
   const reasons: EquipmentCatalogueUnavailableReason[] = [];
   if (itemType === "treasure") {
@@ -1038,6 +1079,7 @@ function normalizeCandidate(
     rarity: rarity ?? "unique",
     publicationSlug,
     price,
+    indexedBrowsePriceFacts,
     traits: Object.freeze(uniqueSorted(stringArray(traitsRoot.value).map((trait) => trait.toLowerCase()))),
     ruleKeys: Object.freeze(ruleKeys),
   };
@@ -1072,6 +1114,42 @@ function normalizePrice(system: Record<string, unknown>): NormalizedEquipmentPri
     return Object.freeze({ kind: "unparseable", value: null, copperValue: null, per, sourceQuantity });
   }
   return Object.freeze({ kind: "priced", value: Object.freeze(value), copperValue, per, sourceQuantity });
+}
+
+function normalizeIndexedBrowsePriceFacts(
+  system: Record<string, unknown>,
+  traitsRoot: Record<string, unknown>,
+  itemType: string,
+  price: NormalizedEquipmentPrice
+): IndexedEquipmentBrowsePriceFacts | null {
+  if (price.kind !== "priced") return null;
+  const rules = system.rules;
+  if (!Array.isArray(rules) || rules.length > 0) return null;
+  const subitems = system.subitems;
+  if (subitems !== undefined && subitems !== null && (!Array.isArray(subitems) || subitems.length > 0)) return null;
+  if (hasConfiguredPricing(system, itemType)) return null;
+  const traits = new Set(stringArray(traitsRoot.value).map((trait) => trait.toLowerCase()));
+  if (traits.has("shoddy")) return null;
+  const rawSizeSensitive = record(system.price).sizeSensitive;
+  if (typeof rawSizeSensitive === "boolean") return Object.freeze({ sizeSensitive: rawSizeSensitive });
+  if (["arcane", "divine", "magical", "occult", "primal", "tech"].some((trait) => traits.has(trait))) return null;
+  return Object.freeze({ sizeSensitive: true });
+}
+
+function hasConfiguredPricing(system: Record<string, unknown>, itemType: string): boolean {
+  const material = record(system.material);
+  if (nonEmpty(material.type) || nonEmpty(material.grade)) return true;
+  if (system.specific !== undefined && system.specific !== null && system.specific !== false) return true;
+  if (itemType !== "weapon" && itemType !== "armor" && itemType !== "shield") return false;
+  return hasMeaningfulConfigurationValue(system.runes);
+}
+
+function hasMeaningfulConfigurationValue(value: unknown): boolean {
+  if (value === undefined || value === null || value === false || value === 0 || value === "") return false;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return true;
+  if (Array.isArray(value)) return value.some(hasMeaningfulConfigurationValue);
+  if (!isRecord(value)) return true;
+  return Object.values(value).some(hasMeaningfulConfigurationValue);
 }
 
 function normalizeCoinValue(raw: unknown): Partial<Record<EquipmentDenomination, number>> | null {
@@ -1181,6 +1259,7 @@ function stripEvaluation(entry: EquipmentCatalogueEntry): NormalizedEquipmentCat
     rarity: entry.rarity,
     publicationSlug: entry.publicationSlug,
     price: entry.price,
+    indexedBrowsePriceFacts: entry.indexedBrowsePriceFacts,
     traits: entry.traits,
     ruleKeys: entry.ruleKeys,
     previewIdentity: entry.previewIdentity,
@@ -1350,6 +1429,14 @@ function fingerprintEquipmentPreview(
   hash = hashFingerprintPart(hash, price.copperValue);
   hash = hashFingerprintPart(hash, price.per);
   hash = hashFingerprintPart(hash, price.sourceQuantity);
+  hash = hashFingerprintPart(
+    hash,
+    candidate.indexedBrowsePriceFacts
+      ? candidate.indexedBrowsePriceFacts.sizeSensitive
+        ? "size-sensitive"
+        : "fixed-size"
+      : null
+  );
   for (const trait of candidate.traits) hash = hashFingerprintPart(hash, trait);
   hash = hashFingerprintPart(hash, null);
   for (const ruleKey of candidate.ruleKeys) hash = hashFingerprintPart(hash, ruleKey);

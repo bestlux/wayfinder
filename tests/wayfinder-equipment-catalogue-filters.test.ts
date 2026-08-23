@@ -128,6 +128,7 @@ function entry(overrides: Partial<EquipmentCatalogueEntry> = {}): EquipmentCatal
     rarity: "common",
     publicationSlug: "pathfinder-player-core",
     price: { kind: "priced", value: { gp: 1 }, copperValue: 100, per: 1, sourceQuantity: 1 },
+    indexedBrowsePriceFacts: null,
     traits: [],
     ruleKeys: [],
     previewIdentity: "preview",

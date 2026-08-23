@@ -685,6 +685,57 @@ describe("equipment acquisition runtime", () => {
     expect(getDocument).toHaveBeenCalledTimes(3);
   });
 
+  it("uses exact trusted index pricing for simple browse rows while keeping command preparation fresh", async () => {
+    const source = dagger({ priceGp: 1, sizeSensitive: true });
+    const preparePhysicalItem = vi.fn(prepareTestPhysicalItem);
+    const prepareBrowsePhysicalItems = vi.fn(prepareTestBrowsePhysicalItems);
+    const getDocument = vi.fn(async () => document(source));
+    const { runtime, request } = fixture(
+      {
+        indexedBrowsePricing: "pf2e-physical-source-v1",
+        getIndex: vi.fn(async () => [source]),
+        getDocument,
+      },
+      { ancestrySize: "lg", preparePhysicalItem, prepareBrowsePhysicalItems }
+    );
+
+    const projection = await runtime.uiAdapter.project(request);
+
+    expect(projection).toMatchObject({
+      state: "ready",
+      records: [{ name: "Dagger", priceCopper: 200, priceLabel: "2 gp" }],
+    });
+    expect(getDocument).not.toHaveBeenCalled();
+    expect(prepareBrowsePhysicalItems).not.toHaveBeenCalled();
+
+    const line = await runtime.uiAdapter.prepareLine({ ...request, sourceUuid: DAGGER_UUID });
+    expect(line.price.unitPriceCopper).toBe(200);
+    expect(getDocument).toHaveBeenCalledTimes(1);
+    expect(preparePhysicalItem).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps ambiguous trusted-index pricing on the prepared browse path", async () => {
+    const source = dagger({ priceGp: 10 });
+    source.system.traits.value.push("magical");
+    const prepareBrowsePhysicalItems = vi.fn(prepareTestBrowsePhysicalItems);
+    const getDocument = vi.fn(async () => document(source));
+    const { runtime, request } = fixture(
+      {
+        indexedBrowsePricing: "pf2e-physical-source-v1",
+        getIndex: vi.fn(async () => [source]),
+        getDocument,
+      },
+      { ancestrySize: "lg", prepareBrowsePhysicalItems }
+    );
+
+    await expect(runtime.uiAdapter.project(request)).resolves.toMatchObject({
+      state: "ready",
+      records: [{ name: "Dagger", priceCopper: 2_000, priceLabel: "20 gp" }],
+    });
+    expect(getDocument).toHaveBeenCalledTimes(1);
+    expect(prepareBrowsePhysicalItems).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps mixed browse outcomes ordered and makes a repeated facet document-free", async () => {
     const ordinary = dagger({ id: "batch-ordinary", name: "Alpha Ordinary", priceSp: 1 });
     const partial = dagger({
@@ -2536,7 +2587,8 @@ async function reviewedTitanAcquisitionWithLine(
 }
 
 function fixture(
-  pack: Pick<EquipmentCataloguePackLike, "getIndex" | "getDocument">,
+  pack: Pick<EquipmentCataloguePackLike, "getIndex" | "getDocument"> &
+    Partial<Pick<EquipmentCataloguePackLike, "indexedBrowsePricing">>,
   options: {
     readonly accessRegistry?: EquipmentAccessRegistry;
     readonly fetchDocumentByUuid?: (uuid: string) => Promise<unknown | null>;
@@ -2581,7 +2633,15 @@ function fixture(
   draft.acquisition = acquisition;
   selectAncestry(draft);
   const packs = new Map<string, EquipmentCataloguePackLike>([
-    [PACK_ID, { documentName: "Item", getIndex: pack.getIndex, getDocument: pack.getDocument }],
+    [
+      PACK_ID,
+      {
+        documentName: "Item",
+        indexedBrowsePricing: pack.indexedBrowsePricing,
+        getIndex: pack.getIndex,
+        getDocument: pack.getDocument,
+      },
+    ],
   ]);
   return {
     runtime: createEquipmentAcquisitionRuntime({

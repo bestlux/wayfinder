@@ -467,9 +467,12 @@ export function createEquipmentAcquisitionRuntime(
               })
             : null;
           const cached = browseCacheKey ? cachedBrowseRecord(browseCacheKey) : null;
+          const indexedPrice = indexedBrowsePrice(entry, targetSize);
           return cached
             ? { kind: "record" as const, record: cached }
-            : { kind: "pending" as const, entry, browseCacheKey };
+            : indexedPrice
+              ? { kind: "record" as const, record: toUiRecord(entry, indexedPrice) }
+              : { kind: "pending" as const, entry, browseCacheKey };
         });
         const pendingRows = browseRows.filter((row) => row.kind === "pending");
         type PendingBrowseRow = (typeof pendingRows)[number];
@@ -1219,6 +1222,7 @@ function foundryEquipmentPackAdapter(packId: string): EquipmentCataloguePackLike
   if (!pack) return undefined;
   return {
     indexEntryIdentity: "stable-replacement",
+    indexedBrowsePricing: "pf2e-physical-source-v1",
     documentName: pack.documentName,
     metadata: pack.metadata,
     getIndex: (options) => pack.getIndex(options),
@@ -1545,6 +1549,29 @@ function buildSimpleResolvedPrice(input: {
     targetSize: input.targetSize,
     prepared,
   });
+}
+
+function indexedBrowsePrice(
+  entry: EquipmentCatalogueEntry,
+  targetSize: AcquisitionPriceSnapshot["size"]
+): AcquisitionPriceSnapshot | null {
+  const facts = entry.indexedBrowsePriceFacts;
+  const normalized = entry.price;
+  if (!facts || normalized.kind !== "priced" || !normalized.value) return null;
+  const snapshot = createAcquisitionPriceSnapshot({
+    basePrice: { kind: "priced", value: cloneData(normalized.value) },
+    size: targetSize,
+    sizeSensitive: facts.sizeSensitive,
+    preciousMaterial: false,
+    adjustedBulkPriceCopper: null,
+    configurationPriceCopper: 0,
+    pricePer: normalized.per,
+    sourceQuantity: normalized.sourceQuantity,
+    requestedQuantity: 1,
+  });
+  if (snapshot.ok === false) return null;
+  if ((normalized.copperValue ?? 0) > 0 && snapshot.value.linePriceCopper === 0) return null;
+  return snapshot.value;
 }
 
 function buildSimpleResolvedPriceFromPrepared(input: {

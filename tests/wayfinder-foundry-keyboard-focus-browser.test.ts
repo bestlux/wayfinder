@@ -120,7 +120,7 @@ browserIt(
       );
       expect(await page.locator("#stale-apply-no").getAttribute("data-keyboard-focus")).toBeNull();
 
-      await page.evaluate(() => {
+      const focusedAfterLateBlur = await page.evaluate(() => {
         const dialog = document.querySelector<HTMLDialogElement>("#apply-dialog")!;
         if (!dialog.open) dialog.showModal();
         const safeDefault = document.querySelector<HTMLButtonElement>("#apply-no")!;
@@ -131,9 +131,14 @@ browserIt(
           HTMLElement.prototype.focus.call(this, options);
         };
         window.focusHandoff.onRender({ element: document.querySelector("#apply-dialog") });
-        queueMicrotask(() => (document.activeElement as HTMLElement | null)?.blur());
+        return new Promise<string | undefined>((resolveFocus) => {
+          queueMicrotask(() => {
+            (document.activeElement as HTMLElement | null)?.blur();
+            resolveFocus(document.activeElement?.tagName);
+          });
+        });
       });
-      expect(await page.evaluate(() => document.activeElement?.tagName)).toBe("BODY");
+      expect(focusedAfterLateBlur).toBe("BODY");
       await waitForAnimationFrames(page, 3);
       expect(await page.evaluate(() => window.focusAttempts)).toBe(2);
       expect(await page.evaluate(() => document.activeElement?.id)).toBe("apply-no");

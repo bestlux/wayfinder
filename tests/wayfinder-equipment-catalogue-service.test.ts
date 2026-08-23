@@ -176,6 +176,52 @@ describe("minimal equipment catalogue", () => {
     });
   });
 
+  it("invalidates indexed pricing when Foundry mutates grade, temporary, or ItemAlteration facts in place", async () => {
+    const entry = dagger({
+      system: {
+        grade: "commercial",
+        temporary: false,
+        runes: { potency: 0, striking: 0, property: [] },
+        material: { type: null, grade: null },
+        specific: null,
+        subitems: [],
+      },
+    });
+    const service = createEquipmentCatalogueService({
+      packs: new Map([
+        [
+          PACK_ID,
+          {
+            indexEntryIdentity: "stable-replacement" as const,
+            indexedBrowsePricing: "pf2e-physical-source-v1" as const,
+            documentName: "Item",
+            getIndex: vi.fn(async () => [entry]),
+            getDocument: vi.fn(async () => null),
+          },
+        ],
+      ]),
+      equipmentPackIds: [PACK_ID],
+    });
+
+    expect((await service.project(context())).entries[0]?.indexedBrowsePriceFacts).toEqual({ sizeSensitive: true });
+
+    record(entry.system).grade = "tactical";
+    service.invalidatePack(PACK_ID);
+    expect((await service.project(context())).entries[0]?.indexedBrowsePriceFacts).toBeNull();
+
+    record(entry.system).grade = "commercial";
+    record(entry.system).temporary = true;
+    service.invalidatePack(PACK_ID);
+    expect((await service.project(context())).entries[0]?.indexedBrowsePriceFacts).toBeNull();
+
+    record(entry.system).temporary = false;
+    record(entry.system).rules = [
+      { key: "ItemAlteration", itemId: "{item|id}", itemType: "armor", property: "runes-potency", value: 1 },
+    ];
+    service.invalidatePack(PACK_ID);
+    expect((await service.project(context())).entries[0]?.indexedBrowsePriceFacts).toBeNull();
+  });
+
   it("periodically yields normalization and projection work across large and multiple packs", async () => {
     const secondPackId = "test.extra-equipment";
     const yieldTask = vi.fn(async () => undefined);

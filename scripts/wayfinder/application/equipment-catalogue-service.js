@@ -12,15 +12,18 @@ const INDEX_FIELDS = Object.freeze([
     "system.traits.rarity",
     "system.traits.value",
     "system.traits.otherTags",
+    "system.traits.config.modular",
     "system.publication.title",
     "system.source.value",
     "system.price.value",
     "system.price.per",
     "system.price.sizeSensitive",
     "system.quantity",
+    "system.temporary",
     "system.rules",
     "system.runes",
     "system.material",
+    "system.grade",
     "system.specific",
     "system.subitems",
 ]);
@@ -538,8 +541,8 @@ async function loadPackProjection(pack, packId, normalizationSnapshot) {
     let normalizationWork = 0;
     for (let index = 0; index < entries.length; index += 1) {
         const entry = entries[index];
-        const witness = isRecord(entry) ? indexNormalizationWitness(entry) : null;
         const cached = isRecord(entry) ? normalizationSnapshot?.get(entry) : undefined;
+        const witness = isRecord(entry) ? indexNormalizationWitness(entry) : null;
         if (cached && witness !== null && cached.witness === witness) {
             candidates.push(cached.candidate);
             continue;
@@ -582,15 +585,18 @@ function indexNormalizationWitness(source) {
         traits.rarity,
         traits.value,
         traits.otherTags,
+        record(traits.config).modular,
         publication.title,
         legacySource.value,
         price.value,
         price.per,
         price.sizeSensitive,
         system.quantity,
-        rules?.map((rule) => record(rule).key) ?? null,
+        system.temporary,
+        rules,
         system.runes,
         system.material,
+        system.grade,
         system.specific,
         system.subitems,
     ]);
@@ -764,6 +770,12 @@ function normalizeIndexedBrowsePriceFacts(system, traitsRoot, itemType, price) {
     if (hasConfiguredPricing(system, itemType))
         return null;
     const traits = new Set(stringArray(traitsRoot.value).map((trait) => trait.toLowerCase()));
+    if (traits.has("modular"))
+        return null;
+    if (traits.has("infused") ||
+        (system.temporary !== undefined && system.temporary !== null && system.temporary !== false)) {
+        return null;
+    }
     const otherTags = traitsRoot.otherTags;
     if (otherTags !== undefined && otherTags !== null && !Array.isArray(otherTags))
         return null;
@@ -788,6 +800,8 @@ function rulesCanAlterOwnPrice(rules, itemType) {
         const rule = record(rawRule);
         if (rule.key !== "ItemAlteration")
             return false;
+        if (rule.itemId !== undefined)
+            return true;
         return !nonEmpty(rule.itemType) || rule.itemType.trim().toLowerCase() === itemType;
     });
 }
@@ -799,6 +813,9 @@ function hasConfiguredPricing(system, itemType) {
         return true;
     if (itemType !== "weapon" && itemType !== "armor" && itemType !== "shield")
         return false;
+    const grade = system.grade;
+    if (grade !== undefined && grade !== null && grade !== "commercial")
+        return true;
     return hasMeaningfulConfigurationValue(system.runes);
 }
 function hasMeaningfulConfigurationValue(value) {

@@ -41,6 +41,7 @@ import { SEMANTIC_WEALTH_POLICY_REF } from "../src/wayfinder/domain/semantic-wea
 import { buildStartingEquipmentPane as buildStartingEquipmentPaneLocalized } from "../src/wayfinder/panes/starting-equipment-pane";
 import { STARTING_EQUIPMENT_RESULT_WINDOW } from "../src/wayfinder/starting-equipment-result-window";
 import { localizeAcquisitionEnglish } from "./fixtures/acquisition-localization-fixture";
+import { PF2E_841_TACTICAL_WEAPON_PRICE_WITNESS } from "./fixtures/pf2e-841-physical-price";
 
 function buildStartingEquipmentPane(
   ...args: [
@@ -745,6 +746,92 @@ describe("equipment acquisition runtime", () => {
     expect(prepareBrowsePhysicalItems).not.toHaveBeenCalled();
   });
 
+  it("fails closed from the index and matches PF2E 8.4.1 prepared tactical-grade pricing", async () => {
+    const witness = PF2E_841_TACTICAL_WEAPON_PRICE_WITNESS;
+    const source = structuredClone(witness.source);
+    const prepared = structuredClone(witness.prepared);
+    const getIndex = vi.fn(async (_options: { fields: string[] }) => [source]);
+    const getDocument = vi.fn(async () => document(source));
+    const preparePhysicalItem = vi.fn(() => structuredClone(prepared));
+    const prepareBrowsePhysicalItems = vi.fn<PrepareBrowsePhysicalItems>(async (input) =>
+      input.entries.map((entry) => ({ key: entry.key, prepared: structuredClone(prepared), error: null }))
+    );
+    const { runtime, request } = fixture(
+      { indexedBrowsePricing: "pf2e-physical-source-v1", getIndex, getDocument },
+      { policy: configuredPolicy(), preparePhysicalItem, prepareBrowsePhysicalItems }
+    );
+
+    const projection = await runtime.uiAdapter.project(request);
+    const sourceUuid = `Compendium.${PACK_ID}.Item.${source._id}`;
+    const line = await runtime.uiAdapter.prepareLine({
+      ...request,
+      sourceUuid,
+      funding: { lane: "allowance", allowanceId: "level-14-1" },
+    });
+
+    expect(witness.environment).toEqual({ foundryVersion: "14.366", pf2eVersion: "8.4.1" });
+    expect(projection).toMatchObject({
+      state: "ready",
+      records: [{ sourceUuid, level: witness.expected.level, priceCopper: witness.expected.preparedCopper }],
+    });
+    expect(line.price).toMatchObject({
+      unitPriceCopper: witness.expected.preparedCopper,
+      configurationPriceCopper: witness.expected.gradeCopper,
+      sizeSensitive: false,
+    });
+    expect(getDocument).toHaveBeenCalledTimes(2);
+    expect(prepareBrowsePhysicalItems).toHaveBeenCalledTimes(1);
+    expect(preparePhysicalItem).toHaveBeenCalledTimes(1);
+    expect(getIndex.mock.calls[0]?.[0].fields).toEqual(
+      expect.arrayContaining(["system.grade", "system.temporary", "system.traits.value"])
+    );
+  });
+
+  it.each([
+    {
+      label: "temporary",
+      mutate: (source: ReturnType<typeof dagger>) => Object.assign(source.system, { temporary: true }),
+    },
+    {
+      label: "infused",
+      mutate: (source: ReturnType<typeof dagger>) => source.system.traits.value.push("infused"),
+    },
+  ])("prepares and rejects a $label indexed source whose live PF2E price becomes zero", async ({ mutate }) => {
+    const source = dagger({ priceGp: 1 });
+    mutate(source);
+    const prepared = prepareTestPhysicalItem({
+      actor: { id: "actor-1" },
+      targetLevel: 1,
+      targetSize: "medium",
+      source,
+    });
+    prepared.system.price.value = { pp: 0, gp: 0, sp: 0, cp: 0, credits: 0, upb: 0 };
+    prepared.system.price.sizeSensitive = false;
+    prepared.system.temporary = true;
+    const preparePhysicalItem = vi.fn(() => structuredClone(prepared));
+    const prepareBrowsePhysicalItems = vi.fn<PrepareBrowsePhysicalItems>(async (input) =>
+      input.entries.map((entry) => ({ key: entry.key, prepared: structuredClone(prepared), error: null }))
+    );
+    const getDocument = vi.fn(async () => document(source));
+    const { runtime, request } = fixture(
+      {
+        indexedBrowsePricing: "pf2e-physical-source-v1",
+        getIndex: vi.fn(async () => [source]),
+        getDocument,
+      },
+      { preparePhysicalItem, prepareBrowsePhysicalItems }
+    );
+
+    await expect(runtime.uiAdapter.project(request)).resolves.toMatchObject({
+      state: "ready",
+      records: [{ available: false, priceCopper: null, unavailableReason: expect.stringMatching(/temporary/i) }],
+    });
+    await expect(runtime.uiAdapter.prepareLine({ ...request, sourceUuid: DAGGER_UUID })).rejects.toThrow(/temporary/i);
+    expect(getDocument).toHaveBeenCalledTimes(2);
+    expect(prepareBrowsePhysicalItems).toHaveBeenCalledTimes(1);
+    expect(preparePhysicalItem).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps price-neutral actor rules index-backed while failing closed for possible self-alteration", async () => {
     const rollOption = dagger({ id: "roll-option", name: "Roll Option", itemType: "equipment" });
     rollOption.system.rules = [{ key: "RollOption", option: "implement-held" }];
@@ -756,8 +843,20 @@ describe("equipment acquisition runtime", () => {
     possibleSelfAlteration.system.rules = [
       { key: "ItemAlteration", itemType: "weapon", property: "runes-potency", mode: "add", value: 1 },
     ];
+    const itemIdAlteration = dagger({ id: "item-id-alteration", name: "Item ID Alteration" });
+    itemIdAlteration.system.rules = [
+      {
+        key: "ItemAlteration",
+        itemId: "{item|id}",
+        itemType: "armor",
+        property: "runes-potency",
+        mode: "add",
+        value: 1,
+      },
+    ];
     const shoddy = dagger({ id: "shoddy", name: "Shoddy", otherTags: ["shoddy"] });
-    const sources = [rollOption, otherTypeAlteration, possibleSelfAlteration, shoddy];
+    const sources = [rollOption, otherTypeAlteration, possibleSelfAlteration, itemIdAlteration, shoddy];
+    const preparePhysicalItem = vi.fn(prepareTestPhysicalItem);
     const prepareBrowsePhysicalItems = vi.fn(prepareTestBrowsePhysicalItems);
     const getDocument = vi.fn(async (id) => document(sources.find((source) => source._id === id)!));
     const { runtime, request } = fixture(
@@ -766,22 +865,24 @@ describe("equipment acquisition runtime", () => {
         getIndex: vi.fn(async () => sources),
         getDocument,
       },
-      { ancestrySize: "lg", prepareBrowsePhysicalItems }
+      { ancestrySize: "lg", preparePhysicalItem, prepareBrowsePhysicalItems }
     );
 
     await expect(runtime.uiAdapter.project(request)).resolves.toMatchObject({
       state: "ready",
       records: [
+        { name: "Item ID Alteration", priceCopper: 40 },
         { name: "Other Type", priceCopper: 40 },
         { name: "Roll Option", priceCopper: 40 },
         { name: "Self Alteration", priceCopper: 40 },
         { name: "Shoddy", priceCopper: 40 },
       ],
     });
-    expect(getDocument).toHaveBeenCalledTimes(2);
-    expect(getDocument.mock.calls.map(([id]) => id)).toEqual(["self-alteration", "shoddy"]);
+    expect(getDocument).toHaveBeenCalledTimes(3);
+    expect(getDocument.mock.calls.map(([id]) => id)).toEqual(["item-id-alteration", "self-alteration", "shoddy"]);
     expect(prepareBrowsePhysicalItems).toHaveBeenCalledTimes(1);
     expect(prepareBrowsePhysicalItems.mock.calls[0]![0].entries).toHaveLength(1);
+    expect(preparePhysicalItem).toHaveBeenCalledTimes(2);
   });
 
   it("keeps mixed browse outcomes ordered and makes a repeated facet document-free", async () => {

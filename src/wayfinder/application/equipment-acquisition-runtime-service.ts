@@ -184,10 +184,10 @@ export class EquipmentSourceHealthError extends Error {
   }
 }
 
-class PartialUnitPriceRequiredError extends TypeError {
-  constructor() {
-    super("This item must be purchased in a quantity that produces a nonzero exact PF2E charge.");
-    this.name = "PartialUnitPriceRequiredError";
+class UnsupportedPreparedPriceError extends TypeError {
+  constructor(message: string) {
+    super(message);
+    this.name = "UnsupportedPreparedPriceError";
   }
 }
 
@@ -585,7 +585,7 @@ export function createEquipmentAcquisitionRuntime(
                     preparedRecordByUuid.set(entry.sourceUuid, record);
                     return;
                   }
-                  if (error instanceof PartialUnitPriceRequiredError) {
+                  if (error instanceof UnsupportedPreparedPriceError) {
                     const record = { ...toUiRecord(entry, null), available: false, unavailableReason: error.message };
                     if (browseCacheKey) cacheBrowseRecord(browseCacheKey, record);
                     preparedRecordByUuid.set(entry.sourceUuid, record);
@@ -1588,7 +1588,7 @@ function buildSimpleResolvedPriceFromPrepared(input: {
       : normalized.kind === "missing"
         ? { kind: "missing" }
         : { kind: "unparseable" };
-  const snapshot = createAcquisitionPriceSnapshot({
+  const baseline = createAcquisitionPriceSnapshot({
     basePrice,
     size: input.targetSize,
     sizeSensitive: preparedFacts.sizeSensitive,
@@ -1599,12 +1599,37 @@ function buildSimpleResolvedPriceFromPrepared(input: {
     sourceQuantity: normalized.sourceQuantity,
     requestedQuantity: input.requestedQuantity,
   });
+  if (baseline.ok === false) throw new TypeError(baseline.message);
+  if ((normalized.copperValue ?? 0) > 0 && preparedFacts.totalCopper === 0) {
+    throw new UnsupportedPreparedPriceError(
+      preparedFacts.temporary
+        ? "PF2E treats this prepared item as temporary, so it cannot be purchased from starting wealth."
+        : "This item must be purchased in a quantity that produces a nonzero exact PF2E charge."
+    );
+  }
+  const configurationPriceCopper = preparedFacts.totalCopper - baseline.value.unitPriceCopper;
+  if (!Number.isSafeInteger(configurationPriceCopper) || configurationPriceCopper < 0) {
+    throw new TypeError("PF2E prepared equipment pricing differs from Wayfinder's reviewed price basis.");
+  }
+  const snapshot = createAcquisitionPriceSnapshot({
+    basePrice,
+    size: input.targetSize,
+    sizeSensitive: preparedFacts.sizeSensitive,
+    preciousMaterial: preparedFacts.preciousMaterial,
+    adjustedBulkPriceCopper: preparedFacts.preciousMaterial ? preparedFacts.totalCopper : null,
+    configurationPriceCopper,
+    pricePer: normalized.per,
+    sourceQuantity: normalized.sourceQuantity,
+    requestedQuantity: input.requestedQuantity,
+  });
   if (snapshot.ok === false) throw new TypeError(snapshot.message);
   if (snapshot.value.unitPriceCopper !== preparedFacts.totalCopper) {
     throw new TypeError("PF2E prepared equipment pricing differs from Wayfinder's reviewed price basis.");
   }
   if ((normalized.copperValue ?? 0) > 0 && snapshot.value.linePriceCopper === 0) {
-    throw new PartialUnitPriceRequiredError();
+    throw new UnsupportedPreparedPriceError(
+      "This item must be purchased in a quantity that produces a nonzero exact PF2E charge."
+    );
   }
   return snapshot.value;
 }
@@ -1612,6 +1637,7 @@ function buildSimpleResolvedPriceFromPrepared(input: {
 function preparedPhysicalPriceFacts(item: unknown): {
   readonly sizeSensitive: boolean;
   readonly preciousMaterial: boolean;
+  readonly temporary: boolean;
   readonly totalCopper: number;
 } {
   const system = record(record(item).system);
@@ -1628,6 +1654,7 @@ function preparedPhysicalPriceFacts(item: unknown): {
   return {
     sizeSensitive: price.sizeSensitive,
     preciousMaterial: material.type !== null,
+    temporary: system.temporary === true,
     totalCopper,
   };
 }

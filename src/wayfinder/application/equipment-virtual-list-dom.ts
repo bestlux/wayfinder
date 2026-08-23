@@ -12,6 +12,17 @@ export interface EquipmentResultAnchor {
   readonly offsetFromViewportTopPx: number;
 }
 
+export function coverEquipmentResultViewport(args: {
+  readonly list: HTMLElement;
+  readonly total: number;
+  readonly measurements: StartingEquipmentRowMeasurements;
+  readonly pending: boolean;
+}): readonly number[] {
+  const loadingIndices = renderEquipmentResultSkeletonBand(args);
+  args.list.setAttribute("aria-busy", args.pending || loadingIndices.length > 0 ? "true" : "false");
+  return loadingIndices;
+}
+
 export function equipmentResultAnchorAtViewport(list: HTMLElement): EquipmentResultAnchor | null {
   const viewport = list.getBoundingClientRect();
   const row = [...list.querySelectorAll<HTMLElement>("[data-result-index]")].find((candidate) => {

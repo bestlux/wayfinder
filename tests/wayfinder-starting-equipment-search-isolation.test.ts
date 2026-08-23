@@ -5,6 +5,7 @@ import type { ProgressionPlan } from "../src/types";
 import { resolveStartingEquipmentRenderPlan } from "../src/wayfinder/application/starting-equipment-ui-adapter";
 
 const appShell = readFileSync(resolve("src/wayfinder/app-shell.ts"), "utf8");
+const actions = readFileSync(resolve("src/wayfinder/actions.ts"), "utf8");
 
 describe("starting equipment search isolation", () => {
   it("uses the measured equipment debounce without changing ordinary picker timing", () => {
@@ -63,9 +64,15 @@ describe("starting equipment search isolation", () => {
     );
   });
 
-  it("rewindows equipment through passive animation-frame scroll and row/list resize observation", () => {
+  it("rewindows equipment synchronously from passive scroll and observes row/list resize", () => {
+    const handlerStart = appShell.indexOf("  #onScrollableScroll = ");
+    const handlerEnd = appShell.indexOf("  #onManualChange = ", handlerStart);
+    const handler = appShell.slice(handlerStart, handlerEnd);
+
     expect(appShell).toContain('scrollable.matches("[data-wayfinder-equipment-virtual-list]")');
-    expect(appShell).toContain("requestAnimationFrame(() => {");
+    expect(actions).toContain('scrollable.addEventListener("scroll", handlers.onScrollableScroll, { passive: true })');
+    expect(handler).toContain("this.#scheduleEquipmentResultWindow(scrollable);");
+    expect(handler).not.toContain("requestAnimationFrame");
     expect(appShell).toContain("new ResizeObserver((entries) => {");
     expect(appShell).toContain("#captureEquipmentResultAnchor(scrollable)");
     expect(appShell).toContain("#restoreEquipmentResultAnchor(list, measurements)");

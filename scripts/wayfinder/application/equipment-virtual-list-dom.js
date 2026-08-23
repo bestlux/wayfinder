@@ -1,4 +1,9 @@
 import { clampStartingEquipmentRowHeight, STARTING_EQUIPMENT_RESULT_WINDOW, startingEquipmentIndexAtScrollOffset, startingEquipmentPrefixHeight, } from "../starting-equipment-result-window.js";
+export function coverEquipmentResultViewport(args) {
+    const loadingIndices = renderEquipmentResultSkeletonBand(args);
+    args.list.setAttribute("aria-busy", args.pending || loadingIndices.length > 0 ? "true" : "false");
+    return loadingIndices;
+}
 export function equipmentResultAnchorAtViewport(list) {
     const viewport = list.getBoundingClientRect();
     const row = [...list.querySelectorAll("[data-result-index]")].find((candidate) => {

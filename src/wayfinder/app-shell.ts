@@ -129,6 +129,7 @@ import {
 } from "./application/equipment-search-input-service.js";
 import {
   clearEquipmentResultSkeletonBand,
+  coverEquipmentResultViewport,
   type EquipmentResultAnchor,
   equipmentResultAnchorAtViewport,
   renderEquipmentResultSkeletonBand,
@@ -420,7 +421,6 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   #equipmentCriteriaRevisionByStepId = new Map<string, number>();
   #equipmentResultMeasurementsByStepId = new Map<string, EquipmentResultMeasurements>();
   #equipmentResultResizeObserver: ResizeObserver | null = null;
-  #equipmentResultAnimationFrame: number | null = null;
   #pendingEquipmentWindowEdgeFocus: "first" | "last" | null = null;
   #pendingEquipmentListFocusStepId: string | null = null;
   #equipmentWindowAnnouncementPending = false;
@@ -1067,8 +1067,6 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
 
   _tearDown(options: unknown): void {
     try {
-      if (this.#equipmentResultAnimationFrame !== null) cancelAnimationFrame(this.#equipmentResultAnimationFrame);
-      this.#equipmentResultAnimationFrame = null;
       this.#equipmentResultResizeObserver?.disconnect();
       this.#equipmentResultResizeObserver = null;
       super._tearDown(options);
@@ -1668,11 +1666,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       if (!this.#isCurrentEquipmentResultList(scrollable)) return;
       this.#scrollById.set(scrollId, scrollable.scrollTop);
       this.#captureEquipmentResultAnchor(scrollable);
-      if (this.#equipmentResultAnimationFrame !== null) cancelAnimationFrame(this.#equipmentResultAnimationFrame);
-      this.#equipmentResultAnimationFrame = requestAnimationFrame(() => {
-        this.#equipmentResultAnimationFrame = null;
-        this.#scheduleEquipmentResultWindow(scrollable);
-      });
+      this.#scheduleEquipmentResultWindow(scrollable);
       return;
     }
     this.#scrollById.set(scrollId, scrollable.scrollTop);
@@ -2179,8 +2173,6 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     clearMeasurements = false,
     preserveEdgeFocus?: "first" | "last"
   ): void {
-    if (this.#equipmentResultAnimationFrame !== null) cancelAnimationFrame(this.#equipmentResultAnimationFrame);
-    this.#equipmentResultAnimationFrame = null;
     for (const [candidateStepId, state] of this.#equipmentResultWindowStateByStepId) {
       if (stepId && candidateStepId !== stepId) continue;
       this.#equipmentResultWindowStateByStepId.set(
@@ -2373,11 +2365,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     const requested = requestStartingEquipmentResultWindow(this.#equipmentResultWindowState(stepId), target);
     this.#equipmentResultWindowStateByStepId.set(stepId, requested.state);
     if (!requested.state.pending) return;
-    list.setAttribute("aria-busy", "true");
-    renderEquipmentResultSkeletonBand({
+    coverEquipmentResultViewport({
       list,
       total,
       measurements: this.#equipmentResultMeasurements(stepId),
+      pending: true,
     });
     if (requested.scheduled) this.#startEquipmentResultWindowRender(list, requested.scheduled);
   }
@@ -2390,11 +2382,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     if (!list || !stepId || !this.#isCurrentEquipmentResultList(list)) return false;
     const pending = this.#equipmentResultWindowState(stepId).pending;
     if (!pending || !sameStartingEquipmentResultWindow(pending, target)) return false;
-    list.setAttribute("aria-busy", "true");
-    renderEquipmentResultSkeletonBand({
+    coverEquipmentResultViewport({
       list,
       total: Number(list.dataset.totalResults),
       measurements: this.#equipmentResultMeasurements(stepId),
+      pending: true,
     });
     this.#equipmentScheduledRenderIntent = "window";
     this.#equipmentSearchScheduler.schedule(stepId, this.#equipmentSearchByStepId.get(stepId) ?? "");

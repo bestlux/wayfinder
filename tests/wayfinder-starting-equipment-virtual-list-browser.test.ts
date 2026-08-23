@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { chromium } from "playwright-core";
 import { expect, it } from "vitest";
 import type {
+  coverEquipmentResultViewport as coverResultViewport,
   renderEquipmentResultSkeletonBand as renderSkeletonBand,
   equipmentResultAnchorAtViewport as resultAnchorAtViewport,
   transferEquipmentResultFocusToSentinel as transferFocusToSentinel,
@@ -37,6 +38,7 @@ const virtualListScript = readFileSync(resolve("scripts/wayfinder/application/eq
   .replaceAll("export ", "")
   .concat(
     "\nwindow.equipmentResultAnchorAtViewport = equipmentResultAnchorAtViewport;",
+    "\nwindow.coverEquipmentResultViewport = coverEquipmentResultViewport;",
     "\nwindow.renderEquipmentResultSkeletonBand = renderEquipmentResultSkeletonBand;",
     "\nwindow.transferEquipmentResultFocusToSentinel = transferEquipmentResultFocusToSentinel;"
   );
@@ -60,6 +62,87 @@ it("binds the production virtual list to render identity, focus, and noninteract
     /\.equipment-result-skeleton-band\s*\{[\s\S]*?position: absolute;[\s\S]*?pointer-events: none;/
   );
   expect(productionEquipmentStyles).toMatch(/\.equipment-result-skeleton\s*\{[\s\S]*?position: absolute;/);
+});
+
+browserIt("covers a rapid full-screen jump before the first animation frame", async () => {
+  const browser = await chromium.launch({ executablePath: chromePath, headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1000, height: 1600 } });
+    await page.setContent(fixture(1500));
+    await page.addScriptTag({ content: resultWindowScript });
+    await page.addScriptTag({ content: virtualListScript });
+
+    const evidence = await page.evaluate(() => {
+      const list = document.querySelector<HTMLElement>("[data-wayfinder-equipment-virtual-list]")!;
+      let frameRan = false;
+      list.addEventListener(
+        "scroll",
+        () => {
+          window.coverEquipmentResultViewport({
+            list,
+            total: 500,
+            measurements: { estimatedRowPx: 48, measuredRows: new Map() },
+            pending: true,
+          });
+          requestAnimationFrame(() => {
+            frameRan = true;
+          });
+        },
+        { passive: true }
+      );
+
+      list.scrollTop = 80 * 48;
+      list.dispatchEvent(new Event("scroll"));
+
+      const viewport = list.getBoundingClientRect();
+      const coverage = [...list.querySelectorAll<HTMLElement>("[data-result-index], [data-equipment-result-skeleton]")]
+        .map((element) => element.getBoundingClientRect())
+        .filter((bounds) => bounds.bottom > viewport.top && bounds.top < viewport.bottom)
+        .map((bounds) => ({
+          start: Math.max(viewport.top, bounds.top),
+          end: Math.min(viewport.bottom, bounds.bottom),
+        }))
+        .sort((left, right) => left.start - right.start);
+      let cursor = viewport.top;
+      let maximumVisibleGapPx = 0;
+      for (const interval of coverage) {
+        maximumVisibleGapPx = Math.max(maximumVisibleGapPx, interval.start - cursor);
+        cursor = Math.max(cursor, interval.end);
+      }
+      maximumVisibleGapPx = Math.max(maximumVisibleGapPx, viewport.bottom - cursor);
+
+      const immediateAriaBusy = list.getAttribute("aria-busy");
+      list.scrollTop = 0;
+      window.coverEquipmentResultViewport({
+        list,
+        total: 500,
+        measurements: { estimatedRowPx: 48, measuredRows: new Map() },
+        pending: false,
+      });
+
+      return {
+        immediateAriaBusy,
+        frameRan,
+        maximumVisibleGapPx,
+        mountedRows: list.querySelectorAll("[data-result-index]").length,
+        settledAriaBusy: list.getAttribute("aria-busy"),
+        settledSkeletonBandHidden: list.querySelector<HTMLElement>("[data-equipment-skeleton-band]")!.hidden,
+        visibleCoverageRows: coverage.length,
+      };
+    });
+
+    expect(evidence).toEqual({
+      immediateAriaBusy: "true",
+      frameRan: false,
+      maximumVisibleGapPx: 0,
+      mountedRows: 36,
+      settledAriaBusy: "false",
+      settledSkeletonBandHidden: true,
+      visibleCoverageRows: 32,
+    });
+  } finally {
+    await browser.close();
+  }
 });
 
 browserIt(
@@ -232,7 +315,7 @@ browserIt("keeps focus and commits only the latest equipment lifecycle after pre
   }
 });
 
-function fixture(): string {
+function fixture(height = 480): string {
   const rows = Array.from(
     { length: 36 },
     (_, index) =>
@@ -240,7 +323,7 @@ function fixture(): string {
   ).join("");
   return `<style>${productionEquipmentStyles}
     .wayfinder-app, .wayfinder-app * { box-sizing: border-box; }
-    .wayfinder-app .equipment-result-list { flex: none; width: 700px; height: 480px; }
+    .wayfinder-app .equipment-result-list { flex: none; width: 700px; height: ${height}px; }
   </style>
   <div class="wayfinder-app">
     <div class="equipment-result-list" id="starting-equipment-level-1-equipment-results" role="list" aria-label="Equipment results" aria-busy="false" tabindex="-1" data-equipment-focus-sentinel data-wayfinder-equipment-virtual-list data-total-results="500" data-result-offset="0" data-wayfinder-rendered-query="" data-wayfinder-view-revision="1" data-wayfinder-source-revision="1" data-wayfinder-criteria-revision="0" data-step-id="starting-equipment-level-1" data-wayfinder-scroll-id="starting-equipment-level-1:equipment-results">
@@ -255,6 +338,7 @@ function fixture(): string {
 declare global {
   interface Window {
     STARTING_EQUIPMENT_RESULT_WINDOW: typeof resultWindowContract;
+    coverEquipmentResultViewport: typeof coverResultViewport;
     equipmentResultAnchorAtViewport: typeof resultAnchorAtViewport;
     renderEquipmentResultSkeletonBand: typeof renderSkeletonBand;
     transferEquipmentResultFocusToSentinel: typeof transferFocusToSentinel;

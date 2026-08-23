@@ -40,7 +40,6 @@ function buildStartingEquipmentPane(
  * template cap cannot enforce that; the two numbers are unrelated. Live qualification owns the
  * release budget.
  */
-const MAX_RESULT_ROW_TEMPLATE_ELEMENTS = 12;
 
 describe("starting equipment pane", () => {
   it("renders level-5 allowance buckets separately from residual coin", () => {
@@ -175,10 +174,10 @@ describe("starting equipment pane", () => {
 
     const catalogue = readFileSync(resolve("templates/wayfinder/starting-equipment-catalogue.hbs"), "utf8");
     const detail = readFileSync(resolve("templates/wayfinder/starting-equipment-detail.hbs"), "utf8");
-    for (const template of [catalogue, detail]) {
-      expect(template).toContain("{{#unless canAdd}} is-unaffordable{{/unless}}");
-      expect(template).not.toContain("{{#unless affordable}} is-unaffordable{{/unless}}");
-    }
+    const stableRows = readFileSync(resolve("src/wayfinder/application/equipment-stable-catalogue.ts"), "utf8");
+    expect(detail).toContain("{{#unless canAdd}} is-unaffordable{{/unless}}");
+    expect(stableRows).toContain('mounted.price.classList.toggle("is-unaffordable", !row.canAdd)');
+    expect(catalogue).toContain("data-equipment-stable-canvas");
   });
 
   it("does not offer an allowance for a catalogue-blocked permanent item", () => {
@@ -1237,23 +1236,21 @@ describe("starting equipment pane", () => {
     });
   });
 
-  it("keeps each bounded result one interactive control and mounts every item action only in selected detail", () => {
+  it("mounts stable direct result rows and keeps item actions in selected detail", () => {
     const catalogue = readFileSync(resolve("templates/wayfinder/starting-equipment-catalogue.hbs"), "utf8");
     const detail = readFileSync(resolve("templates/wayfinder/starting-equipment-detail.hbs"), "utf8");
     const pane = readFileSync(resolve("templates/wayfinder/starting-equipment-pane.hbs"), "utf8");
     const styles = readFileSync(resolve("styles/wayfinder/starting-equipment.css"), "utf8");
-    const loopStart = catalogue.indexOf("{{#each activePane.catalogue.items}}");
-    const loopEnd = catalogue.indexOf("{{/each}}", loopStart);
-    const resultLoop = catalogue.slice(loopStart, loopEnd);
+    const stableRows = readFileSync(resolve("src/wayfinder/application/equipment-stable-catalogue.ts"), "utf8");
 
-    expect(loopStart).toBeGreaterThan(-1);
-    // A row is a scannable record, not a mashed sentence, but it stays cheap: no images, one control.
-    expect([...resultLoop.matchAll(/<[a-z]+\b/gu)].length).toBeLessThanOrEqual(MAX_RESULT_ROW_TEMPLATE_ELEMENTS);
-    expect([...resultLoop.matchAll(/<button\b/gu)]).toHaveLength(1);
-    expect(resultLoop).not.toContain("<img");
-    expect(resultLoop).toContain('data-wayfinder-action="preview-equipment-item"');
-    expect(resultLoop).toContain("data-wayfinder-focus-id");
-    expect(resultLoop).toContain("data-source-uuid");
+    expect(catalogue).not.toContain("{{#each activePane.catalogue.items}}");
+    expect(catalogue).toContain("data-equipment-stable-canvas");
+    expect(stableRows).not.toContain("innerHTML");
+    expect(stableRows).toContain('root.setAttribute("role", "listitem")');
+    expect(stableRows).toContain('mounted.root.setAttribute("aria-posinset"');
+    expect(stableRows).toContain('mounted.root.setAttribute("aria-setsize"');
+    expect(stableRows).toContain('button.dataset.wayfinderAction = "preview-equipment-item"');
+    expect(stableRows).toContain("button.dataset.wayfinderFocusId = row.previewFocusId");
     expect(catalogue).not.toContain('data-wayfinder-action="add-equipment-item"');
     expect(catalogue).toContain('aria-expanded="{{#if activePane.catalogue.rarityPanelOpen}}true');
     expect(catalogue).toContain("{{activePane.catalogue.rarityFilterLabel}}");

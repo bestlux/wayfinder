@@ -46,7 +46,7 @@ const pickerSchedulerScript = readFileSync(resolve("scripts/wayfinder/applicatio
   .replaceAll("export ", "")
   .concat("\nwindow.PickerSearchScheduler = PickerSearchScheduler;");
 
-it("binds the production virtual list to render identity, focus, and noninteractive skeleton contracts", () => {
+it("binds the production virtual list to stable canvas and render identity contracts", () => {
   for (const contract of [
     "data-equipment-focus-sentinel",
     "data-wayfinder-rendered-query",
@@ -54,14 +54,14 @@ it("binds the production virtual list to render identity, focus, and noninteract
     "data-wayfinder-source-revision",
     "data-wayfinder-criteria-revision",
     "data-result-offset",
-    "data-equipment-skeleton-band",
+    "data-equipment-stable-canvas",
+    'data-equipment-stable-page="previous"',
+    'data-equipment-stable-page="next"',
   ]) {
     expect(productionCatalogueTemplate, contract).toContain(contract);
   }
-  expect(productionEquipmentStyles).toMatch(
-    /\.equipment-result-skeleton-band\s*\{[\s\S]*?position: absolute;[\s\S]*?pointer-events: none;/
-  );
-  expect(productionEquipmentStyles).toMatch(/\.equipment-result-skeleton\s*\{[\s\S]*?position: absolute;/);
+  expect(productionCatalogueTemplate).not.toContain("{{#each activePane.catalogue.items}}");
+  expect(productionEquipmentStyles).toMatch(/\.equipment-stable-result-row\s*\{[\s\S]*?position: absolute;/);
 });
 
 browserIt("covers a rapid full-screen jump before the first animation frame", async () => {

@@ -475,7 +475,7 @@ describe("equipment acquisition runtime", () => {
     expect(getDocument).toHaveBeenCalledTimes(20);
   });
 
-  it("expands and shifts a bounded hydration window, then clamps it when the query context shrinks", async () => {
+  it("retains the complete lightweight projection while bounding exact-price hydration", async () => {
     const sources = Array.from({ length: 72 }, (_, index) =>
       dagger({ id: `window-${index}`, name: `Gear ${String(index).padStart(2, "0")}` })
     );
@@ -495,10 +495,12 @@ describe("equipment acquisition runtime", () => {
     );
 
     const tall = await runtime.uiAdapter.project({ ...request, offset: 12, limit: 48 });
-    expect(tall).toMatchObject({ offset: 12, limit: 48, matchedRecordCount: 72 });
-    expect(tall.records).toHaveLength(48);
-    expect(tall.records.at(0)?.name).toBe("Gear 12");
-    expect(tall.records.at(-1)?.name).toBe("Gear 59");
+    expect(tall).toMatchObject({ offset: 0, limit: 48, matchedRecordCount: 72 });
+    expect(tall.records).toHaveLength(72);
+    expect(tall.records.at(0)).toMatchObject({ name: "Gear 00", pricePending: true });
+    expect(tall.records.at(12)).toMatchObject({ name: "Gear 12" });
+    expect(tall.records.at(12)?.pricePending).toBeUndefined();
+    expect(tall.records.at(-1)).toMatchObject({ name: "Gear 71", pricePending: true });
     expect(getDocument).toHaveBeenCalledTimes(48);
     expect(maxConcurrentReads).toBe(24);
     expect(prepareBrowsePhysicalItems.mock.calls.map(([input]) => input.entries.length)).toEqual([12, 12, 12, 12]);
@@ -509,7 +511,7 @@ describe("equipment acquisition runtime", () => {
       limit: 48,
       previewSourceUuid: `Compendium.${PACK_ID}.Item.window-0`,
     });
-    expect(previewed.records).not.toContainEqual(expect.objectContaining({ name: "Gear 00" }));
+    expect(previewed.records).toContainEqual(expect.objectContaining({ name: "Gear 00" }));
     expect(previewed.previewRecord).toMatchObject({ name: "Gear 00" });
     const previewPane = buildStartingEquipmentPane(
       request.step,
@@ -520,8 +522,8 @@ describe("equipment acquisition runtime", () => {
     expect(previewPane.catalogue.preview).toMatchObject({ name: "Gear 00", previewing: true });
 
     const end = await runtime.uiAdapter.project({ ...request, offset: 61, limit: 36 });
-    expect(end).toMatchObject({ offset: 36, limit: 36 });
-    expect(end.records.map(({ name }) => name)).toEqual(sources.slice(36).map(({ name }) => name));
+    expect(end).toMatchObject({ offset: 0, limit: 36 });
+    expect(end.records.map(({ name }) => name)).toEqual(sources.map(({ name }) => name));
 
     const narrowed = await runtime.uiAdapter.project({ ...request, query: "gear 69", offset: 61, limit: 36 });
     expect(narrowed).toMatchObject({ offset: 0, limit: 36, matchedRecordCount: 1 });
@@ -1136,7 +1138,7 @@ describe("equipment acquisition runtime", () => {
       offset: 36,
       signal: new AbortController().signal,
     });
-    await expect(latest).resolves.toMatchObject({ state: "ready", offset: 36 });
+    await expect(latest).resolves.toMatchObject({ state: "ready", offset: 0, matchedRecordCount: 72 });
 
     releaseObsolete();
     await expect(obsolete).rejects.toMatchObject({ name: "AbortError" });
@@ -1321,7 +1323,7 @@ describe("equipment acquisition runtime", () => {
     expect(getDocument).toHaveBeenCalledTimes(4);
   });
 
-  it("projects reviewed metadata for an ordinary cart line outside the bounded browse page", async () => {
+  it("reuses complete lightweight metadata for an ordinary cart line outside exact-price hydration", async () => {
     const browseSources = Array.from({ length: STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize }, (_, index) =>
       dagger({ id: `browse-${index}`, name: `Browse item ${String(index).padStart(2, "0")}` })
     );
@@ -1338,16 +1340,12 @@ describe("equipment acquisition runtime", () => {
 
     const projection = await runtime.uiAdapter.project(request);
 
-    expect(projection.records).toHaveLength(STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize);
+    expect(projection.records).toHaveLength(sources.length);
     expect(projection.matchedRecordCount).toBe(sources.length);
-    expect(projection.records).not.toContainEqual(expect.objectContaining({ name: "Zed Off-Page Gear" }));
-    expect(projection.lineRecords).toEqual([
-      expect.objectContaining({
-        sourceUuid: `Compendium.${PACK_ID}.Item.off-page`,
-        name: "Zed Off-Page Gear",
-        priceCopper: 100,
-      }),
-    ]);
+    expect(projection.records).toContainEqual(
+      expect.objectContaining({ name: "Zed Off-Page Gear", pricePending: true })
+    );
+    expect(projection.lineRecords).toEqual([]);
     expect(getDocument).toHaveBeenCalledTimes(STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize);
     expect(getDocument).not.toHaveBeenCalledWith("off-page");
 
@@ -1357,8 +1355,8 @@ describe("equipment acquisition runtime", () => {
       { state: "complete", complete: true, status: "Ready", issue: null },
       projection
     );
-    expect(pane.catalogue.items).toHaveLength(STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize);
-    expect(pane.catalogue.items).not.toContainEqual(expect.objectContaining({ name: "Zed Off-Page Gear" }));
+    expect(pane.catalogue.items).toHaveLength(sources.length);
+    expect(pane.catalogue.items).toContainEqual(expect.objectContaining({ name: "Zed Off-Page Gear" }));
     expect(pane.cart.lines).toEqual([expect.objectContaining({ name: "Zed Off-Page Gear" })]);
   });
 
@@ -1419,13 +1417,13 @@ describe("equipment acquisition runtime", () => {
       projection
     );
 
-    expect(projection.records).toHaveLength(STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize);
-    expect(projection.records).not.toContainEqual(expect.objectContaining({ sourceUuid: grant.expected.sourceUuid }));
-    expect(projection.lineRecords).toEqual([expect.objectContaining({ sourceUuid: grant.expected.sourceUuid, name })]);
+    expect(projection.records).toHaveLength(sources.length);
+    expect(projection.records).toContainEqual(expect.objectContaining({ sourceUuid: grant.expected.sourceUuid, name }));
+    expect(projection.lineRecords).toEqual([]);
     expect(getDocument).toHaveBeenCalledTimes(STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize);
     expect(getDocument).not.toHaveBeenCalledWith(nativeSourceId);
-    expect(pane.catalogue.items).toHaveLength(STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize);
-    expect(pane.catalogue.items).not.toContainEqual(expect.objectContaining({ name }));
+    expect(pane.catalogue.items).toHaveLength(sources.length);
+    expect(pane.catalogue.items).toContainEqual(expect.objectContaining({ name }));
     expect(pane.review).toMatchObject({ disposition: "retain-all", label: "Keeping all your coin" });
     expect(pane.cart.lines).toEqual([
       expect.objectContaining({ name, canRemove: false, fundingLabel: "Granted by your build · free" }),

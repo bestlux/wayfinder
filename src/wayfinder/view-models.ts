@@ -425,6 +425,8 @@ export interface StartingEquipmentCatalogueRecord {
     readonly materializedQuantity: number;
     readonly pricePer: number;
   } | null;
+  /** Browse-only exact price enrichment is still pending; transaction actions always resolve afresh. */
+  readonly pricePending?: boolean;
   readonly bulkLabel: string;
   readonly handsLabel: string | null;
   readonly traits: readonly string[];
@@ -606,6 +608,9 @@ export interface StartingEquipmentStepPane {
     narrowSearchHint: string | null;
     items: readonly (StartingEquipmentCatalogueRecord & {
       typeIcon: string;
+      levelLabel: string;
+      rarityLabel: string;
+      itemTypeLabel: string;
       resultIndex: number;
       resultPosition: number;
       currencyAffordable: boolean;

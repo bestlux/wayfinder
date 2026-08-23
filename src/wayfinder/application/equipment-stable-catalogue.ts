@@ -1,11 +1,15 @@
 export interface EquipmentStableCatalogueRow {
+  readonly stepId: string;
   readonly sourceUuid: string;
   readonly name: string;
   readonly previewAriaLabel: string;
+  readonly previewFocusId: string;
   readonly levelLabel: string;
   readonly rarity: string;
   readonly rarityLabel: string;
+  readonly itemType: string;
   readonly itemTypeLabel: string;
+  readonly typeIcon: string;
   readonly sourceLabel: string;
   readonly unavailableReason: string | null;
   readonly priceLabel: string;
@@ -24,6 +28,9 @@ export interface EquipmentStableCatalogueOptions {
   readonly rowHeightPx?: number;
   readonly rowsBehind?: number;
   readonly rowsAhead?: number;
+  readonly previousPageButton?: HTMLButtonElement | null;
+  readonly nextPageButton?: HTMLButtonElement | null;
+  readonly onPreview?: (row: EquipmentStableCatalogueRow, button: HTMLButtonElement) => void;
 }
 
 interface EquipmentStableCatalogueRange {
@@ -39,11 +46,12 @@ interface MountedEquipmentRow {
   readonly rarity: HTMLElement;
   readonly meta: HTMLElement;
   readonly price: HTMLElement;
+  readonly icon: HTMLElement;
   row: EquipmentStableCatalogueRow;
   index: number;
 }
 
-const DEFAULT_ROW_HEIGHT_PX = 48;
+const DEFAULT_ROW_HEIGHT_PX = 64;
 const DEFAULT_ROWS_BEHIND = 12;
 const DEFAULT_ROWS_AHEAD = 24;
 
@@ -61,6 +69,9 @@ export class EquipmentStableCatalogue {
   readonly #rowsBehind: number;
   readonly #rowsAhead: number;
   readonly #resizeObserver: ResizeObserver | null;
+  readonly #previousPageButton: HTMLButtonElement | null;
+  readonly #nextPageButton: HTMLButtonElement | null;
+  readonly #onPreview: EquipmentStableCatalogueOptions["onPreview"];
   readonly #mountedBySourceUuid = new Map<string, MountedEquipmentRow>();
   #projection: EquipmentStableCatalogueProjection | null = null;
   #indexBySourceUuid = new Map<string, number>();
@@ -76,10 +87,16 @@ export class EquipmentStableCatalogue {
     this.#rowHeightPx = positiveInteger(options.rowHeightPx, DEFAULT_ROW_HEIGHT_PX);
     this.#rowsBehind = nonNegativeInteger(options.rowsBehind, DEFAULT_ROWS_BEHIND);
     this.#rowsAhead = nonNegativeInteger(options.rowsAhead, DEFAULT_ROWS_AHEAD);
+    this.#previousPageButton = options.previousPageButton ?? null;
+    this.#nextPageButton = options.nextPageButton ?? null;
+    this.#onPreview = options.onPreview;
 
     this.#viewport.classList.add("is-stable-catalogue");
     this.#viewport.addEventListener("scroll", this.#onScroll, { passive: true });
     this.#viewport.addEventListener("focusout", this.#onFocusOut);
+    this.#canvas.addEventListener("click", this.#onCanvasClick);
+    this.#previousPageButton?.addEventListener("click", this.#onPreviousPage);
+    this.#nextPageButton?.addEventListener("click", this.#onNextPage);
     const ResizeObserverConstructor = this.#viewport.ownerDocument.defaultView?.ResizeObserver;
     this.#resizeObserver = ResizeObserverConstructor ? new ResizeObserverConstructor(this.#onResize) : null;
     this.#resizeObserver?.observe(this.#viewport);
@@ -119,6 +136,9 @@ export class EquipmentStableCatalogue {
     this.#disposed = true;
     this.#viewport.removeEventListener("scroll", this.#onScroll);
     this.#viewport.removeEventListener("focusout", this.#onFocusOut);
+    this.#canvas.removeEventListener("click", this.#onCanvasClick);
+    this.#previousPageButton?.removeEventListener("click", this.#onPreviousPage);
+    this.#nextPageButton?.removeEventListener("click", this.#onNextPage);
     this.#resizeObserver?.disconnect();
     if (this.#frame !== null) cancelAnimationFrame(this.#frame);
     this.#frame = null;
@@ -152,6 +172,28 @@ export class EquipmentStableCatalogue {
     const visible = this.#visibleRange();
     if (!containsRange(this.#mountedRange, visible)) this.#bindRange(this.#emergencyRange(visible));
     this.#scheduleFrame();
+  };
+
+  #onCanvasClick = (event: Event): void => {
+    const target = event.target;
+    const ElementConstructor = this.#canvas.ownerDocument.defaultView?.Element;
+    if (!ElementConstructor || !(target instanceof ElementConstructor)) return;
+    const button = target.closest<HTMLButtonElement>("[data-equipment-item]");
+    if (!button || !this.#canvas.contains(button)) return;
+    const mounted = this.#mountedBySourceUuid.get(button.dataset.sourceUuid ?? "");
+    if (!mounted) return;
+    event.preventDefault();
+    this.#onPreview?.(mounted.row, button);
+  };
+
+  #onPreviousPage = (event: Event): void => {
+    event.preventDefault();
+    this.#scrollPage(-1);
+  };
+
+  #onNextPage = (event: Event): void => {
+    event.preventDefault();
+    this.#scrollPage(1);
   };
 
   #scheduleFrame(): void {
@@ -228,6 +270,27 @@ export class EquipmentStableCatalogue {
       this.#canvas.insertBefore(row.root, cursor);
     }
     this.#mountedRange = range;
+    this.#updatePagingFallback();
+  }
+
+  #scrollPage(direction: -1 | 1): void {
+    const projection = this.#projection;
+    if (!projection || projection.rows.length === 0) return;
+    const visible = this.#visibleRange();
+    const pageSize = Math.max(1, visible.end - visible.start - 1);
+    const targetIndex = clamp(visible.start + direction * pageSize, 0, projection.rows.length - 1);
+    this.#viewport.scrollTop = targetIndex * this.#rowHeightPx;
+    this.#onScroll();
+    requestAnimationFrame(() => {
+      this.#mountedBySourceUuid.get(projection.rows[targetIndex]!.sourceUuid)?.button.focus({ preventScroll: true });
+    });
+  }
+
+  #updatePagingFallback(): void {
+    const visible = this.#visibleRange();
+    const total = this.#projection?.rows.length ?? 0;
+    if (this.#previousPageButton) this.#previousPageButton.disabled = visible.start === 0;
+    if (this.#nextPageButton) this.#nextPageButton.disabled = visible.end >= total;
   }
 
   #mountOrPatch(row: EquipmentStableCatalogueRow, index: number, total: number): MountedEquipmentRow {
@@ -277,7 +340,6 @@ function createMountedRow(document: Document, row: EquipmentStableCatalogueRow, 
   art.className = "equipment-result-art";
   art.setAttribute("aria-hidden", "true");
   const icon = document.createElement("i");
-  icon.className = "fa-solid fa-box";
   art.append(icon);
 
   const copy = document.createElement("span");
@@ -299,7 +361,7 @@ function createMountedRow(document: Document, row: EquipmentStableCatalogueRow, 
   button.append(art, copy, price);
   root.append(button);
 
-  const mounted = { root, button, name, level, rarity, meta, price, row, index };
+  const mounted = { root, button, name, level, rarity, meta, price, icon, row, index };
   patchMountedRow(mounted, row);
   return mounted;
 }
@@ -310,6 +372,12 @@ function patchMountedRow(mounted: MountedEquipmentRow, row: EquipmentStableCatal
   mounted.root.classList.toggle("is-blocked", !row.canAdd);
   mounted.button.ariaLabel = row.previewAriaLabel;
   mounted.button.setAttribute("aria-pressed", row.previewing ? "true" : "false");
+  mounted.button.dataset.filterRarity = row.rarity;
+  mounted.button.dataset.filterSource = row.sourceLabel;
+  mounted.button.dataset.filterType = row.itemType;
+  mounted.button.dataset.stepId = row.stepId;
+  mounted.button.dataset.wayfinderFocusId = row.previewFocusId;
+  mounted.icon.className = `fa-solid ${row.typeIcon}`;
   mounted.name.textContent = row.name;
   mounted.level.textContent = row.levelLabel;
   mounted.rarity.className = `tag rarity-${row.rarity}`;

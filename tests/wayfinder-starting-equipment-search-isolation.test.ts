@@ -6,6 +6,7 @@ import { resolveStartingEquipmentRenderPlan } from "../src/wayfinder/application
 
 const appShell = readFileSync(resolve("src/wayfinder/app-shell.ts"), "utf8");
 const actions = readFileSync(resolve("src/wayfinder/actions.ts"), "utf8");
+const stableCatalogue = readFileSync(resolve("src/wayfinder/application/equipment-stable-catalogue.ts"), "utf8");
 
 describe("starting equipment search isolation", () => {
   it("uses the measured equipment debounce without changing ordinary picker timing", () => {
@@ -64,41 +65,28 @@ describe("starting equipment search isolation", () => {
     );
   });
 
-  it("rewindows equipment synchronously from passive scroll and observes row/list resize", () => {
+  it("covers equipment scroll synchronously without scheduling a Foundry partial render", () => {
     const handlerStart = appShell.indexOf("  #onScrollableScroll = ");
     const handlerEnd = appShell.indexOf("  #onManualChange = ", handlerStart);
     const handler = appShell.slice(handlerStart, handlerEnd);
-    const requestStart = appShell.indexOf("  #requestEquipmentResultWindow(");
-    const requestEnd = appShell.indexOf("  #startEquipmentResultWindowRender(", requestStart);
-    const request = appShell.slice(requestStart, requestEnd);
+    const scrollStart = stableCatalogue.indexOf("  #onScroll = ");
+    const scrollEnd = stableCatalogue.indexOf("  #onFocusOut = ", scrollStart);
+    const scroll = stableCatalogue.slice(scrollStart, scrollEnd);
 
     expect(appShell).toContain('scrollable.matches("[data-wayfinder-equipment-virtual-list]")');
     expect(actions).toContain('scrollable.addEventListener("scroll", handlers.onScrollableScroll, { passive: true })');
-    expect(handler).toContain("this.#scheduleEquipmentResultWindow(scrollable);");
-    expect(handler).not.toContain("requestAnimationFrame");
-    expect(request.match(/coverEquipmentResultViewport/g)).toHaveLength(1);
-    expect(request).toMatch(
-      /if \(requested\.scheduled\) \{\s*this\.#startEquipmentResultWindowRender\(list, requested\.scheduled\);\s*return;\s*\}\s*coverEquipmentResultViewport/
+    expect(handler).toContain("this.#scrollById.set(scrollId, scrollable.scrollTop);");
+    expect(handler).not.toContain("#scheduleEquipmentResultWindow");
+    expect(handler).not.toContain(".render(");
+    expect(scroll).toContain("if (!containsRange(this.#mountedRange, visible))");
+    expect(scroll).toContain("this.#bindRange(this.#emergencyRange(visible));");
+    expect(scroll.indexOf("this.#bindRange(this.#emergencyRange(visible));")).toBeLessThan(
+      scroll.indexOf("this.#scheduleFrame();")
     );
-    expect(appShell).toContain("new ResizeObserver((entries) => {");
-    expect(appShell).toContain("#captureEquipmentResultAnchor(scrollable)");
-    expect(appShell).toContain("#restoreEquipmentResultAnchor(list, measurements)");
-    expect(appShell).toContain('this.#equipmentScheduledRenderIntent = "window"');
-    expect(appShell).toContain("request.criteriaRevision === this.#equipmentCriteriaRevision(request.stepId)");
-    expect(appShell).toContain("if (!this.#isCurrentEquipmentResultList(scrollable)) return;");
-    expect(appShell).toContain("const pendingViewport = startingEquipmentResultWindowForViewport({");
-    expect(appShell).toContain("this.#requestEquipmentResultWindow(list, pending);");
-    expect(appShell).toContain("#recoverEquipmentResultWindowAfterFailure(request.stepId)");
-    expect(appShell).toContain("wayfinderEquipmentRecoveryEdgeFocus: recoveryEdgeFocus");
-    expect(appShell).toContain("wayfinderEquipmentRecoveryFocusStepId: recoveryFocusStepId");
-    expect(appShell).toContain("#restoreEquipmentWindowEdgeFocus(root, queuedEquipmentWindow !== null)");
-    expect(appShell).toContain("#restoreEquipmentListFocus(root, queuedEquipmentWindow !== null)");
-    expect(appShell).toMatch(
-      /if \(preserveForQueuedWindow\) \{\s*root\s*\.querySelector<HTMLElement>\("\[data-equipment-focus-sentinel\]"\)\?\.focus\(\{ preventScroll: true \}\);\s*return;/
-    );
-    expect(appShell).toMatch(
-      /this\.#applyEquipmentResultSpacerGeometry\(list, measurements\);\s*this\.#restoreEquipmentResultAnchor\(list, measurements\);\s*measurements\.lastScrollTopPx = list\.scrollTop;/
-    );
+    expect(stableCatalogue).toContain("new ResizeObserverConstructor(this.#onResize)");
+    expect(stableCatalogue).toContain("this.#resizeObserver?.observe(this.#viewport);");
+    expect(appShell).toContain("#mountEquipmentStableCatalogue(root, context.equipmentRenderSession);");
+    expect(appShell).toContain("this.#equipmentStableCatalogue.controller.setProjection({");
   });
 
   it("keeps the equipment search control outside all replaceable application parts", () => {

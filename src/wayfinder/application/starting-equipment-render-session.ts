@@ -1,7 +1,6 @@
 import type { DraftState } from "../../types.js";
 import type { WayfinderStepEvaluation } from "../domain/step-evaluation.js";
 import type { StartingEquipmentStep } from "../domain/step-types.js";
-import { STARTING_EQUIPMENT_RESULT_WINDOW } from "../starting-equipment-result-window.js";
 import type { StartingEquipmentStepPane } from "../view-models.js";
 import type { PickerSearchRequest } from "./picker-search-scheduler.js";
 
@@ -68,7 +67,6 @@ export function createStartingEquipmentRenderSession(args: {
   readonly evaluation: WayfinderStepEvaluation;
   readonly pane: StartingEquipmentStepPane;
 }): StartingEquipmentRenderSession {
-  assertBoundedPane(args.pane);
   return {
     identity: { ...args.identity },
     viewRevision: args.viewRevision,
@@ -102,7 +100,6 @@ export function advanceStartingEquipmentRenderSession(
   if (request.viewRevision <= session.viewRevision) {
     throw new Error("Starting-equipment render request is stale.");
   }
-  assertBoundedPane(pane);
   return { ...session, viewRevision: request.viewRevision, pane };
 }
 
@@ -113,8 +110,9 @@ export function startingEquipmentPartsForIntent(
     case "search":
     case "facet":
     case "window":
-    case "preview":
       return [EQUIPMENT_CATALOGUE_PART, EQUIPMENT_DETAIL_PART];
+    case "preview":
+      return [EQUIPMENT_DETAIL_PART];
     case "recipe":
       return [EQUIPMENT_POLICY_PART, EQUIPMENT_STATUS_PART];
     case "quantity":
@@ -142,10 +140,4 @@ function sameStartingEquipmentRenderIdentity(
     left.policyRevision === right.policyRevision &&
     left.sourceRevision === right.sourceRevision
   );
-}
-
-function assertBoundedPane(pane: StartingEquipmentStepPane): void {
-  if (pane.catalogue.items.length > STARTING_EQUIPMENT_RESULT_WINDOW.maximumSize) {
-    throw new RangeError("Starting-equipment render sessions may only retain the bounded visible catalogue page.");
-  }
 }

@@ -68,30 +68,8 @@
   {{/unless}}
 
   <div class="equipment-result-list" id="{{activePane.stepId}}-equipment-results" role="list" aria-label="{{localize "wayfinder-pf2e.StartingEquipment.Catalogue.ResultsAria"}}" aria-busy="false" tabindex="-1" data-equipment-focus-sentinel data-wayfinder-equipment-virtual-list data-total-results="{{activePane.catalogue.totalResultCount}}" data-result-offset="{{activePane.catalogue.resultOffset}}" data-wayfinder-rendered-query="{{activePane.catalogue.search}}" data-wayfinder-view-revision="{{equipmentRequest.viewRevision}}" data-wayfinder-source-revision="{{equipmentRequest.sourceRevision}}" data-wayfinder-criteria-revision="{{equipmentRequest.criteriaRevision}}" data-step-id="{{activePane.stepId}}" data-wayfinder-scroll-id="{{activePane.stepId}}:equipment-results">
-    <div class="equipment-result-spacer" style="height: {{activePane.catalogue.leadingSpacerPx}}px" data-equipment-leading-spacer aria-hidden="true"></div>
-    <div class="equipment-result-skeleton-band" data-equipment-skeleton-band aria-hidden="true" hidden></div>
-    {{#each activePane.catalogue.items}}
-      <article class="equipment-result-row{{#if previewing}} is-previewing{{/if}}{{#unless canAdd}} is-blocked{{/unless}}" role="listitem" aria-posinset="{{resultPosition}}" aria-setsize="{{../activePane.catalogue.totalResultCount}}" data-result-index="{{resultIndex}}" data-source-uuid="{{sourceUuid}}">
-        <button type="button" class="equipment-result" aria-label="{{previewAriaLabel}}" aria-pressed="{{#if previewing}}true{{else}}false{{/if}}" data-equipment-item data-source-uuid="{{sourceUuid}}" data-filter-rarity="{{rarity}}" data-filter-source="{{sourceLabel}}" data-filter-type="{{itemType}}" data-wayfinder-action="preview-equipment-item" data-wayfinder-focus-id="{{previewFocusId}}" data-step-id="{{../activePane.stepId}}">
-          <span class="equipment-result-art"><i class="fa-solid {{typeIcon}}" aria-hidden="true"></i></span>
-          <span class="equipment-result-copy">
-            <span class="equipment-result-title">
-              <span class="equipment-result-name">{{name}}</span>
-              <span class="tag equipment-result-level">{{localize "wayfinder-pf2e.StartingEquipment.Catalogue.LevelTag" level=level}}</span>
-              {{#unless (eq rarity "common")}}<span class="tag rarity-{{rarity}}">{{rarityLabel}}</span>{{/unless}}
-            </span>
-            <span class="equipment-result-meta">{{itemTypeLabel}} · {{sourceLabel}}{{#if unavailableReason}} · <span class="equipment-result-block">{{unavailableReason}}</span>{{/if}}</span>
-          </span>
-          <span class="equipment-result-price{{#unless canAdd}} is-unaffordable{{/unless}}">{{priceLabel}}</span>
-        </button>
-      </article>
-    {{/each}}
-    <div class="equipment-result-spacer" style="height: {{activePane.catalogue.trailingSpacerPx}}px" data-equipment-trailing-spacer aria-hidden="true"></div>
+    <div class="equipment-stable-catalogue-canvas" role="presentation" data-equipment-stable-canvas></div>
   </div>
-  {{#if activePane.catalogue.hasPreviousWindow}}
-    <button type="button" class="equipment-window-fallback previous" data-wayfinder-action="set-equipment-result-window" data-step-id="{{activePane.stepId}}" data-offset="{{activePane.catalogue.previousWindowOffset}}">{{localize "wayfinder-pf2e.StartingEquipment.Catalogue.PreviousResults"}}</button>
-  {{/if}}
-  {{#if activePane.catalogue.hasNextWindow}}
-    <button type="button" class="equipment-window-fallback next" data-wayfinder-action="set-equipment-result-window" data-step-id="{{activePane.stepId}}" data-offset="{{activePane.catalogue.nextWindowOffset}}">{{localize "wayfinder-pf2e.StartingEquipment.Catalogue.NextResults"}}</button>
-  {{/if}}
+  <button type="button" class="equipment-window-fallback previous" data-equipment-stable-page="previous">{{localize "wayfinder-pf2e.StartingEquipment.Catalogue.PreviousResults"}}</button>
+  <button type="button" class="equipment-window-fallback next" data-equipment-stable-page="next">{{localize "wayfinder-pf2e.StartingEquipment.Catalogue.NextResults"}}</button>
 </div>

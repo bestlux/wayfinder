@@ -233,12 +233,11 @@ export function createEquipmentAcquisitionRuntime(options) {
                     },
                 });
                 const matchedEntries = rankCatalogueMatches(entries.filter((entry) => matchesEquipmentCatalogueFilters(entry, normalizedFilters)), request.query);
-                const resultWindow = clampStartingEquipmentResultWindow(request, matchedEntries.length);
-                const visibleEntries = matchedEntries.slice(resultWindow.offset, resultWindow.offset + resultWindow.limit);
-                const browseRows = visibleEntries.map((entry) => {
+                const enrichmentWindow = clampStartingEquipmentResultWindow(request, matchedEntries.length);
+                const browseRows = matchedEntries.map((entry, index) => {
                     if (entry.price.kind !== "priced" ||
                         entry.unavailableReasons.some((reason) => reason.code !== "source-not-allowed" && reason.code !== "rarity-not-available")) {
-                        return { kind: "record", record: toUiRecord(entry) };
+                        return { kind: "record", index, record: toUiRecord(entry) };
                     }
                     const browseCacheKey = actorPricingFingerprint
                         ? equipmentBrowsePreparedRecordCacheKey({
@@ -253,18 +252,26 @@ export function createEquipmentAcquisitionRuntime(options) {
                     const cached = browseCacheKey ? cachedBrowseRecord(browseCacheKey) : null;
                     const indexedPrice = indexedBrowsePrice(entry, targetSize);
                     return cached
-                        ? { kind: "record", record: cached }
+                        ? { kind: "record", index, record: cached }
                         : indexedPrice
-                            ? { kind: "record", record: toUiRecord(entry, indexedPrice) }
-                            : { kind: "pending", entry, browseCacheKey };
+                            ? { kind: "record", index, record: toUiRecord(entry, indexedPrice) }
+                            : {
+                                kind: "pending",
+                                index,
+                                entry,
+                                browseCacheKey,
+                                pendingRecord: { ...toUiRecord(entry, null), pricePending: true },
+                            };
                 });
-                const pendingRows = browseRows.filter((row) => row.kind === "pending");
+                const pendingRows = browseRows.filter((row) => row.kind === "pending" &&
+                    ((row.index >= enrichmentWindow.offset && row.index < enrichmentWindow.offset + enrichmentWindow.limit) ||
+                        row.entry.sourceUuid === request.previewSourceUuid));
                 const resolvedRows = (await mapChunksWithConcurrency(chunksOf(pendingRows, STARTING_EQUIPMENT_RESULT_WINDOW.hydrationChunkSize), STARTING_EQUIPMENT_RESULT_WINDOW.prefetchConcurrency, async (pendingChunk) => {
                     throwIfStartingEquipmentProjectionAborted(request.signal);
                     const browseResolutions = await catalogue.resolveManyForBrowse(context, pendingChunk.map(({ entry }) => entry.sourceUuid));
                     throwIfStartingEquipmentProjectionAborted(request.signal);
                     if (browseResolutions.length !== pendingChunk.length ||
-                        browseResolutions.some((result, index) => result.sourceUuid !== pendingChunk[index]?.entry.sourceUuid)) {
+                        browseResolutions.some((result, index) => result.sourceUuid !== pendingChunk[index].entry.sourceUuid)) {
                         throw new Error("Equipment bulk hydration returned unstable entry mapping.");
                     }
                     return pendingChunk.map((row, index) => {
@@ -295,7 +302,7 @@ export function createEquipmentAcquisitionRuntime(options) {
                     });
                     throwIfStartingEquipmentProjectionAborted(request.signal);
                     if (batchResults.length !== batchChunk.length ||
-                        batchResults.some((result, index) => result.key !== batchChunk[index]?.entry.sourceUuid)) {
+                        batchResults.some((result, index) => result.key !== batchChunk[index].entry.sourceUuid)) {
                         throw new Error("PF2E browse equipment preparation returned unstable entry mapping.");
                     }
                     return batchResults;
@@ -369,9 +376,7 @@ export function createEquipmentAcquisitionRuntime(options) {
                     if (row.kind === "record")
                         return row.record;
                     const prepared = preparedRecordByUuid.get(row.entry.sourceUuid);
-                    if (!prepared)
-                        throw new Error("PF2E browse equipment preparation omitted a projected record.");
-                    return prepared;
+                    return prepared ?? row.pendingRecord;
                 });
                 throwIfStartingEquipmentProjectionAborted(request.signal);
                 const visibleSourceUuids = new Set(records.map((record) => record.sourceUuid));
@@ -391,12 +396,14 @@ export function createEquipmentAcquisitionRuntime(options) {
                     message: `${entries.length} piece${entries.length === 1 ? "" : "s"} of gear to browse.`,
                     diagnostics: [],
                     query: request.query,
-                    offset: resultWindow.offset,
-                    limit: resultWindow.limit,
+                    offset: 0,
+                    limit: enrichmentWindow.limit,
                     matchedRecordCount: matchedEntries.length,
                     records,
-                    previewRecord: records.find((record) => record.sourceUuid === request.previewSourceUuid) ??
-                        (hydratedPreviewEntry ? toUiRecord(hydratedPreviewEntry) : null),
+                    previewRecord: preparedRecordByUuid.get(request.previewSourceUuid ?? "") ??
+                        records.find((record) => record.sourceUuid === request.previewSourceUuid) ??
+                        (hydratedPreviewEntry ? toUiRecord(hydratedPreviewEntry) : null) ??
+                        null,
                     lineRecords,
                     filters: catalogueFilters(entries, normalizedFilters, request.filters, titanMauler),
                     levelFilter: buildEquipmentCatalogueLevelFacet(entries, normalizedFilters),

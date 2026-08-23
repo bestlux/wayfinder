@@ -659,6 +659,7 @@
   left: 0;
   box-sizing: border-box;
   contain: layout paint style;
+  overflow: hidden;
 }
 
 .wayfinder-app .equipment-result-spacer {

@@ -84,7 +84,7 @@ describe("starting equipment render session", () => {
     expect(startingEquipmentPartsForIntent("search")).toEqual([EQUIPMENT_CATALOGUE_PART, EQUIPMENT_DETAIL_PART]);
     expect(startingEquipmentPartsForIntent("facet")).toEqual([EQUIPMENT_CATALOGUE_PART, EQUIPMENT_DETAIL_PART]);
     expect(startingEquipmentPartsForIntent("window")).toEqual([EQUIPMENT_CATALOGUE_PART, EQUIPMENT_DETAIL_PART]);
-    expect(startingEquipmentPartsForIntent("preview")).toEqual([EQUIPMENT_CATALOGUE_PART, EQUIPMENT_DETAIL_PART]);
+    expect(startingEquipmentPartsForIntent("preview")).toEqual([EQUIPMENT_DETAIL_PART]);
     expect(startingEquipmentPartsForIntent("recipe")).toEqual([EQUIPMENT_POLICY_PART, EQUIPMENT_STATUS_PART]);
     expect(startingEquipmentPartsForIntent("quantity")).toEqual([
       EQUIPMENT_POLICY_PART,
@@ -109,21 +109,20 @@ describe("starting equipment render session", () => {
     expect(canUseStartingEquipmentCommandPartial(awaiting, "recipe")).toBe(false);
   });
 
-  it("rejects an unbounded visible catalogue snapshot", () => {
+  it("retains a complete lightweight catalogue projection", () => {
     const draft = reviewedDraft();
-    expect(() =>
-      createStartingEquipmentRenderSession({
-        identity: startingEquipmentRenderIdentity(draft, STEP.id, 1),
-        viewRevision: 1,
-        step: STEP,
-        evaluation: EVALUATION,
-        pane: pane(
-          Array.from({ length: STARTING_EQUIPMENT_RESULT_WINDOW.maximumSize + 1 }, (_, index) => ({
-            sourceUuid: `item-${index}`,
-          }))
-        ),
-      })
-    ).toThrow(/bounded visible catalogue page/i);
+    const session = createStartingEquipmentRenderSession({
+      identity: startingEquipmentRenderIdentity(draft, STEP.id, 1),
+      viewRevision: 1,
+      step: STEP,
+      evaluation: EVALUATION,
+      pane: pane(
+        Array.from({ length: STARTING_EQUIPMENT_RESULT_WINDOW.maximumSize + 1 }, (_, index) => ({
+          sourceUuid: `item-${index}`,
+        }))
+      ),
+    });
+    expect(session.pane.catalogue.items).toHaveLength(STARTING_EQUIPMENT_RESULT_WINDOW.maximumSize + 1);
   });
 });
 

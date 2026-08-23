@@ -25,13 +25,17 @@
       const host = document.querySelector("[data-benchmark-host]");
       const output = document.querySelector("[data-results]");
       const rows = Array.from({ length: TOTAL }, (_, index) => ({
+        stepId: "starting-equipment-level-1",
         sourceUuid: `Compendium.pf2e.equipment-srd.Item.${index}`,
         name: `Equipment ${index}`,
         previewAriaLabel: `Preview Equipment ${index}`,
+        previewFocusId: `preview:${index}`,
         levelLabel: `Level ${index % 21}`,
         rarity: index % 11 === 0 ? "uncommon" : "common",
         rarityLabel: "Uncommon",
+        itemType: index % 3 === 0 ? "weapon" : "equipment",
         itemTypeLabel: index % 3 === 0 ? "Weapon" : "Equipment",
+        typeIcon: "fa-box",
         sourceLabel: "Player Core",
         unavailableReason: null,
         priceLabel: `${index + 1} cp`,

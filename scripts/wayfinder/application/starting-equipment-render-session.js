@@ -1,4 +1,3 @@
-import { STARTING_EQUIPMENT_RESULT_WINDOW } from "../starting-equipment-result-window.js";
 export const EQUIPMENT_POLICY_PART = "equipment-policy";
 export const EQUIPMENT_CATALOGUE_PART = "equipment-catalogue";
 export const EQUIPMENT_DETAIL_PART = "equipment-detail";
@@ -23,7 +22,6 @@ export function startingEquipmentRenderIdentity(draft, stepId, sourceRevision) {
     };
 }
 export function createStartingEquipmentRenderSession(args) {
-    assertBoundedPane(args.pane);
     return {
         identity: { ...args.identity },
         viewRevision: args.viewRevision,
@@ -45,7 +43,6 @@ export function advanceStartingEquipmentRenderSession(session, request, pane) {
     if (request.viewRevision <= session.viewRevision) {
         throw new Error("Starting-equipment render request is stale.");
     }
-    assertBoundedPane(pane);
     return { ...session, viewRevision: request.viewRevision, pane };
 }
 export function startingEquipmentPartsForIntent(intent) {
@@ -53,8 +50,9 @@ export function startingEquipmentPartsForIntent(intent) {
         case "search":
         case "facet":
         case "window":
-        case "preview":
             return [EQUIPMENT_CATALOGUE_PART, EQUIPMENT_DETAIL_PART];
+        case "preview":
+            return [EQUIPMENT_DETAIL_PART];
         case "recipe":
             return [EQUIPMENT_POLICY_PART, EQUIPMENT_STATUS_PART];
         case "quantity":
@@ -74,10 +72,5 @@ function sameStartingEquipmentRenderIdentity(left, right) {
         left.targetLevel === right.targetLevel &&
         left.policyRevision === right.policyRevision &&
         left.sourceRevision === right.sourceRevision);
-}
-function assertBoundedPane(pane) {
-    if (pane.catalogue.items.length > STARTING_EQUIPMENT_RESULT_WINDOW.maximumSize) {
-        throw new RangeError("Starting-equipment render sessions may only retain the bounded visible catalogue page.");
-    }
 }
 //# sourceMappingURL=starting-equipment-render-session.js.map

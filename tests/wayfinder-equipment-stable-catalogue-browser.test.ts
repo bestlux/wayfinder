@@ -48,15 +48,31 @@ browserIt("mounts real rows synchronously across jumps and pins the focused row"
       };
       const viewport = document.querySelector<HTMLElement>("[data-stable-list]")!;
       const canvas = document.querySelector<HTMLElement>("[data-stable-canvas]")!;
-      const controller = new window.EquipmentStableCatalogue({ viewport, canvas, rowHeightPx: 48 });
+      const previousPageButton = document.querySelector<HTMLButtonElement>("[data-stable-page='previous']")!;
+      const nextPageButton = document.querySelector<HTMLButtonElement>("[data-stable-page='next']")!;
+      let previewedSourceUuid: string | null = null;
+      const controller = new window.EquipmentStableCatalogue({
+        viewport,
+        canvas,
+        rowHeightPx: 48,
+        previousPageButton,
+        nextPageButton,
+        onPreview: (row) => {
+          previewedSourceUuid = row.sourceUuid;
+        },
+      });
       const rows = Array.from({ length: 1_138 }, (_, index) => ({
+        stepId: "starting-equipment-level-1",
         sourceUuid: `Compendium.pf2e.equipment-srd.Item.${index}`,
         name: `Equipment ${index}`,
         previewAriaLabel: `Preview Equipment ${index}`,
+        previewFocusId: `preview:${index}`,
         levelLabel: `Level ${index % 21}`,
         rarity: index % 11 === 0 ? "uncommon" : "common",
         rarityLabel: "Uncommon",
+        itemType: index % 3 === 0 ? "weapon" : "equipment",
         itemTypeLabel: index % 3 === 0 ? "Weapon" : "Equipment",
+        typeIcon: "fa-box",
         sourceLabel: "Player Core",
         unavailableReason: null,
         priceLabel: `${index + 1} cp`,
@@ -64,6 +80,15 @@ browserIt("mounts real rows synchronously across jumps and pins the focused row"
         previewing: false,
       }));
       controller.setProjection({ key: "fixture", rows });
+      await nextFrame();
+      const pagingAtStart = { previousDisabled: previousPageButton.disabled, nextDisabled: nextPageButton.disabled };
+      nextPageButton.click();
+      await nextFrame();
+      const pagingFocusedPosition =
+        document.activeElement?.closest<HTMLElement>("[data-result-index]")?.dataset.resultIndex;
+      const pagingScrollTop = viewport.scrollTop;
+      viewport.scrollTop = 0;
+      viewport.dispatchEvent(new Event("scroll"));
       await nextFrame();
       viewport.style.height = "960px";
       await nextFrame();
@@ -78,6 +103,7 @@ browserIt("mounts real rows synchronously across jumps and pins the focused row"
       const immediateGapPx = maximumVisibleGap(viewport);
       const immediateRows = viewport.querySelectorAll("[role='listitem']").length;
       const destination = viewport.querySelector<HTMLElement>("[data-result-index='720']")!;
+      destination.querySelector<HTMLButtonElement>("button")!.click();
       const destinationA11y = {
         position: destination.getAttribute("aria-posinset"),
         setSize: destination.getAttribute("aria-setsize"),
@@ -103,7 +129,11 @@ browserIt("mounts real rows synchronously across jumps and pins the focused row"
         immediateGapPx,
         immediateRows,
         mountedAfterFrame: viewport.querySelectorAll("[role='listitem']").length,
+        pagingAtStart,
+        pagingFocusedPosition,
+        pagingScrollTop,
         pinnedRemovedAfterBlur: !focusButton.isConnected,
+        previewedSourceUuid,
         stableViewport: stableViewport === document.querySelector("[data-stable-list]"),
         totalCanvasHeight: canvas.style.height,
       };
@@ -117,12 +147,16 @@ browserIt("mounts real rows synchronously across jumps and pins the focused row"
       focusPinnedAfterFrame: true,
       focusPinnedImmediately: true,
       immediateGapPx: 0,
+      pagingAtStart: { previousDisabled: true, nextDisabled: false },
       pinnedRemovedAfterBlur: true,
+      previewedSourceUuid: "Compendium.pf2e.equipment-srd.Item.720",
       stableViewport: true,
       totalCanvasHeight: `${1_138 * 48}px`,
     });
     expect(evidence.immediateRows).toBeLessThanOrEqual(20);
     expect(evidence.mountedAfterFrame).toBeLessThanOrEqual(48);
+    expect(Number(evidence.pagingFocusedPosition)).toBeGreaterThan(0);
+    expect(evidence.pagingScrollTop).toBeGreaterThan(0);
   } finally {
     await browser.close();
   }
@@ -137,6 +171,8 @@ function fixture(): string {
     <div class="equipment-result-list" role="list" tabindex="-1" data-stable-list>
       <div class="equipment-stable-catalogue-canvas" role="presentation" data-stable-canvas></div>
     </div>
+    <button type="button" data-stable-page="previous">Previous</button>
+    <button type="button" data-stable-page="next">Next</button>
   </div>`;
 }
 

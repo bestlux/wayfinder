@@ -127,13 +127,10 @@ import {
   createEquipmentSearchScheduler,
   scheduleEquipmentSearchInput,
 } from "./application/equipment-search-input-service.js";
+import { EquipmentStableCatalogue } from "./application/equipment-stable-catalogue.js";
 import {
   clearEquipmentResultSkeletonBand,
   coverEquipmentResultViewport,
-  type EquipmentResultAnchor,
-  equipmentResultAnchorAtViewport,
-  renderEquipmentResultSkeletonBand,
-  transferEquipmentResultFocusToSentinel,
 } from "./application/equipment-virtual-list-dom.js";
 import { buildExistingCharacterHistory } from "./application/existing-character-history-service.js";
 import {
@@ -243,11 +240,8 @@ import {
 import { buildHistoricalSpellChoicePlanningNote } from "./spell-choice-service.js";
 import {
   clampStartingEquipmentResultWindow,
-  clampStartingEquipmentRowHeight,
   commitStartingEquipmentResultWindow,
   createStartingEquipmentResultWindowLoadState,
-  normalizeStartingEquipmentResultLimit,
-  recordStartingEquipmentRowMeasurement,
   recoverStartingEquipmentResultWindowAfterFailure,
   requestStartingEquipmentResultWindow,
   STARTING_EQUIPMENT_RESULT_WINDOW,
@@ -255,7 +249,6 @@ import {
   type StartingEquipmentResultWindowLoadState,
   sameStartingEquipmentResultWindow,
   startingEquipmentPrefixHeight,
-  startingEquipmentResultWindowForViewport,
 } from "./starting-equipment-result-window.js";
 import type { ActivePane, ManualStepPane } from "./view-models.js";
 
@@ -313,9 +306,7 @@ type WayfinderRenderContext =
 interface EquipmentResultMeasurements {
   estimatedRowPx: number;
   measuredRows: Map<number, number>;
-  widthPx: number;
   lastScrollTopPx: number;
-  anchor: EquipmentResultAnchor | null;
 }
 type WayfinderRenderOptions = Record<string, unknown> & {
   parts?: string[];
@@ -420,7 +411,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   #equipmentResultWindowStateByStepId = new Map<string, StartingEquipmentResultWindowLoadState>();
   #equipmentCriteriaRevisionByStepId = new Map<string, number>();
   #equipmentResultMeasurementsByStepId = new Map<string, EquipmentResultMeasurements>();
-  #equipmentResultResizeObserver: ResizeObserver | null = null;
+  #equipmentStableCatalogue: { readonly viewport: HTMLElement; readonly controller: EquipmentStableCatalogue } | null =
+    null;
   #pendingEquipmentWindowEdgeFocus: "first" | "last" | null = null;
   #pendingEquipmentListFocusStepId: string | null = null;
   #equipmentWindowAnnouncementPending = false;
@@ -958,9 +950,9 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
 
     if (context.wayfinderRenderScope === "equipment") {
       this.#equipmentRenderSession = context.equipmentRenderSession;
-      const queuedEquipmentWindow = context.equipmentRenderSession
-        ? this.#syncEquipmentResultWindow(context.equipmentRenderSession.pane, context.equipmentRequest)
-        : null;
+      if (context.equipmentRenderSession) {
+        this.#syncEquipmentResultWindow(context.equipmentRenderSession.pane, context.equipmentRequest);
+      }
       const renderedParts = startingEquipmentPartsForIntent(context.equipmentRequest.intent);
       for (const part of renderedParts) {
         const target = root.querySelector<HTMLElement>(`[data-application-part="${part}"]`);
@@ -981,11 +973,12 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
           null
         );
       }
+      this.#mountEquipmentStableCatalogue(root, context.equipmentRenderSession);
       if (this.#pendingEquipmentFocusIds) {
         restoreEquipmentFocus(root, this.#pendingEquipmentFocusIds);
       }
-      this.#restoreEquipmentListFocus(root, queuedEquipmentWindow !== null);
-      this.#restoreEquipmentWindowEdgeFocus(root, queuedEquipmentWindow !== null);
+      this.#restoreEquipmentListFocus(root);
+      this.#restoreEquipmentWindowEdgeFocus(root);
       this.#restoreEquipmentSourceSearchFocus(root);
       if (renderedParts.includes(EQUIPMENT_STATUS_PART)) {
         const pendingStatusFocus = this.#pendingControlFocusId === STARTING_EQUIPMENT_STATUS_FOCUS_ID;
@@ -994,8 +987,6 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       }
       this.#pendingEquipmentFocusIds = null;
       this.#pendingSearchFocus = null;
-      this.#observeEquipmentResultWindow(root);
-      if (queuedEquipmentWindow) this.#startEquipmentResultWindowRender(root, queuedEquipmentWindow);
       return;
     }
 
@@ -1020,6 +1011,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       this.#scrollById,
       this.#pendingSearchFocus
     ).pendingSearchFocus;
+    this.#mountEquipmentStableCatalogue(root, context.equipmentRenderSession);
     const pendingStepFocusId = this.#pendingStepFocusId;
     const pendingControlFocusId = this.#pendingControlFocusId;
     if (this.#pendingActiveStepVisibility) {
@@ -1037,12 +1029,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     } else if (this.#pendingEquipmentFocusIds) {
       restoreEquipmentFocus(root, this.#pendingEquipmentFocusIds);
     }
-    this.#observeEquipmentResultWindow(root);
-    const fullEquipmentWindowPending = context.equipmentRenderSession
-      ? this.#equipmentResultWindowState(context.equipmentRenderSession.pane.stepId).pending !== null
-      : false;
-    this.#restoreEquipmentListFocus(root, fullEquipmentWindowPending);
-    this.#restoreEquipmentWindowEdgeFocus(root, fullEquipmentWindowPending);
+    this.#restoreEquipmentListFocus(root);
+    this.#restoreEquipmentWindowEdgeFocus(root);
     this.#restoreEquipmentSourceSearchFocus(root);
     this.#restoreStartingEquipmentErrorFocus(root, pendingControlFocusId === STARTING_EQUIPMENT_STATUS_FOCUS_ID);
     if (pendingStepFocusId || pendingControlFocusId) {
@@ -1067,8 +1055,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
 
   _tearDown(options: unknown): void {
     try {
-      this.#equipmentResultResizeObserver?.disconnect();
-      this.#equipmentResultResizeObserver = null;
+      this.#equipmentStableCatalogue?.controller.dispose();
+      this.#equipmentStableCatalogue = null;
       super._tearDown(options);
     } finally {
       this.#finalizeClosedState();
@@ -1128,6 +1116,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   }
 
   #finalizeClosedState(): void {
+    this.#equipmentStableCatalogue?.controller.dispose();
+    this.#equipmentStableCatalogue = null;
     this.#pickerSearchScheduler.dispose();
     this.#equipmentSearchScheduler.dispose();
     this.#equipmentRenderSession = null;
@@ -1663,10 +1653,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     }
 
     if (scrollable.matches("[data-wayfinder-equipment-virtual-list]")) {
-      if (!this.#isCurrentEquipmentResultList(scrollable)) return;
       this.#scrollById.set(scrollId, scrollable.scrollTop);
-      this.#captureEquipmentResultAnchor(scrollable);
-      this.#scheduleEquipmentResultWindow(scrollable);
       return;
     }
     this.#scrollById.set(scrollId, scrollable.scrollTop);
@@ -2158,6 +2145,45 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     return this.#equipmentResultWindowState(stepId).committed;
   }
 
+  #mountEquipmentStableCatalogue(root: HTMLElement, session: StartingEquipmentRenderSession | null): void {
+    const viewport = root.querySelector<HTMLElement>("[data-wayfinder-equipment-virtual-list]");
+    const canvas = viewport?.querySelector<HTMLElement>("[data-equipment-stable-canvas]") ?? null;
+    if (!session || !viewport || !canvas || viewport.dataset.stepId !== session.pane.stepId) {
+      this.#equipmentStableCatalogue?.controller.dispose();
+      this.#equipmentStableCatalogue = null;
+      return;
+    }
+
+    if (this.#equipmentStableCatalogue?.viewport !== viewport) {
+      this.#equipmentStableCatalogue?.controller.dispose();
+      const catalogueRoot = viewport.closest<HTMLElement>("[data-application-part='equipment-catalogue']");
+      const controller = new EquipmentStableCatalogue({
+        viewport,
+        canvas,
+        previousPageButton:
+          catalogueRoot?.querySelector<HTMLButtonElement>("[data-equipment-stable-page='previous']") ?? null,
+        nextPageButton: catalogueRoot?.querySelector<HTMLButtonElement>("[data-equipment-stable-page='next']") ?? null,
+        onPreview: (row, button) => {
+          this.#rememberInteractiveState();
+          this.#pendingEquipmentFocusIds = [row.previewFocusId];
+          if (this.#equipmentPreviewByStepId.get(row.stepId) === row.sourceUuid) {
+            this.#pendingEquipmentFocusIds = null;
+            return;
+          }
+          this.#equipmentPreviewByStepId.set(row.stepId, row.sourceUuid);
+          button.setAttribute("aria-pressed", "true");
+          this.#renderStartingEquipmentPartial(row.stepId, "preview");
+        },
+      });
+      this.#equipmentStableCatalogue = { viewport, controller };
+    }
+
+    this.#equipmentStableCatalogue.controller.setProjection({
+      key: `${session.identity.sourceRevision}:${session.viewRevision}:${session.pane.catalogue.search}`,
+      rows: session.pane.catalogue.items.map((item) => ({ ...item, stepId: session.pane.stepId })),
+    });
+  }
+
   #equipmentResultWindowState(stepId: string): StartingEquipmentResultWindowLoadState {
     let state = this.#equipmentResultWindowStateByStepId.get(stepId);
     if (!state) {
@@ -2185,9 +2211,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         if (stepId && candidateStepId !== stepId) continue;
         measurements.estimatedRowPx = STARTING_EQUIPMENT_RESULT_WINDOW.initialRowHeightPx;
         measurements.measuredRows.clear();
-        measurements.widthPx = 0;
         measurements.lastScrollTopPx = 0;
-        measurements.anchor = null;
       }
     }
     if (
@@ -2218,7 +2242,6 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     const measurements = this.#equipmentResultMeasurements(stepId);
     measurements.measuredRows.clear();
     measurements.lastScrollTopPx = 0;
-    measurements.anchor = null;
   }
 
   #equipmentCriteriaRevision(stepId: string): number {
@@ -2255,7 +2278,6 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       pane.catalogue.totalResultCount
     );
     const measurements = this.#equipmentResultMeasurements(stepId);
-    measurements.anchor = null;
     this.#scrollById.set(
       `${stepId}:equipment-results`,
       startingEquipmentPrefixHeight(next.offset, measurements.measuredRows, measurements.estimatedRowPx)
@@ -2293,68 +2315,6 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       .querySelector<HTMLElement>(`[data-equipment-focus-sentinel][data-step-id="${CSS.escape(stepId)}"]`)
       ?.focus({ preventScroll: true });
     if (!preserveForQueuedWindow) this.#pendingEquipmentListFocusStepId = null;
-  }
-
-  #scheduleEquipmentResultWindow(list: HTMLElement): void {
-    if (!this.#isCurrentEquipmentResultList(list)) return;
-    const stepId = list.dataset.stepId;
-    const total = Number(list.dataset.totalResults);
-    if (!stepId || !Number.isSafeInteger(total) || total < 0) return;
-    const measurements = this.#equipmentResultMeasurements(stepId);
-    const direction =
-      list.scrollTop > measurements.lastScrollTopPx + 1
-        ? "forward"
-        : list.scrollTop < measurements.lastScrollTopPx - 1
-          ? "backward"
-          : "stationary";
-    measurements.lastScrollTopPx = list.scrollTop;
-    const current = this.#equipmentResultWindow(stepId);
-    let next = startingEquipmentResultWindowForViewport({
-      clientHeight: list.clientHeight,
-      scrollTop: list.scrollTop,
-      total,
-      currentWindow: current,
-      direction,
-      measurements,
-    });
-    const active = list.ownerDocument.activeElement as HTMLElement | null;
-    const focusedRow = active && list.contains(active) ? active.closest<HTMLElement>("[data-result-index]") : null;
-    const focusedIndex = Number(focusedRow?.dataset.resultIndex);
-    if (
-      Number.isSafeInteger(focusedIndex) &&
-      (focusedIndex < next.offset || focusedIndex >= next.offset + next.limit)
-    ) {
-      const unionStart = Math.min(focusedIndex, next.offset);
-      const unionEnd = Math.max(focusedIndex + 1, next.offset + next.limit);
-      if (unionEnd - unionStart > STARTING_EQUIPMENT_RESULT_WINDOW.maximumSize) {
-        if (transferEquipmentResultFocusToSentinel(list)) this.#pendingEquipmentListFocusStepId = stepId;
-      } else {
-        const expandedLimit = normalizeStartingEquipmentResultLimit(unionEnd - unionStart);
-        next = clampStartingEquipmentResultWindow(
-          { offset: Math.min(unionStart, Math.max(0, total - expandedLimit)), limit: expandedLimit },
-          total
-        );
-      }
-    }
-    if (sameStartingEquipmentResultWindow(next, current)) {
-      const pending = this.#equipmentResultWindowState(stepId).pending;
-      if (!pending) return;
-      const pendingViewport = startingEquipmentResultWindowForViewport({
-        clientHeight: list.clientHeight,
-        scrollTop: list.scrollTop,
-        total,
-        currentWindow: pending,
-        direction: "stationary",
-        measurements,
-      });
-      if (sameStartingEquipmentResultWindow(pendingViewport, pending)) {
-        this.#requestEquipmentResultWindow(list, pending);
-        return;
-      }
-    }
-    const focusId = active && list.contains(active) ? active.dataset.wayfinderFocusId : null;
-    if (focusId && list.ownerDocument.activeElement !== list) this.#pendingEquipmentFocusIds = [focusId];
-    this.#requestEquipmentResultWindow(list, next);
   }
 
   #requestEquipmentResultWindow(list: HTMLElement, next: StartingEquipmentResultWindow): void {
@@ -2420,61 +2380,6 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     });
   }
 
-  #observeEquipmentResultWindow(root: HTMLElement): void {
-    this.#equipmentResultResizeObserver?.disconnect();
-    this.#equipmentResultResizeObserver = null;
-    const list = root.querySelector<HTMLElement>("[data-wayfinder-equipment-virtual-list]");
-    if (!list || !this.#isCurrentEquipmentResultList(list)) return;
-    const stepId = list.dataset.stepId;
-    if (!stepId) return;
-    const measurements = this.#equipmentResultMeasurements(stepId);
-    this.#restoreEquipmentResultAnchor(list, measurements);
-    measurements.lastScrollTopPx = list.scrollTop;
-    this.#applyEquipmentResultSpacerGeometry(list, measurements);
-    if (typeof ResizeObserver !== "function") {
-      this.#scheduleEquipmentResultWindow(list);
-      return;
-    }
-    const observer = new ResizeObserver((entries) => {
-      if (this.#equipmentResultResizeObserver !== observer || !this.#isCurrentEquipmentResultList(list)) return;
-      const width = list.getBoundingClientRect().width;
-      if (measurements.widthPx > 0 && Math.abs(width - measurements.widthPx) > 1) {
-        this.#captureEquipmentResultAnchor(list);
-        measurements.measuredRows.clear();
-        measurements.estimatedRowPx = STARTING_EQUIPMENT_RESULT_WINDOW.initialRowHeightPx;
-      }
-      measurements.widthPx = width;
-      for (const entry of entries) {
-        const row = entry.target as HTMLElement;
-        const index = Number(row.dataset.resultIndex);
-        if (!Number.isSafeInteger(index)) continue;
-        const borderBox = Array.isArray(entry.borderBoxSize) ? entry.borderBoxSize[0] : entry.borderBoxSize;
-        recordStartingEquipmentRowMeasurement(
-          measurements.measuredRows,
-          index,
-          borderBox?.blockSize ?? row.getBoundingClientRect().height
-        );
-      }
-      if (measurements.measuredRows.size > 0) {
-        const heights = [...measurements.measuredRows.values()].sort((left, right) => left - right);
-        measurements.estimatedRowPx = clampStartingEquipmentRowHeight(heights[Math.floor(heights.length / 2)]!);
-      }
-      this.#applyEquipmentResultSpacerGeometry(list, measurements);
-      this.#restoreEquipmentResultAnchor(list, measurements);
-      measurements.lastScrollTopPx = list.scrollTop;
-      if (list.getAttribute("aria-busy") === "true") {
-        renderEquipmentResultSkeletonBand({ list, total: Number(list.dataset.totalResults), measurements });
-      }
-      this.#scheduleEquipmentResultWindow(list);
-    });
-    this.#equipmentResultResizeObserver = observer;
-    observer.observe(list);
-    for (const row of list.querySelectorAll<HTMLElement>("[data-result-index]")) {
-      observer.observe(row);
-    }
-    this.#scheduleEquipmentResultWindow(list);
-  }
-
   #isCurrentEquipmentResultList(list: HTMLElement): boolean {
     const root = this.element;
     const stepId = list.dataset.stepId;
@@ -2514,51 +2419,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       measurements = {
         estimatedRowPx: STARTING_EQUIPMENT_RESULT_WINDOW.initialRowHeightPx,
         measuredRows: new Map(),
-        widthPx: 0,
         lastScrollTopPx: 0,
-        anchor: null,
       };
       this.#equipmentResultMeasurementsByStepId.set(stepId, measurements);
     }
     return measurements;
-  }
-
-  #captureEquipmentResultAnchor(list: HTMLElement): void {
-    const stepId = list.dataset.stepId;
-    if (!stepId) return;
-    this.#equipmentResultMeasurements(stepId).anchor = equipmentResultAnchorAtViewport(list);
-  }
-
-  #restoreEquipmentResultAnchor(list: HTMLElement, measurements: EquipmentResultMeasurements): void {
-    const anchor = measurements.anchor;
-    if (!anchor) return;
-    const row = [...list.querySelectorAll<HTMLElement>("[data-source-uuid]")].find(
-      (candidate) => candidate.dataset.sourceUuid === anchor.sourceUuid
-    );
-    if (!row) return;
-    const currentOffset = row.getBoundingClientRect().top - list.getBoundingClientRect().top;
-    list.scrollTop += currentOffset - anchor.offsetFromViewportTopPx;
-    const scrollId = list.dataset.wayfinderScrollId;
-    if (scrollId) this.#scrollById.set(scrollId, list.scrollTop);
-  }
-
-  #applyEquipmentResultSpacerGeometry(list: HTMLElement, measurements: EquipmentResultMeasurements): void {
-    const total = Number(list.dataset.totalResults);
-    const offset = Number(list.dataset.resultOffset);
-    const count = list.querySelectorAll("[data-result-index]").length;
-    if (![total, offset].every(Number.isSafeInteger)) return;
-    const leading = list.querySelector<HTMLElement>("[data-equipment-leading-spacer]");
-    const trailing = list.querySelector<HTMLElement>("[data-equipment-trailing-spacer]");
-    if (leading) {
-      leading.style.height = `${startingEquipmentPrefixHeight(offset, measurements.measuredRows, measurements.estimatedRowPx)}px`;
-    }
-    if (trailing) {
-      trailing.style.height = `${Math.max(
-        0,
-        startingEquipmentPrefixHeight(total, measurements.measuredRows, measurements.estimatedRowPx) -
-          startingEquipmentPrefixHeight(offset + count, measurements.measuredRows, measurements.estimatedRowPx)
-      )}px`;
-    }
   }
 
   #toggleStartingEquipmentFilter(stepId: string, filterKey: string, value: string): void {

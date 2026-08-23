@@ -663,6 +663,56 @@ describe("equipment acquisition runtime", () => {
     expect(getDocument.mock.calls.length - afterFirstPreview).toBe(0);
   });
 
+  it.each([
+    { indexedLevel: 0, hydratedLevel: 2, expectedMatched: 0 },
+    { indexedLevel: 2, hydratedLevel: 0, expectedMatched: 1 },
+  ])("applies the level boundary to the hydrated preview level ($indexedLevel -> $hydratedLevel)", async ({
+    indexedLevel,
+    hydratedLevel,
+    expectedMatched,
+  }) => {
+    const indexed = dagger({ level: indexedLevel });
+    const hydrated = dagger({ level: hydratedLevel });
+    const { runtime, request } = fixture({
+      getIndex: vi.fn(async () => [indexed]),
+      getDocument: vi.fn(async () => document(hydrated)),
+    });
+
+    const projection = await runtime.uiAdapter.project({ ...request, previewSourceUuid: DAGGER_UUID });
+
+    expect(projection.matchedRecordCount).toBe(expectedMatched);
+    expect(projection.records).toHaveLength(expectedMatched);
+    expect(projection.previewRecord).toMatchObject({ level: hydratedLevel });
+    if (expectedMatched > 0) expect(projection.records[0]).toMatchObject({ level: hydratedLevel });
+  });
+
+  it("overlays current hydrated preview facts without rebuilding the cached browse rows", async () => {
+    const indexed = dagger({ priceGp: 1 });
+    let current = indexed;
+    const getDocument = vi.fn(async () => document(current));
+    const { runtime, request } = fixture({
+      indexedBrowsePricing: "pf2e-physical-source-v1",
+      getIndex: vi.fn(async () => [indexed]),
+      getDocument,
+    });
+    const browse = await runtime.uiAdapter.project(request);
+    current = dagger({ priceGp: 2 });
+
+    const previewed = await runtime.uiAdapter.project({ ...request, previewSourceUuid: DAGGER_UUID });
+    const pane = buildStartingEquipmentPane(
+      request.step,
+      request.draft,
+      { state: "incomplete", complete: false, status: "Review purchases", issue: null },
+      previewed
+    );
+
+    expect(previewed.records).toBe(browse.records);
+    expect(previewed.records[0]).toMatchObject({ priceCopper: 100 });
+    expect(previewed.previewRecord).toMatchObject({ priceCopper: 200 });
+    expect(pane.catalogue.items[0]).toMatchObject({ priceCopper: 200, previewing: true });
+    expect(pane.catalogue.preview).toMatchObject({ priceCopper: 200 });
+  });
+
   it("matches fresh prepare and Apply pricing while batching only browse preparation", async () => {
     const source = dagger({ priceGp: 1, sizeSensitive: true });
     const preparePhysicalItem = vi.fn(prepareTestPhysicalItem);
@@ -2144,6 +2194,28 @@ describe("equipment acquisition runtime", () => {
     await expect(
       over.runtime.uiAdapter.prepareTitanMaulerLine({ ...over.request, sourceUuid: DAGGER_UUID })
     ).rejects.toThrow(/9 gp or less/i);
+  });
+
+  it("invalidates the active Titan facet when a catalogue choice is selected", async () => {
+    const source = dagger({ priceGp: 9 });
+    const { runtime, request } = fixture({
+      getIndex: vi.fn(async () => [source]),
+      getDocument: vi.fn(async () => document(source)),
+    });
+    selectGiantInstinct(request.draft);
+    const browseRequest = { ...request, filters: { "titan-mauler": ["all"] } };
+
+    const before = await runtime.uiAdapter.project(browseRequest);
+    expect(before.filters.some((filter) => filter.key === "titan-mauler")).toBe(true);
+    expect(before.activeFilters["titan-mauler"]).toEqual(["all"]);
+
+    const line = await runtime.uiAdapter.prepareTitanMaulerLine({ ...request, sourceUuid: DAGGER_UUID });
+    request.draft.acquisition = { ...request.draft.acquisition!, lines: [line] };
+    const selected = await runtime.uiAdapter.project(browseRequest);
+
+    expect(selected.filters.some((filter) => filter.key === "titan-mauler")).toBe(false);
+    expect(selected.activeFilters).not.toHaveProperty("titan-mauler");
+    expect(selected.titanMauler).toEqual({ required: true, selectedSourceUuid: DAGGER_UUID });
   });
 
   it.each([

@@ -241,20 +241,7 @@ export function createEquipmentAcquisitionRuntime(options) {
                     }
                 }
                 const maximumLevel = policy.recipe.kind === "permanent-items" ? policy.targetLevel : policy.targetLevel - 1;
-                const entries = projection.entries.filter((entry) => entry.level <= maximumLevel);
-                let matchingEntries = entries;
-                let previewOrderMaterial = null;
-                if (hydratedPreviewEntry) {
-                    const indexedPreviewEntry = indexEntries(projection.entries).get(hydratedPreviewEntry.sourceUuid);
-                    if (indexedPreviewEntry && !equipmentBrowseEntryOrderEqual(indexedPreviewEntry, hydratedPreviewEntry)) {
-                        const previewIndex = entries.indexOf(indexedPreviewEntry);
-                        if (previewIndex >= 0) {
-                            matchingEntries = [...entries];
-                            matchingEntries[previewIndex] = hydratedPreviewEntry;
-                            previewOrderMaterial = equipmentBrowseEntryOrderMaterial(hydratedPreviewEntry);
-                        }
-                    }
-                }
+                const { entries, previewOrderMaterial } = overlayHydratedEquipmentEntryAtLevel(projection.entries, maximumLevel, hydratedPreviewEntry, indexEntries(projection.entries));
                 const actorPricingFingerprint = fingerprintActorPricingContext(request.actor);
                 const targetSize = await cachedDraftedEquipmentSize(request.actor, request.draft, actorPricingFingerprint);
                 throwIfStartingEquipmentProjectionAborted(request.signal);
@@ -271,6 +258,7 @@ export function createEquipmentAcquisitionRuntime(options) {
                     maximumLevel,
                     filters: normalizedFilters,
                     previewOrderMaterial,
+                    titanMauler,
                 });
                 const browseProjectionKey = fingerprintRuntimeMaterial("equipment-browse-projection-v1", {
                     orderKey,
@@ -284,7 +272,7 @@ export function createEquipmentAcquisitionRuntime(options) {
                     browseProjectionCache.set(browseProjectionKey, browseSnapshot);
                 }
                 else {
-                    const matchedEntries = Object.freeze(rankCatalogueMatches(matchingEntries.filter((entry) => matchesEquipmentCatalogueFilters(entry, normalizedFilters)), request.query));
+                    const matchedEntries = Object.freeze(rankCatalogueMatches(entries.filter((entry) => matchesEquipmentCatalogueFilters(entry, normalizedFilters)), request.query));
                     const records = Object.freeze(matchedEntries.map((entry) => {
                         if (entry.price.kind !== "priced" ||
                             entry.unavailableReasons.some((reason) => reason.code !== "source-not-allowed" && reason.code !== "rarity-not-available")) {
@@ -312,8 +300,8 @@ export function createEquipmentAcquisitionRuntime(options) {
                         matchedEntries,
                         indexBySourceUuid: new Map(matchedEntries.map((entry, index) => [entry.sourceUuid, index])),
                         records,
-                        filters: catalogueFilters(matchingEntries, normalizedFilters, request.filters, titanMauler),
-                        levelFilter: buildEquipmentCatalogueLevelFacet(matchingEntries, normalizedFilters),
+                        filters: catalogueFilters(entries, normalizedFilters, request.filters, titanMauler),
+                        levelFilter: buildEquipmentCatalogueLevelFacet(entries, normalizedFilters),
                         activeFilters: effectiveCatalogueFilters(request.filters, normalizedFilters, titanMauler),
                     };
                     browseSnapshot = actorPricingFingerprint
@@ -499,8 +487,10 @@ export function createEquipmentAcquisitionRuntime(options) {
                     rowOrderKey: orderKey,
                     records,
                     previewRecord: preparedRecordByUuid.get(request.previewSourceUuid ?? "") ??
+                        (hydratedPreviewEntry
+                            ? toUiRecord(hydratedPreviewEntry, indexedBrowsePrice(hydratedPreviewEntry, targetSize) ?? undefined)
+                            : null) ??
                         (previewIndex === undefined ? null : records[previewIndex]) ??
-                        (hydratedPreviewEntry ? toUiRecord(hydratedPreviewEntry) : null) ??
                         null,
                     lineRecords,
                     filters: browseSnapshot.filters,
@@ -1701,7 +1691,50 @@ function equipmentBrowseOrderKey(input) {
         policyAvailable: input.filters.policyAvailable,
         titanMaulerEligible: input.filters.titanMaulerEligible,
         previewOrderMaterial: input.previewOrderMaterial,
+        titanMauler: input.titanMauler,
     });
+}
+function overlayHydratedEquipmentEntryAtLevel(projectedEntries, maximumLevel, hydratedEntry, entryBySourceUuid) {
+    const entries = projectedEntries.filter((entry) => entry.level <= maximumLevel);
+    if (!hydratedEntry)
+        return { entries, previewOrderMaterial: null };
+    const indexedEntry = entryBySourceUuid.get(hydratedEntry.sourceUuid);
+    if (!indexedEntry)
+        return { entries, previewOrderMaterial: null };
+    const indexedIncluded = indexedEntry.level <= maximumLevel;
+    const hydratedIncluded = hydratedEntry.level <= maximumLevel;
+    const orderChanged = indexedIncluded !== hydratedIncluded || !equipmentBrowseEntryOrderEqual(indexedEntry, hydratedEntry);
+    if (!indexedIncluded && !hydratedIncluded) {
+        return { entries, previewOrderMaterial: null };
+    }
+    if (indexedIncluded) {
+        const filteredIndex = entries.indexOf(indexedEntry);
+        if (filteredIndex < 0)
+            throw new Error("Hydrated equipment preview lost its indexed level mapping.");
+        const overlaid = [...entries];
+        if (hydratedIncluded)
+            overlaid[filteredIndex] = hydratedEntry;
+        else
+            overlaid.splice(filteredIndex, 1);
+        return {
+            entries: overlaid,
+            previewOrderMaterial: orderChanged ? equipmentBrowseEntryOrderMaterial(hydratedEntry) : null,
+        };
+    }
+    const projectedIndex = projectedEntries.indexOf(indexedEntry);
+    if (projectedIndex < 0)
+        throw new Error("Hydrated equipment preview lost its indexed source mapping.");
+    let insertionIndex = 0;
+    for (let index = 0; index < projectedIndex; index += 1) {
+        if (projectedEntries[index].level <= maximumLevel)
+            insertionIndex += 1;
+    }
+    const overlaid = [...entries];
+    overlaid.splice(insertionIndex, 0, hydratedEntry);
+    return {
+        entries: overlaid,
+        previewOrderMaterial: equipmentBrowseEntryOrderMaterial(hydratedEntry),
+    };
 }
 function equipmentBrowseEntryOrderMaterial(entry) {
     return {
@@ -1796,8 +1829,9 @@ function catalogueFilters(entries, filters, requested, titanMauler) {
     ];
 }
 function effectiveCatalogueFilters(requested, filters, titanMauler) {
+    const { "titan-mauler": _inactiveTitanMauler, ...activeRequested } = requested;
     return {
-        ...requested,
+        ...activeRequested,
         availability: [filters.policyAvailable ? "available" : "all"],
         ...(titanMauler.required && titanMauler.selectedSourceUuid === null
             ? { "titan-mauler": [filters.titanMaulerEligible ? "eligible" : "all"] }

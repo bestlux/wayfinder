@@ -140,13 +140,19 @@ export function buildStartingEquipmentPane(
   const availableAllowances =
     policy?.allowances.filter((allowance) => !usedAllowanceIds.has(allowance.allowanceId)) ?? [];
   const browseRecords = catalogueReady ? catalogue.records : [];
-  const projectedRecords = [
-    ...browseRecords,
-    ...(catalogue.previewRecord &&
-    !browseRecords.some((record) => record.sourceUuid === catalogue.previewRecord?.sourceUuid)
-      ? [catalogue.previewRecord]
-      : []),
-  ];
+  const previewRecordIndex = catalogue.previewRecord
+    ? browseRecords.findIndex((record) => record.sourceUuid === catalogue.previewRecord?.sourceUuid)
+    : -1;
+  const projectedRecords =
+    catalogue.previewRecord && previewRecordIndex >= 0
+      ? [
+          ...browseRecords.slice(0, previewRecordIndex),
+          catalogue.previewRecord,
+          ...browseRecords.slice(previewRecordIndex + 1),
+        ]
+      : catalogue.previewRecord
+        ? [...browseRecords, catalogue.previewRecord]
+        : browseRecords;
   const matchedRecordCount = catalogueReady ? catalogue.matchedRecordCount : 0;
   const resultWindow = clampStartingEquipmentResultWindow(
     {

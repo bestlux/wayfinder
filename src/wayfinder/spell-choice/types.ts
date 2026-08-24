@@ -39,6 +39,9 @@ export interface SpellChoiceSchoolDocument extends SpellChoiceSourceCarrier {
     description?: {
       value?: unknown;
     };
+    traits?: {
+      value?: unknown;
+    };
   } & Record<string, unknown>;
 }
 

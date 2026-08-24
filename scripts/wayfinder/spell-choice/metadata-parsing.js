@@ -1,15 +1,61 @@
 export function parseCurriculumSpells(raw) {
     const description = typeof raw === "string" ? raw : "";
-    const matches = description.matchAll(/<li><strong>([^<]+?)<\/strong>\s*:?\s*([\s\S]*?)<\/li>/gi);
     const result = {};
-    for (const [, label, content] of matches) {
-        const rank = rankFromCurriculumLabel(label);
-        if (rank === null) {
+    let insideCurriculumSection = false;
+    for (const match of description.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>|<p\b[^>]*>([\s\S]*?)<\/p>|<h[1-6]\b[^>]*>[\s\S]*?<\/h[1-6]>|<hr\b[^>]*\/?\s*>/gi)) {
+        const listItem = match[1];
+        if (listItem !== undefined) {
+            const paragraphWrapped = /^\s*<p\b/i.test(listItem);
+            const row = curriculumRowFromBlock(listItem);
+            if (row && (!paragraphWrapped || insideCurriculumSection)) {
+                addCurriculumRow(result, row);
+            }
             continue;
         }
-        result[rank] = collectCurriculumSpellNames(String(content));
+        const paragraph = match[2];
+        if (paragraph === undefined) {
+            insideCurriculumSection = false;
+            continue;
+        }
+        const row = curriculumRowFromBlock(paragraph);
+        if (!row) {
+            insideCurriculumSection = false;
+            continue;
+        }
+        if (isCurriculumHeading(row.label)) {
+            insideCurriculumSection = true;
+            continue;
+        }
+        if (insideCurriculumSection && rankFromCurriculumLabel(row.label) !== null) {
+            addCurriculumRow(result, row);
+            continue;
+        }
+        insideCurriculumSection = false;
     }
     return result;
+}
+function curriculumRowFromBlock(raw) {
+    const trimmed = raw.trim();
+    const paragraphContent = /^<p\b[^>]*>([\s\S]*)<\/p>$/i.exec(trimmed)?.[1] ?? trimmed;
+    const match = /^\s*<strong>([^<]+?)<\/strong>\s*:?\s*([\s\S]*)$/i.exec(paragraphContent);
+    if (!match) {
+        return null;
+    }
+    return {
+        label: String(match[1] ?? ""),
+        content: String(match[2] ?? ""),
+    };
+}
+function isCurriculumHeading(label) {
+    const normalized = label.trim().replace(/:$/, "").toLowerCase();
+    return normalized === "curriculum" || normalized === "additional curriculum" || normalized === "sin spells";
+}
+function addCurriculumRow(result, row) {
+    const rank = rankFromCurriculumLabel(row.label);
+    if (rank === null) {
+        return;
+    }
+    result[rank] = collectCurriculumSpellNames(row.content);
 }
 export function parseDeitySpellNames(document, rank) {
     return parseDeitySpellAccess(document, rank).names;

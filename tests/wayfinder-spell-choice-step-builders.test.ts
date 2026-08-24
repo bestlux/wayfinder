@@ -90,6 +90,38 @@ describe("wayfinder spell-choice step builders", () => {
     ]);
   });
 
+  it("builds Quantic Control curriculum choices from PF2E paragraph-wrapped list rows", async () => {
+    const steps = await buildSpellChoiceSteps({
+      draft: createEmptyDraft(1),
+      currentLevel: 1,
+      effectiveClassDocument: wizardClassDocument(),
+      effectiveDeityDocument: null,
+      effectiveSchoolDocument: {
+        name: "School of Quantic Control",
+        flags: {
+          core: {
+            sourceId: "Compendium.pf2e.classfeatures.Item.X8BINW8OLQpIPpys",
+          },
+        },
+        system: {
+          slug: "school-of-quantic-control",
+          description: {
+            value:
+              "<p><strong>Curriculum</strong></p><ul><li><p><strong>1st</strong>: @UUID[Compendium.pf2e.spells-srd.Item.nPb8DDs4rZpBLWIb]{Cradle Aloft}, @UUID[Compendium.pf2e.spells-srd.Item.TTwOKGqmZeKSyNMH]{Gentle Landing}, @UUID[Compendium.pf2e.spells-srd.Item.Rn2LkoSq1XhLsODV]{Pummeling Rubble}</p></li></ul>",
+          },
+        },
+      },
+      targetLevel: 1,
+      extractSlug: extractSlug,
+      readExistingSpellChoiceSelections: () => [],
+    });
+
+    expect(steps[2]?.spellChoice).toMatchObject({
+      sourceName: "School of Quantic Control",
+      curriculumSpellNames: ["Cradle Aloft", "Gentle Landing", "Pummeling Rubble"],
+    });
+  });
+
   it("parses curriculum rank labels without colons", async () => {
     const steps = await buildSpellChoiceSteps({
       draft: createEmptyDraft(3),
@@ -149,6 +181,9 @@ describe("wayfinder spell-choice step builders", () => {
               value:
                 "<p><strong>Additional Curriculum</strong></p><ul><li><strong>cantrips:</strong> @UUID[Compendium.pf2e.spells-srd.Item.Telekinetic Projectile]</li><li><strong>1st:</strong> @UUID[Compendium.pf2e.spells-srd.Item.Force Barrage], @UUID[Compendium.pf2e.spells-srd.Item.Mystic Armor]</li></ul>",
             },
+            traits: {
+              value: ["wizard"],
+            },
           },
         },
       ],
@@ -158,6 +193,35 @@ describe("wayfinder spell-choice step builders", () => {
     });
 
     expect(steps[2]?.spellChoice?.curriculumSpellNames).toEqual(["Alarm", "Force Barrage", "Mystic Armor"]);
+  });
+
+  it("does not merge non-wizard class-feature spell lists into wizard curricula", async () => {
+    const steps = await buildSpellChoiceSteps({
+      draft: createEmptyDraft(1),
+      currentLevel: 1,
+      effectiveClassDocument: wizardClassDocument(),
+      effectiveDeityDocument: null,
+      effectiveSchoolDocument: battleMagicSchoolDocument(),
+      effectiveClassFeatureDocuments: [
+        {
+          name: "Granted Spells",
+          system: {
+            description: {
+              value:
+                "<p><strong>Granted Spells</strong></p><ul><li><strong>1st:</strong> @UUID[Compendium.pf2e.spells-srd.Item.Fear]</li></ul>",
+            },
+            traits: {
+              value: ["oracle"],
+            },
+          },
+        },
+      ],
+      targetLevel: 1,
+      extractSlug: extractSlug,
+      readExistingSpellChoiceSelections: () => [],
+    });
+
+    expect(steps[2]?.spellChoice?.curriculumSpellNames).not.toContain("Fear");
   });
 
   it("suppresses resolved wizard spell-choice steps when actor state already covers them", async () => {

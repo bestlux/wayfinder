@@ -19,7 +19,9 @@ export function buildWizardSpellChoiceSteps(params) {
     const schoolSlug = extractSlug(effectiveSchoolDocument);
     const schoolCurriculum = mergeCurriculumSpells([
         parseCurriculumSpells(effectiveSchoolDocument?.system?.description?.value),
-        ...effectiveClassFeatureDocuments.map((document) => parseCurriculumSpells(document.system?.description?.value)),
+        ...effectiveClassFeatureDocuments
+            .filter(isWizardCurriculumContributor)
+            .map((document) => parseCurriculumSpells(document.system?.description?.value)),
     ]);
     const isUnifiedTheory = schoolSlug === "school-of-unified-magical-theory";
     const steps = [];
@@ -139,6 +141,10 @@ export function buildWizardSpellChoiceSteps(params) {
         }
     }
     return steps;
+}
+function isWizardCurriculumContributor(document) {
+    const traits = document?.system?.traits?.value;
+    return Array.isArray(traits) && traits.some((trait) => String(trait).trim().toLowerCase() === "wizard");
 }
 function mergeCurriculumSpells(curricula) {
     const merged = {};

@@ -1,6 +1,6 @@
 # Beta Readiness Foundry Smoke
 
-Last updated: 2026-08-23.
+Last updated: 2026-08-24.
 
 This is the launch-readiness live smoke layer for Wayfinder. It complements unit tests by exercising the built module inside a real Foundry world against live PF2E compendia.
 
@@ -46,6 +46,16 @@ The companion static class audit checks the maintained smoke matrix against the 
 ```powershell
 npm run audit:classes
 ```
+
+## 2026-08-24 0.8.5 Targeted Patch Qualification
+
+Issue #33 reproduced against PF2E 8.4.1 when School of Quantic Control's curriculum used paragraph-wrapped list rows (`li > p > strong`). The same parser omission affected Keen Inquiry, Mentalism, and Nexian Spaces; Magical Technologies used standalone curriculum paragraphs and failed with the same empty-curriculum symptom. The ordered parser now accepts direct list rows, paragraph-wrapped list rows, and standalone rank paragraphs inside explicit Curriculum, Additional Curriculum, or Sin Spells sections. Supplemental class-feature merging is additionally restricted to wizard-trait contributors so Oracle Granted Spells and Animist Apparition Spells cannot leak into multiclass wizard curricula.
+
+The exact PF2E 8.4.1 class-feature corpus audit scanned 876 documents. Six intended curricula were newly parsed, all 29 wizard curriculum contributors produced the expected 290 rank rows and 513 spell references, and no previously parsed curriculum regressed. All 25 Oracle and Animist lookalikes were excluded by the emitted wizard-builder path, including the paragraph-wrapped Lamentation of Sinister Deals false-positive found during adversarial review. Focused parser and builder tests passed 38/38, and `npm run check` passed 2,116 tests across 191 files with generated scripts current.
+
+Two complete wizard Apply/rerun cases then passed in `testing-world` as the `smoke` GM against Foundry VTT 14.366 / PF2E 8.4.1 / Wayfinder 0.8.5. `.wayfinder-smoke/issue-33-0.8.5-quantic-20260824` selected Quantic Control and exposed Cradle Aloft, Gentle Landing, and Pummeling Rubble at rank 1; `.wayfinder-smoke/issue-33-0.8.5-magical-technologies-20260824` selected Magical Technologies and exposed Mending, Runic Weapon, and Summon Construct. Each run planned and applied 30 steps, cleaned its fixture, and returned zero pending steps on rerun. The served parser and wizard-builder scripts have SHA-256 `0188fa9ecc3e76cc2510f55eb0d203c0515908c97a5cef85b0e727395a875e3c` and `ebc0f2a9a3622314b04e1fb7a28d62438db01b383bf35824c2fb43a097b74d5f` respectively.
+
+This is an intentionally scoped parser-compatibility qualification. The unchanged 55-execution character-build coordinator was not repeated because the patch is confined to extracting and merging wizard curriculum metadata; the two affected markup families instead received complete live wizard Apply/rerun coverage, while the exhaustive PF2E corpus differential covered every contributor and adjacent lookalike. The reporter's Foundry 14.367 failure supplies the pre-fix reproduction, but the local post-fix runtime remains the module's advertised 14.366 build; no post-fix 14.367 run is claimed.
 
 ## 2026-08-23 0.8.4 Targeted Patch Qualification
 

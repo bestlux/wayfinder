@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.5 - 2026-08-24
+
+- Fixed missing wizard curriculum choices for Quantic Control, Keen Inquiry, Mentalism, Nexian Spaces, and Magical Technologies by supporting PF2E's paragraph-wrapped list rows and standalone curriculum paragraphs.
+- Wizard curriculum merging now accepts supplemental spell lists only from wizard class features and keeps nested or standalone rows inside explicit curriculum sections, preventing Oracle and Animist spell lists from leaking into multiclass wizard choices.
+
 ## 0.8.4 - 2026-08-23
 
 - Fixed level-1 kit confirmation when the cart contains level-1 items. The final acquisition ledger now uses the same recipe-aware item-level boundary as catalogue browsing and prepared acquisition instead of rejecting an at-level item after allowing it into the cart.

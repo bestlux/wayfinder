@@ -1,5 +1,6 @@
 import { OFFICIAL_PACKS } from "../constants.js";
 import { toCompendiumItemUuid } from "../shared/compendium.js";
+import { allowsActorOwnedGrantAdoption } from "../shared/grant-creation-policy.js";
 import type { OptionContext, OptionRecord, PendingStep, SelectionRef, SuppressedPickerOption } from "../types.js";
 import { resolveStaticGrantChoiceSources } from "../wayfinder/static-grant-choice-sources.js";
 import { fetchSelectionDocument, getGamePack, getPackIndex, type PackIndexEntry } from "./access.js";
@@ -230,6 +231,10 @@ function isSelectedInDifferentDraftSlot(step: PendingStep, uuid: string, context
 }
 
 function isOwnedByActor(step: PendingStep, uuid: string, context: OptionContext): boolean {
+  if (allowsActorOwnedGrantAdoption(step)) {
+    return false;
+  }
+
   const normalizedUuid = uuid.trim().toLowerCase();
   if (step.kind === "spell-choice") {
     return (context.actorSpellUuidsByDestinationKey?.[step.spellChoice.destination.key] ?? []).some(

@@ -1605,6 +1605,51 @@ describe("pack options dependency filtering", () => {
     expect(options.map((option) => option.name)).toEqual(["Intimidating Strike"]);
   });
 
+  it("keeps an actor-owned deity available for its unresolved selector grant", async () => {
+    setPack("pf2e.deities", [
+      {
+        _id: "GuUn4gElGNAT3Rbc",
+        name: "Wulgren",
+        img: "wulgren.webp",
+        type: "deity",
+        system: {
+          category: "deity",
+          publication: { title: "Pathfinder Lost Omens Divine Mysteries" },
+          rules: [],
+          traits: {},
+        },
+      },
+    ]);
+
+    const step = makeStep("deity", { itemType: "deity" });
+    if (step.kind !== "pick-item") {
+      throw new Error("Expected a deity pick-item step.");
+    }
+    step.grantSelection = {
+      slotId: step.slotId,
+      sourceItemType: "classfeature",
+      selectorPackId: "pf2e.classfeatures",
+      selectorDocumentId: "deity-cleric",
+      selectorUuid: "Compendium.pf2e.classfeatures.Item.deity-cleric",
+      selectorName: "Deity",
+      selectorRuleIndex: 0,
+      grantRuleIndex: 1,
+      flag: "deity",
+      itemType: "deity",
+      classSlug: "cleric",
+      dependsOn: "class",
+      filters: { itemType: "deity" },
+    };
+
+    const options = await getOptionsForStep(step, {
+      ...EMPTY_CONTEXT,
+      classSlug: "cleric",
+      actorSourceIds: ["Compendium.pf2e.deities.Item.GuUn4gElGNAT3Rbc"],
+    });
+
+    expect(options.map((option) => option.name)).toEqual(["Wulgren"]);
+  });
+
   it("keeps the current draft slot's selected choice visible", async () => {
     setPack("pf2e.feats-srd", [featEntry("puncturing-horn", "Puncturing Horn", "ancestry", ["kashrishi"])]);
 

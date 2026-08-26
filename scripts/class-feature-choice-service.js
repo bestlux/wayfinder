@@ -1,7 +1,7 @@
 import { listActorItems } from "./build-state.js";
 import { MODULE_ID } from "./constants.js";
 import { applySelectorApplication, assertExistingSelectorGrantAuthority, assertManualStaticGrantReconciliation, assertManualStaticGrantSourcesAvailable, buildSelectorSelection, createManualStaticGrantedItems, readManualStaticItemGrants, stripSelectedSelectorEntries, } from "./selector-application.js";
-import { usesNativeGrantItemCreation } from "./shared/grant-creation-policy.js";
+import { allowsActorOwnedGrantAdoption, usesNativeGrantItemCreation } from "./shared/grant-creation-policy.js";
 import { itemMatchesSourceId } from "./shared/source-id.js";
 import { selectedClassArchetypeInternalChoices } from "./wayfinder/class-archetype/registry.js";
 import { materializeClassChoiceSelection } from "./wayfinder/class-choice/selection-value.js";
@@ -48,6 +48,9 @@ function buildFeatureGroupPlan(group) {
             selectorRuleIndex: entry.meta.selectorRuleIndex,
             createRulePolicy: [entry.meta.grantRuleIndex],
             updateExistingGrantImmediately: true,
+            adoptExistingSource: allowsActorOwnedGrantAdoption(entry.step) &&
+                entry.meta.itemType === "deity" &&
+                entry.selection.itemType === "deity",
         })),
     };
 }

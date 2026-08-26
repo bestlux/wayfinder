@@ -15,7 +15,7 @@ import {
   stripSelectedSelectorEntries,
 } from "./selector-application.js";
 import type { ActorItemLike, EmbeddedItemSource } from "./shared/actor-model.js";
-import { usesNativeGrantItemCreation } from "./shared/grant-creation-policy.js";
+import { allowsActorOwnedGrantAdoption, usesNativeGrantItemCreation } from "./shared/grant-creation-policy.js";
 import { itemMatchesSourceId } from "./shared/source-id.js";
 import type {
   ClassChoiceMeta,
@@ -107,6 +107,10 @@ function buildFeatureGroupPlan(group: PendingFeatureGroup): SelectorApplicationP
       selectorRuleIndex: entry.meta.selectorRuleIndex,
       createRulePolicy: [entry.meta.grantRuleIndex],
       updateExistingGrantImmediately: true,
+      adoptExistingSource:
+        allowsActorOwnedGrantAdoption(entry.step) &&
+        entry.meta.itemType === "deity" &&
+        entry.selection.itemType === "deity",
     })),
   };
 }

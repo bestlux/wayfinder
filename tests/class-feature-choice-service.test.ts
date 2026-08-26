@@ -817,6 +817,76 @@ describe("class-feature-choice-service", () => {
     ]);
   });
 
+  it("adopts one loose actor-owned deity into the selected class-feature grant route", async () => {
+    const draft = createEmptyDraft(1);
+    draft.selections["deity-level-1"] = selection("pf2e.deities", "GuUn4gElGNAT3Rbc", "Wulgren", "deity");
+    const looseDeity = {
+      id: "deity-loose",
+      type: "deity",
+      name: "Wulgren",
+      flags: { core: { sourceId: "Compendium.pf2e.deities.Item.GuUn4gElGNAT3Rbc" } },
+      system: {},
+    };
+    const items = [{ id: "class-1", type: "class", name: "Cleric", system: {} }, looseDeity] as any[];
+    let nextId = 1;
+    const actor = {
+      items: { contents: items },
+      createEmbeddedDocuments: vi.fn(async (_type: string, sources: any[]) =>
+        sources.map((source) => {
+          const item = { id: `created-${nextId++}`, ...structuredClone(source) };
+          items.push(item);
+          return item;
+        })
+      ),
+      updateEmbeddedDocuments: vi.fn(async (_type: string, updates: any[]) => {
+        applyTestItemUpdates(items, updates);
+        return [];
+      }),
+      deleteEmbeddedDocuments: vi.fn(async () => []),
+    };
+    const sources = new Map<string, any>([
+      [
+        "Compendium.pf2e.classfeatures.Item.deity-cleric",
+        featureSource("Deity", "Compendium.pf2e.classfeatures.Item.deity-cleric", {
+          category: "classfeature",
+          level: { value: 1 },
+          rules: [
+            { key: "ChoiceSet", flag: "deity", choices: { itemType: "deity" } },
+            { key: "GrantItem", uuid: "{item|flags.system.rulesSelections.deity}" },
+          ],
+        }),
+      ],
+      [
+        "Compendium.pf2e.deities.Item.GuUn4gElGNAT3Rbc",
+        {
+          name: "Wulgren",
+          type: "deity",
+          flags: { core: { sourceId: "Compendium.pf2e.deities.Item.GuUn4gElGNAT3Rbc" } },
+          system: {},
+        },
+      ],
+    ]);
+
+    await applyClassFeatureChoiceDraft(actor as any, draft, [deityStep()], {
+      createEmbeddedSource: async (requested) => structuredClone(sources.get(requested.uuid) ?? null),
+      fetchSelectionDocument: async () => null,
+    });
+
+    expect(
+      items.filter((item) => item.flags?.core?.sourceId === "Compendium.pf2e.deities.Item.GuUn4gElGNAT3Rbc")
+    ).toHaveLength(1);
+    expect(actor.createEmbeddedDocuments).toHaveBeenCalledTimes(1);
+    expect(looseDeity.flags).toMatchObject({
+      pf2e: { grantedBy: { id: "created-1", onDelete: "cascade" } },
+      "wayfinder-pf2e": { importedBy: "wayfinder-pf2e", slotId: "deity-level-1" },
+    });
+    expect(items.find((item) => item.id === "created-1")?.flags?.pf2e?.itemGrants?.deity).toEqual({
+      id: "deity-loose",
+      onDelete: "detach",
+      nested: null,
+    });
+  });
+
   it("preserves fixed grant rules when creating deity-owned class features", async () => {
     const draft = createEmptyDraft(1);
     draft.selections["deity-level-1"] = selection("pf2e.deities", "iomedae", "Iomedae", "deity");

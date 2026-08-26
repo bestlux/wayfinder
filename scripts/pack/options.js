@@ -1,5 +1,6 @@
 import { OFFICIAL_PACKS } from "../constants.js";
 import { toCompendiumItemUuid } from "../shared/compendium.js";
+import { allowsActorOwnedGrantAdoption } from "../shared/grant-creation-policy.js";
 import { resolveStaticGrantChoiceSources } from "../wayfinder/static-grant-choice-sources.js";
 import { fetchSelectionDocument, getGamePack, getPackIndex } from "./access.js";
 import { buildStaticGrantChoiceDisclosure, classifyEmbeddedChoices } from "./embedded-choice-policy.js";
@@ -164,6 +165,9 @@ function isSelectedInDifferentDraftSlot(step, uuid, context) {
             selected.uuids.some((selectedUuid) => selectedUuid.trim().toLowerCase() === normalizedUuid)));
 }
 function isOwnedByActor(step, uuid, context) {
+    if (allowsActorOwnedGrantAdoption(step)) {
+        return false;
+    }
     const normalizedUuid = uuid.trim().toLowerCase();
     if (step.kind === "spell-choice") {
         return (context.actorSpellUuidsByDestinationKey?.[step.spellChoice.destination.key] ?? []).some((sourceId) => sourceId.trim().toLowerCase() === normalizedUuid);

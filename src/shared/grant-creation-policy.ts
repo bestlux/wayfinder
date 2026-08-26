@@ -1,5 +1,14 @@
 import type { PendingStep } from "../types.js";
 
+export function allowsActorOwnedGrantAdoption(step: PendingStep | null | undefined): boolean {
+  return (
+    step?.kind === "pick-item" &&
+    step.slotKind === "deity" &&
+    step.grantSelection?.itemType === "deity" &&
+    !usesNativeGrantItemCreation(step)
+  );
+}
+
 export function usesNativeGrantItemCreation(step: PendingStep | null | undefined): boolean {
   if (step?.kind !== "pick-item" || step.slotKind !== "grant-choice") {
     return false;

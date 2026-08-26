@@ -25,8 +25,10 @@ Character creation and leveling in PF2E means juggling class tables, compendium 
 - **Resumable drafts.** Progress is saved on the actor, so you can leave mid-build and come back later.
 - **Honest about its limits.** When Wayfinder can't model a step confidently, it says so and points you at the right native PF2E control instead of silently guessing.
 
-## What's new in 0.8.5
+## What's new in 0.8.6
 
+- **Existing deities remain selectable.** If a Cleric actor already has an eligible deity such as Wulgren but the class selector is unresolved, Wayfinder now keeps that deity in the picker instead of returning an empty search.
+- **Apply adopts rather than duplicates.** One loose matching deity is linked into the PF2E class-feature grant graph while retaining its actor item identity. Ambiguous, foreign-owned, and non-deity grants still fail closed.
 - **Current PF2E wizard curricula populate correctly.** Quantic Control, Keen Inquiry, Mentalism, Nexian Spaces, and Magical Technologies now expose their curriculum spells instead of blocking the build with a false prompt to choose an arcane school.
 - **Multiclass spell lists stay in their lane.** Supplemental curriculum merging now requires a wizard class feature, so Oracle granted spells and Animist apparition spells cannot become wizard curriculum choices.
 - **Level-1 kits confirm correctly.** The final ledger now accepts the same common level-1 items that the catalogue and prepared purchase path allow, so a cart containing minor healing potions or elixirs no longer fails at **Confirm this kit**.
@@ -36,7 +38,7 @@ Character creation and leveling in PF2E means juggling class tables, compendium 
 - **Enough detail to make the purchase.** Item previews show enriched rules text, Bulk, and hands, and cart quantities accept direct numeric entry for ammunition and other bulk purchases.
 - **Browse speed without weaker Apply checks.** The catalogue reuses lightweight compendium facts and materializes only mounted rows. Preview and Apply still resolve current PF2E documents, prices, world policy, and authority before anything is purchased or written.
 
-Release 0.8.5 is available from the [GitHub release page](https://github.com/bestlux/wayfinder/releases/tag/v0.8.5). Its targeted qualification and package evidence are recorded in the [live smoke log](docs/coverage/beta-readiness-smoke.md#2026-08-24-085-targeted-patch-qualification).
+Release 0.8.6 is available from the [GitHub release page](https://github.com/bestlux/wayfinder/releases/tag/v0.8.6). Its targeted qualification and package evidence are recorded in the [live smoke log](docs/coverage/beta-readiness-smoke.md#2026-08-26-086-targeted-patch-qualification).
 
 ## Installation
 
@@ -48,7 +50,7 @@ https://github.com/bestlux/wayfinder/releases/latest/download/module.json
 
 Foundry's package updater will follow it for future versions. Older releases stay installable from their own [release pages](https://github.com/bestlux/wayfinder/releases).
 
-**Requirements:** Foundry VTT v14 with the PF2E system 8.4.1 or newer. Wayfinder supports Foundry VTT 14.366 and PF2E 8.4.1; the [live smoke log](docs/coverage/beta-readiness-smoke.md) records exact release evidence.
+**Requirements:** Foundry VTT v14 with the PF2E system 8.4.1 or newer. Wayfinder supports Foundry VTT 14.367 and PF2E 8.4.1; the [live smoke log](docs/coverage/beta-readiness-smoke.md) records exact release evidence.
 
 ## Using Wayfinder
 

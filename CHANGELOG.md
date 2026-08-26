@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.6 - 2026-08-26
+
+- Fixed unresolved Cleric deity choices when the selected deity already exists on the actor. Wayfinder now keeps an eligible actor-owned deity visible and adopts one loose matching deity into the class selector graph instead of hiding it or creating a duplicate.
+- Actor-owned grant adoption remains explicit and deity-only. Duplicate, foreign-granted, malformed, non-deity, native-grant, feat, and spell matches continue to fail closed.
+
 ## 0.8.5 - 2026-08-24
 
 - Fixed missing wizard curriculum choices for Quantic Control, Keen Inquiry, Mentalism, Nexian Spaces, and Magical Technologies by supporting PF2E's paragraph-wrapped list rows and standalone curriculum paragraphs.

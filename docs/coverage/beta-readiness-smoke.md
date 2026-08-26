@@ -1,6 +1,6 @@
 # Beta Readiness Foundry Smoke
 
-Last updated: 2026-08-24.
+Last updated: 2026-08-26.
 
 This is the launch-readiness live smoke layer for Wayfinder. It complements unit tests by exercising the built module inside a real Foundry world against live PF2E compendia.
 
@@ -46,6 +46,18 @@ The companion static class audit checks the maintained smoke matrix against the 
 ```powershell
 npm run audit:classes
 ```
+
+## 2026-08-26 0.8.6 Targeted Patch Qualification
+
+Issue #34 reproduced on a Cleric actor that already contained Wulgren as a loose deity item while its class-feature deity selector remained unresolved. The option context treated every embedded source UUID as unavailable, so Wulgren was removed before search and the real UI showed zero matching choices with zero active filters. A picker-only exemption then exposed the second half of the defect: Apply refused the loose deity as conflicting provenance because it was not linked to the `Deity (Cleric)` selector.
+
+The correction makes actor-owned adoption an explicit, default-deny grant capability shared by option visibility and class-feature application. Only a non-native deity selector with deity-shaped metadata and selection may expose and adopt one matching ungranted deity. Apply retains that actor item, stamps its Wayfinder slot and `grantedBy` provenance, and links it from the selector's `itemGrants`; duplicate, foreign-granted, malformed, non-deity, native-grant, feat, spell, and other selector matches remain fail-closed. The PF2E `v14-dev` checkout at `7589998635a26a21b7cfefd3c094f311cc6f8590` contains no Wulgren data change from tag `pf2e-8.4.1`.
+
+Focused option and class-feature reconciliation coverage passed 116/116 tests. The exact release-candidate `npm run check` passed all 191 files and 2,118 tests, including lint, build, Character Wealth generation, generated-script synchronization, the physical-grant report, and both strict TypeScript projects. Earlier release-preparation runs intermittently saw the unrelated Starting Equipment browser test `recovers render focus from Foundry's late document-body handoff without overriding the user` miss a late animation-frame focus assertion under full-suite load; the exact four-test browser file also passed independently. The maintainer explicitly accepted that isolated-pass timing exception if it recurred, but the final candidate needed no exception and changes no product focus code.
+
+The fixed source was exercised in `testing-world` against Foundry VTT 14.367 and PF2E 8.4.1. Real GM and non-GM owner UI runs each exposed 481 deity options, kept one Wulgren row before search, and returned exactly one Wulgren result after search with zero active filters. After synchronizing release metadata and reloading the world, guarded Cleric Apply/rerun evidence in `.wayfinder-smoke/issue-34-0.8.6-apply-exact-20260826` recorded the exact 0.8.6 runtime, started with one loose Wulgren, applied all 16 planned level-1 steps, retained exactly one Wulgren linked to exactly one `Deity (Cleric)` selector, cleared the draft, and returned zero pending rerun steps. The disposable actors were deleted and temporary equipment policy state was restored.
+
+This is an intentionally scoped picker-and-reconciliation qualification. The broader character-build and Starting Equipment matrices were not repeated because the patch neither changes their option categories nor their actor mutation routes; existing actor-owned feats and spells remain hidden, and all non-deity selector adoption stays disabled.
 
 ## 2026-08-24 0.8.5 Targeted Patch Qualification
 

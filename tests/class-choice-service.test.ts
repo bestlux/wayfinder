@@ -131,6 +131,78 @@ describe("class-choice-service", () => {
     ]);
   });
 
+  it("keeps independent Animist and Hermit Nature-or-Occultism choices", async () => {
+    const steps = await buildClassTrainingSteps({
+      draftClassSelection: selection("pf2e.classes", "9KiqZVG9r5g8mC4V", "Animist", "class"),
+      sourceSelections: [
+        {
+          sourceItemType: "background",
+          sourceSelection: selection("pf2e.backgrounds", "b3UC18ueX8m9Ov0W", "Hermit", "background"),
+          sourceDocument: {
+            name: "Hermit",
+            system: {
+              slug: "hermit",
+              rules: [
+                {
+                  key: "ChoiceSet",
+                  flag: "skill",
+                  prompt: "Choose a skill",
+                  choices: [
+                    { value: "nature", label: "PF2E.Skill.Nature" },
+                    { value: "occultism", label: "PF2E.Skill.Occultism" },
+                  ],
+                },
+                {
+                  key: "ActiveEffectLike",
+                  mode: "upgrade",
+                  path: "system.skills.{item|flags.system.rulesSelections.skill}.rank",
+                  value: 1,
+                },
+              ],
+              trainedSkills: { value: [] },
+            },
+          },
+        },
+      ],
+      targetLevel: 1,
+      effectiveBuildState: buildState(),
+      fetchSelectionDocument: async () => ({
+        name: "Animist",
+        system: {
+          slug: "animist",
+          trainedSkills: {
+            additional: 2,
+            value: ["religion"],
+          },
+          rules: [],
+        },
+      }),
+      extractSlug: slugFromDocument,
+      localize: (value) => value.replace(/^PF2E\.Skill\./, ""),
+    });
+
+    expect(steps).toHaveLength(1);
+    expect(steps[0]).toMatchObject({
+      slotId: "skill-training-animist-level-1",
+      training: {
+        fixedSkills: ["religion"],
+        additionalCount: 3,
+        choiceRules: [
+          {
+            key: "class:animist:initial-skill",
+            sourceLabel: "Animist",
+            options: [{ slug: "nature" }, { slug: "occultism" }],
+          },
+          {
+            key: "background:hermit:skill",
+            sourceLabel: "Hermit",
+            options: [{ slug: "nature" }, { slug: "occultism" }],
+          },
+        ],
+      },
+    });
+  });
+
   it("keeps later feat training at its taken level in the production training plan", async () => {
     const classSelection = selection("pf2e.classes", "fighter", "Fighter", "class");
     const levelOneSource = selection("pf2e.backgrounds", "artisan", "Artisan", "background");

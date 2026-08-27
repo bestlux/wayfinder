@@ -2,6 +2,7 @@ import { parseCompendiumItemUuid } from "../../shared/compendium.js";
 import { cloneStructuredEidolonTraditionValue, projectStructuredEidolonTraditionChoiceOptions, } from "../../shared/structured-eidolon-tradition-choice.js";
 import { formatSlug } from "../formatting.js";
 import { isRecord, matchesChoicePredicateAgainstRollOptions, toNonEmptyString } from "../rule-data.js";
+import { registeredInitialClassSkillChoices } from "./initial-skill-choice-registry.js";
 import { getConfiguredSkills, isConfiguredSkillSlug, resolveSkillLabel } from "./skill-config.js";
 export function findRelevantClassRules(document) {
     const rules = document?.system?.rules;
@@ -17,11 +18,23 @@ export function discoverSkillTrainingMeta(args) {
     if (classSlug) {
         activeRollOptions.add(`class:${classSlug}`.toLowerCase());
     }
-    const choiceRules = findRelevantClassRules(classDocument)
+    const baseAdditionalCount = toNonNegativeNumber(document?.system?.trainedSkills?.additional);
+    const fixedSkills = toStringArray(document?.system?.trainedSkills?.value).map((entry) => entry.toLowerCase());
+    const nativeChoiceRules = findRelevantClassRules(classDocument)
         .map((rule, ruleIndex) => toTrainingChoiceRule(rule, ruleIndex, localize, configuredSkills, className, classSelection, activeRollOptions))
         .filter((rule) => rule !== null);
-    const additionalCount = Math.max(0, toNonNegativeNumber(document?.system?.trainedSkills?.additional) + Math.trunc(intelligenceModifier));
-    const fixedSkills = toStringArray(document?.system?.trainedSkills?.value).map((entry) => entry.toLowerCase());
+    const choiceRules = [
+        ...nativeChoiceRules,
+        ...registeredInitialClassSkillChoices({
+            classSlug,
+            className,
+            classSelection,
+            localize,
+            configuredSkills,
+            nativeChoices: nativeChoiceRules,
+        }),
+    ];
+    const additionalCount = Math.max(0, baseAdditionalCount + Math.trunc(intelligenceModifier));
     if (choiceRules.length === 0 && additionalCount <= 0) {
         return null;
     }

@@ -13,6 +13,7 @@ import type {
 } from "../../types.js";
 import { formatSlug } from "../formatting.js";
 import { isRecord, matchesChoicePredicateAgainstRollOptions, toNonEmptyString } from "../rule-data.js";
+import { registeredInitialClassSkillChoices } from "./initial-skill-choice-registry.js";
 import { getConfiguredSkills, isConfiguredSkillSlug, resolveSkillLabel, type SkillConfigMap } from "./skill-config.js";
 
 export interface ClassFeatureSelectionSource {
@@ -71,7 +72,9 @@ export function discoverSkillTrainingMeta(args: {
   if (classSlug) {
     activeRollOptions.add(`class:${classSlug}`.toLowerCase());
   }
-  const choiceRules = findRelevantClassRules(classDocument)
+  const baseAdditionalCount = toNonNegativeNumber(document?.system?.trainedSkills?.additional);
+  const fixedSkills = toStringArray(document?.system?.trainedSkills?.value).map((entry) => entry.toLowerCase());
+  const nativeChoiceRules = findRelevantClassRules(classDocument)
     .map((rule, ruleIndex) =>
       toTrainingChoiceRule(rule, ruleIndex, localize, configuredSkills, className, classSelection, activeRollOptions)
     )
@@ -79,12 +82,19 @@ export function discoverSkillTrainingMeta(args: {
       (rule: SkillTrainingMeta["choiceRules"][number] | null): rule is SkillTrainingMeta["choiceRules"][number] =>
         rule !== null
     );
+  const choiceRules = [
+    ...nativeChoiceRules,
+    ...registeredInitialClassSkillChoices({
+      classSlug,
+      className,
+      classSelection,
+      localize,
+      configuredSkills,
+      nativeChoices: nativeChoiceRules,
+    }),
+  ];
 
-  const additionalCount = Math.max(
-    0,
-    toNonNegativeNumber(document?.system?.trainedSkills?.additional) + Math.trunc(intelligenceModifier)
-  );
-  const fixedSkills = toStringArray(document?.system?.trainedSkills?.value).map((entry) => entry.toLowerCase());
+  const additionalCount = Math.max(0, baseAdditionalCount + Math.trunc(intelligenceModifier));
 
   if (choiceRules.length === 0 && additionalCount <= 0) {
     return null;

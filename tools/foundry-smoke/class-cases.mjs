@@ -255,6 +255,57 @@ export const smokeCases = [
     },
     preferredSkills: ["religion", "nature", "occultism", "medicine", "society"],
   }),
+  {
+    ...classCase({
+      className: "Animist",
+      classSlug: "animist",
+      keyAbility: "wis",
+      expectedStepIds: [
+        "class-branch-animistic-practice-level-1",
+        "skill-training-animist-level-1",
+        "spell-choice-animist-cantrips-level-1",
+        "spell-choice-animist-rank-1-level-1",
+      ],
+      expectedSkillRanks: {
+        diplomacy: 1,
+        medicine: 1,
+        nature: 1,
+        occultism: 1,
+        religion: 1,
+        society: 1,
+      },
+      preferredSelections: {
+        "class-branch-animistic-practice-level-1": ["Medium", "Seer"],
+      },
+      preferredSkills: ["nature", "occultism", "medicine", "society", "diplomacy"],
+    }),
+    id: "animist-hermit-l1-apply-rerun",
+    label: "Animist with Hermit independent skill choices level 1 apply/rerun",
+    targetLevel: 1,
+    backgroundName: "Hermit",
+    backgroundBoosts: { "0": "con", "1": "wis" },
+    preferredRuleChoices: {
+      "class:animist:initial-skill": "nature",
+      "background:hermit:skill": "occultism",
+    },
+    expectedItemRuleSelections: {
+      Hermit: { skill: "occultism" },
+    },
+    expectedSkillTrainingChoiceSections: {
+      "skill-training-animist-level-1": [
+        {
+          key: "class:animist:initial-skill",
+          sourceLabel: "Animist",
+          optionSlugs: ["nature", "occultism"],
+        },
+        {
+          key: "background:hermit:skill",
+          sourceLabel: "Hermit",
+          optionSlugs: ["nature", "occultism"],
+        },
+      ],
+    },
+  },
   classCase({
     className: "Barbarian",
     classSlug: "barbarian",

@@ -3432,6 +3432,19 @@ async function fillSkillTraining(actor, draft, step, smokeCase, modules, planSte
     throw new Error("Foundry smoke skill-selection policy was not loaded before the browser suite.");
   }
   const pane = await buildCurrentSkillPane(actor, draft, step, modules, planSteps);
+  const expectedChoiceSections = smokeCase.expectedSkillTrainingChoiceSections?.[step.slotId];
+  if (expectedChoiceSections) {
+    const actualChoiceSections = (pane?.choiceSections ?? []).map((section) => ({
+      key: section.key,
+      sourceLabel: section.sourceLabel,
+      optionSlugs: section.options.map((option) => option.slug),
+    }));
+    if (JSON.stringify(actualChoiceSections) !== JSON.stringify(expectedChoiceSections)) {
+      throw new Error(
+        `${step.slotId}: choice sections ${JSON.stringify(actualChoiceSections)} did not match ${JSON.stringify(expectedChoiceSections)}`,
+      );
+    }
+  }
   const choiceSections = new Map((pane?.choiceSections ?? []).map((section) => [section.key, section]));
   const availableAdditional = new Set(
     (pane?.additionalSkills ?? []).filter((option) => !option.disabled).map((option) => option.slug),
@@ -3455,7 +3468,10 @@ async function fillSkillTraining(actor, draft, step, smokeCase, modules, planSte
   }
 
   for (const choice of step.training.loreChoices) {
-    loreChoices[choice.key] = "Wayfinding Lore";
+    const suggestedLore = choice.suggestions.find((suggestion) => typeof suggestion === "string" && suggestion.trim());
+    loreChoices[choice.key] = choice.allowCustom
+      ? "Wayfinding Lore"
+      : (suggestedLore ?? choice.placeholder ?? "Wayfinding Lore");
   }
 
   const additional = skillSelectionPolicy.selectAdditionalSkills({

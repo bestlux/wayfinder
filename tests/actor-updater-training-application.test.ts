@@ -94,6 +94,77 @@ describe("actor-updater training application", () => {
     });
   });
 
+  it("applies a non-persisted class training choice without mutating the class item", async () => {
+    const update = vi.fn(async () => ({}));
+    const updateEmbeddedDocuments = vi.fn(async () => []);
+    const actor = {
+      system: {
+        skills: {
+          nature: { rank: 0 },
+          occultism: { rank: 0 },
+          religion: { rank: 0 },
+        },
+      },
+      items: {
+        contents: [{ id: "class-1", type: "class", system: { rules: [] } }],
+      },
+      updateEmbeddedDocuments,
+      update,
+    };
+    const draft = createEmptyDraft(1);
+    draft.skillTrainings["skill-training-animist-level-1"] = {
+      ruleChoices: {
+        "class:animist:initial-skill": "nature",
+      },
+      additional: [],
+      loreChoices: {},
+    };
+    const step: PendingStep = {
+      id: "skill-training-animist-level-1",
+      level: 1,
+      kind: "skill-training",
+      slotKind: "skill-training",
+      title: "Animist skill training",
+      description: "",
+      required: true,
+      slotId: "skill-training-animist-level-1",
+      training: {
+        classSlug: "animist",
+        className: "Animist",
+        fixedSkills: ["religion"],
+        fixedLores: [],
+        choiceRules: [
+          {
+            key: "class:animist:initial-skill",
+            flag: "initialSkill",
+            prompt: "Choose Nature or Occultism",
+            sourceLabel: "Animist",
+            options: [
+              { slug: "nature", label: "Nature" },
+              { slug: "occultism", label: "Occultism" },
+            ],
+            persistence: null,
+          },
+        ],
+        loreChoices: [],
+        additionalCount: 0,
+      },
+    };
+
+    const projectedRanks = await applyTrainingDraft(actor, draft, [step]);
+
+    expect(updateEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(update).toHaveBeenCalledWith({
+      "system.skills.nature.rank": 1,
+      "system.skills.religion.rank": 1,
+    });
+    expect(projectedRanks).toMatchObject({
+      nature: 1,
+      occultism: 0,
+      religion: 1,
+    });
+  });
+
   it("applies drafted skill increases in level order and stacks repeated picks", async () => {
     const update = vi.fn(async () => ({}));
     const actor = {

@@ -64,6 +64,36 @@ describe("Foundry smoke skill-selection policy", () => {
     ).toEqual(["medicine", "diplomacy", "nature", "society"]);
   });
 
+  it("pins independent Animist and Hermit skill choices in the focused live case", () => {
+    const smokeCase = (smokeCases as any[]).find((entry) => entry.id === "animist-hermit-l1-apply-rerun");
+
+    expect(smokeCase).toMatchObject({
+      backgroundName: "Hermit",
+      preferredRuleChoices: {
+        "class:animist:initial-skill": "nature",
+        "background:hermit:skill": "occultism",
+      },
+      expectedSkillRanks: {
+        nature: 1,
+        occultism: 1,
+        religion: 1,
+      },
+      expectedItemRuleSelections: {
+        Hermit: { skill: "occultism" },
+      },
+      expectedSkillTrainingChoiceSections: {
+        "skill-training-animist-level-1": [
+          { key: "class:animist:initial-skill", sourceLabel: "Animist" },
+          { key: "background:hermit:skill", sourceLabel: "Hermit" },
+        ],
+      },
+    });
+    expect(requiredPolicy().collectReservedRuleChoiceSkills(smokeCase.preferredRuleChoices)).toEqual([
+      "nature",
+      "occultism",
+    ]);
+  });
+
   it("loads the shared policy before the browser suite and consumes it at the fill boundary", async () => {
     const calls: string[] = [];
     await loadWayfinderBrowserSuite({

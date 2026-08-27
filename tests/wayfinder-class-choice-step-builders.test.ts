@@ -178,6 +178,168 @@ describe("wayfinder class-choice step-builders", () => {
     ]);
   });
 
+  it("supplements the prose-only Animist initial skill choice", () => {
+    const steps = buildClassTrainingStepsFromRules({
+      effectiveClassDocument: {
+        name: "Animist",
+        system: {
+          slug: "animist",
+          trainedSkills: {
+            additional: 2,
+            value: ["religion"],
+          },
+          rules: [],
+        },
+      },
+      classSelection: officialAnimistSelection(),
+      extractSlug: slugFromDocument,
+      localize: (value) => value.replace(/^PF2E\.Skill\./, ""),
+      intelligenceModifier: 0,
+    });
+
+    expect(steps).toMatchObject([
+      {
+        training: {
+          fixedSkills: ["religion"],
+          additionalCount: 2,
+          choiceRules: [
+            {
+              key: "class:animist:initial-skill",
+              flag: "initialSkill",
+              prompt: "Choose Nature or Occultism",
+              sourceLabel: "Animist",
+              options: [
+                { slug: "nature", label: "Nature" },
+                { slug: "occultism", label: "Occultism" },
+              ],
+              persistence: null,
+            },
+          ],
+        },
+      },
+    ]);
+  });
+
+  it("prefers a native Animist ChoiceSet when PF2E exposes the initial skill choice", () => {
+    const steps = buildClassTrainingStepsFromRules({
+      effectiveClassDocument: {
+        name: "Animist",
+        system: {
+          slug: "animist",
+          trainedSkills: {
+            additional: 2,
+            value: ["religion"],
+          },
+          rules: [
+            {
+              key: "ChoiceSet",
+              flag: "animistSkill",
+              prompt: "Choose an Animist skill",
+              choices: [
+                { value: "nature", label: "PF2E.Skill.Nature" },
+                { value: "occultism", label: "PF2E.Skill.Occultism" },
+              ],
+            },
+          ],
+        },
+      },
+      classSelection: officialAnimistSelection(),
+      extractSlug: slugFromDocument,
+      localize: (value) => value.replace(/^PF2E\.Skill\./, ""),
+      intelligenceModifier: 0,
+    });
+
+    expect(steps[0]?.training.choiceRules).toMatchObject([
+      {
+        key: "class:animistskill",
+        flag: "animistSkill",
+        persistence: {
+          sourceRuleIndex: 0,
+        },
+      },
+    ]);
+    expect(steps[0]?.training.choiceRules).toHaveLength(1);
+  });
+
+  it("keeps the Animist supplement alongside an unrelated future class skill choice", () => {
+    const steps = buildClassTrainingStepsFromRules({
+      effectiveClassDocument: {
+        name: "Animist",
+        system: {
+          slug: "animist",
+          trainedSkills: {
+            additional: 2,
+            value: ["religion"],
+          },
+          rules: [
+            {
+              key: "ChoiceSet",
+              flag: "futureSkill",
+              prompt: "Choose a future skill",
+              choices: [
+                { value: "arcana", label: "PF2E.Skill.Arcana" },
+                { value: "society", label: "PF2E.Skill.Society" },
+              ],
+            },
+          ],
+        },
+      },
+      classSelection: officialAnimistSelection(),
+      extractSlug: slugFromDocument,
+      localize: (value) => value.replace(/^PF2E\.Skill\./, ""),
+      intelligenceModifier: 0,
+    });
+
+    expect(steps[0]?.training.choiceRules.map((choice) => choice.key)).toEqual([
+      "class:futureskill",
+      "class:animist:initial-skill",
+    ]);
+  });
+
+  it("does not supplement a third-party source with the Animist slug", () => {
+    const steps = buildClassTrainingStepsFromRules({
+      effectiveClassDocument: {
+        name: "Animist",
+        system: {
+          slug: "animist",
+          trainedSkills: {
+            additional: 2,
+            value: ["religion"],
+          },
+          rules: [],
+        },
+      },
+      classSelection: selection("class-level-1", "class", "third-party-animist", "Animist"),
+      extractSlug: slugFromDocument,
+      localize: (value) => value.replace(/^PF2E\.Skill\./, ""),
+      intelligenceModifier: 0,
+    });
+
+    expect(steps[0]?.training.choiceRules).toEqual([]);
+  });
+
+  it("retains the official Animist supplement across unrelated class-training count changes", () => {
+    const steps = buildClassTrainingStepsFromRules({
+      effectiveClassDocument: {
+        name: "Animist",
+        system: {
+          slug: "animist",
+          trainedSkills: {
+            additional: 3,
+            value: ["religion", "society"],
+          },
+          rules: [],
+        },
+      },
+      classSelection: officialAnimistSelection(),
+      extractSlug: slugFromDocument,
+      localize: (value) => value.replace(/^PF2E\.Skill\./, ""),
+      intelligenceModifier: 0,
+    });
+
+    expect(steps[0]?.training.choiceRules.map((choice) => choice.key)).toEqual(["class:animist:initial-skill"]);
+  });
+
   it("builds one ordered branch step per item-backed ChoiceSet on the same class feature", async () => {
     const exemplarClass = {
       system: {
@@ -853,5 +1015,13 @@ function selection(slotId: string, itemType: string, documentId: string, name = 
     featType: null,
     name,
     level: 1,
+  };
+}
+
+function officialAnimistSelection(): SelectionRef {
+  return {
+    ...selection("class-level-1", "class", "9KiqZVG9r5g8mC4V", "Animist"),
+    packId: "pf2e.classes",
+    uuid: "Compendium.pf2e.classes.Item.9KiqZVG9r5g8mC4V",
   };
 }

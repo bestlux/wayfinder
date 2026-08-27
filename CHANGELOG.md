@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.7 - 2026-08-27
+
+- Restored the Animist's required level-1 choice between Nature and Occultism, which PF2E 8.4.1 describes in class text but does not expose as a machine-readable class rule.
+- The Animist and background choices remain independent when both offer the same skills, including Hermit. The source-pinned supplement automatically yields if PF2E later adds an equivalent native choice rule.
+
 ## 0.8.6 - 2026-08-26
 
 - Fixed unresolved Cleric deity choices when the selected deity already exists on the actor. Wayfinder now keeps an eligible actor-owned deity visible and adopts one loose matching deity into the class selector graph instead of hiding it or creating a duplicate.

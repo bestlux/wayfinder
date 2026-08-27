@@ -47,6 +47,18 @@ The companion static class audit checks the maintained smoke matrix against the 
 npm run audit:classes
 ```
 
+## 2026-08-27 0.8.7 Targeted Patch Qualification
+
+Issue #35 reproduced on a level-1 Animist with the Hermit background. PF2E 8.4.1's Animist class item fixes Religion and exposes two open trained skills, but its Nature-or-Occultism requirement exists only in class journal prose and `system.rules` is empty. Hermit independently encodes the same two options in a native `ChoiceSet`, so Wayfinder surfaced only the background choice and silently omitted the class requirement.
+
+The correction adds a fail-closed initial-class-skill registry keyed to the official Animist source UUID and slug. Its Nature-or-Occultism choice is deliberately non-persistent because PF2E has no class rule to receive a selection; Apply still trains the selected actor skill, while Hermit's independent native selection persists on the background. An equivalent future native class choice automatically supersedes the supplement, unrelated future class choices coexist with it, and third-party documents that merely reuse the Animist slug do not receive it. A class and background corpus scan found Animist to be the only direct restricted initial class skill choice still represented solely in prose; Fighter and the unreleased Runesmith already use native `ChoiceSet` rules. The Animist, Hermit, and relevant class-journal data remain unchanged between tag `pf2e-8.4.1` and the current PF2E `v14-dev` checkout at `bc10de70823472503210830c6ff2df1cf127a3a7`.
+
+Focused discovery, orchestration, actor-application, and smoke-policy coverage passed 35/35 tests. The exact release-candidate `npm run check` passed all 191 files and 2,126 tests, including format, lint, build, generated-script synchronization, the physical-grant report, and both strict TypeScript projects. The release-only physical-grant source gate also passed against its exact clean PF2E 8.4.1 pin `bf1502676d863c73d67fd615af78c73ff908c10f`; the newer unreleased checkout was evaluated separately so its intentional pin mismatch could not weaken that gate.
+
+The version-exact candidate was exercised in `testing-world` as the `smoke` GM against Foundry VTT 14.367, PF2E 8.4.1, and Wayfinder 0.8.7. Guarded artifact `.wayfinder-smoke/issue-35-0.8.7-14.367-pf2e-8.4.1-runtime-exact` proves separately labelled Animist and Hermit Nature-or-Occultism sections, selected Animist Nature and Hermit Occultism, persisted the Hermit rule selection, and applied all 12 planned level-1 steps. Religion, Nature, Occultism, Medicine, Society, and Diplomacy each finished trained; the run recorded zero failures or warnings and returned zero pending steps on rerun. The disposable actor was deleted and the unchanged campaign settings were restored.
+
+This is an intentionally scoped class-training compatibility qualification. The broader character-build and Starting Equipment matrices were not repeated because the patch adds one source-pinned training-choice input to the existing skill pane and application paths; their surrounding contracts remain covered by the full suite and the exact affected Apply/rerun scenario.
+
 ## 2026-08-26 0.8.6 Targeted Patch Qualification
 
 Issue #34 reproduced on a Cleric actor that already contained Wulgren as a loose deity item while its class-feature deity selector remained unresolved. The option context treated every embedded source UUID as unavailable, so Wulgren was removed before search and the real UI showed zero matching choices with zero active filters. A picker-only exemption then exposed the second half of the defect: Apply refused the loose deity as conflicting provenance because it was not linked to the `Deity (Cleric)` selector.

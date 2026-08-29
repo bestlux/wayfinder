@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.8 - 2026-08-29
+
+- Starting Equipment now preserves safe class-grant, economic-admission, and physical-grant blocker messages instead of collapsing them into the generic update warning.
+- Unexpected outfitter failures still use a private generic warning for players, while the original exception is logged locally with scoped operation and step context for diagnosis. The exact Minotaur Aiuvarin Cathedral Child Spirit Barbarian build from issue #36 is now a permanent Foundry smoke case.
+
 ## 0.8.7 - 2026-08-27
 
 - Restored the Animist's required level-1 choice between Nature and Occultism, which PF2E 8.4.1 describes in class text but does not expose as a machine-readable class rule.

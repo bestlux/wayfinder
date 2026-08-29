@@ -1,6 +1,6 @@
 # Beta Readiness Foundry Smoke
 
-Last updated: 2026-08-26.
+Last updated: 2026-08-29.
 
 This is the launch-readiness live smoke layer for Wayfinder. It complements unit tests by exercising the built module inside a real Foundry world against live PF2E compendia.
 
@@ -46,6 +46,20 @@ The companion static class audit checks the maintained smoke matrix against the 
 ```powershell
 npm run audit:classes
 ```
+
+## 2026-08-29 0.8.8 Targeted Patch Qualification
+
+Issue #36 reported the generic Starting Equipment update warning after the exact level-1 Minotaur, Aiuvarin, Cathedral Child, Pantheon Magic, Spirit Instinct, and Raging Intimidation build opened the outfitter on Foundry 14.366 / PF2E 8.4.1 / Wayfinder 0.8.7. That trigger did not reproduce locally: the exact build passed the guarded core lifecycle, and a distinct non-GM owner opened the real Starting Equipment UI from its actual button on the unpatched 0.8.7 module under Foundry 14.367 / PF2E 8.4.1. The eager official-catalogue health read was retained because it is an intentional fail-closed preflight required by the immediately rendered equipment pane. The reporter's original 14.366 or world-specific underlying exception therefore remains unknown.
+
+Source tracing nevertheless confirmed a general failure-presentation defect in the reported shape. Expected class-grant projection, economic-admission, and physical-grant coverage blockers were thrown as ordinary errors and collapsed into the generic update warning, while an unexpected exception was also reduced to that warning without preserving its cause for local diagnosis. The correction introduces one typed public command-blocker boundary, retains the physical-coverage subclass and its existing command-service export identity, walks wrapped causes safely, and preserves only explicitly controlled blocker messages. Unknown exceptions remain private in the player UI and are logged locally with the original error plus operation and step identifiers; actor, draft, user, and world data are not added. The same unexpected-error reporter now covers initialize/update commands, item addition, and Titan Mauler selection.
+
+The exact PF2E 8.4.1 records for Minotaur, Aiuvarin, Cathedral Child, Pantheon Magic, Spirit Instinct, Raging Intimidation, and their relevant grants and size/price helpers are unchanged in the current unreleased PF2E `v14-dev` checkout at `bc10de70823472503210830c6ff2df1cf127a3a7`. None of those selected options grants physical equipment, so no upcoming PF2E data change prepares or supersedes this diagnostics fix.
+
+The exact release-candidate `npm run check` passed all 191 files and 2,129 tests, including format, lint, build, generated-script synchronization, the physical-grant report, and both strict TypeScript projects. The release-only physical-grant source gate also passed against a clean detached PF2E 8.4.1 worktree at the exact registry pin `bf1502676d863c73d67fd615af78c73ff908c10f`; the user's newer unreleased checkout remained clean and unchanged. The version-exact build case ran in `testing-world` against Foundry VTT 14.367, PF2E 8.4.1, and Wayfinder 0.8.8. Guarded artifact `.wayfinder-smoke/issue-36-0.8.8-exact` applied all ten planned steps, completed the retain-all Starting Equipment disposition with 15 gp intact, recorded zero warnings or failures, deleted the disposable actor, restored the equipment policy and judgments, and returned zero pending steps on rerun.
+
+The distinct non-GM owner UI probe in `.wayfinder-smoke/issue-36-0.8.8-diagnostics-ui` then exercised both failure branches through the real Initialize Starting Equipment button. A typed blocker rendered its exact safe detail and emitted no unexpected-error log. A forced unknown `TypeError` rendered only the localized generic warning while the local console retained the original exception and the exact context `{ operation: "initialize", stepId: "starting-equipment-level-1" }`. The disposable actor was deleted, and the original policy and language were restored.
+
+Because this patch changes a shared Starting Equipment command boundary, the exact clean candidate also requires the full WF-080-51 Starting Equipment coordinator and qualified-package inspection before publication. The permanent smoke matrix now includes the reported build as `barbarian-minotaur-aiuvarin-cathedral-child-l1-apply-rerun`; it remains a separate focused run because WF-080-51's fixed baseline does not automatically add newly registered cases.
 
 ## 2026-08-27 0.8.7 Targeted Patch Qualification
 

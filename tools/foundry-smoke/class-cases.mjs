@@ -317,6 +317,28 @@ export const smokeCases = [
     },
     preferredSkills: ["athletics", "intimidation", "survival", "acrobatics", "nature"],
   }),
+  {
+    ...classCase({
+      className: "Barbarian",
+      classSlug: "barbarian",
+      keyAbility: "str",
+      expectedStepIds: ["class-branch-instinct-level-1"],
+      preferredSelections: {
+        "ancestry-feat-level-1": ["Pantheon Magic"],
+        "class-branch-instinct-level-1": ["Spirit Instinct"],
+        "class-feat-level-1": ["Raging Intimidation"],
+      },
+      preferredSkills: ["athletics", "intimidation", "survival", "acrobatics", "religion"],
+    }),
+    id: "barbarian-minotaur-aiuvarin-cathedral-child-l1-apply-rerun",
+    label: "Minotaur Aiuvarin Cathedral Child Spirit Barbarian level 1 apply/rerun",
+    targetLevel: 1,
+    ancestryName: "Minotaur",
+    heritageName: "Aiuvarin",
+    backgroundName: "Cathedral Child",
+    ancestryBoosts: { "0": "str", "1": "con", "2": "dex" },
+    backgroundBoosts: { "0": "wis", "1": "con" },
+  },
   classCase({
     className: "Bard",
     classSlug: "bard",

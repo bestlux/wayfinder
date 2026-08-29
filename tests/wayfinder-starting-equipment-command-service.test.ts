@@ -3,6 +3,7 @@ import { createEmptyDraft, normalizeState } from "../src/draft-service";
 import { localizeAcquisitionMessage } from "../src/wayfinder/application/acquisition-localization";
 import { EquipmentSourceHealthError } from "../src/wayfinder/application/equipment-acquisition-runtime-service";
 import { WayfinderGmCommandAuthorityError } from "../src/wayfinder/application/gm-command-authority";
+import { StartingEquipmentCommandBlockedError } from "../src/wayfinder/application/starting-equipment-command-error";
 import {
   executeStartingEquipmentCommand,
   type StartingEquipmentCommandContext,
@@ -1257,34 +1258,51 @@ describe("starting equipment command service", () => {
     const evaluateAdmission = vi.fn();
     const context = commandContext(null);
 
-    await expect(
-      executeStartingEquipmentCommand({ type: "initialize" }, context, {
-        mintIdentity: vi.fn(() => ({ draftId: "draft-1", batchId: "batch-1", manifestId: "manifest-1" })),
-        resolvePolicy: vi.fn(() => policy),
-        projectClassGrants: vi.fn(async () => ({
-          grants: [],
-          preparedPlan: null,
-          blockers: [
-            {
-              code: "unsupported-physical-grant",
-              routeId: "clan-pistol",
-              reasonCode: "unprofiled-native-grant",
-              sourceSlotId: "ancestry-feat-level-1",
-              sourceUuid: "Compendium.pf2e.feats-srd.Item.LvVg83ZDj8mabcWF",
-              message: "Clan Pistol must use the PF2E sheet.",
-            },
-          ],
-        })),
-        prepareClassGrantPlan: vi.fn(),
-        prepareNativeGrantLines,
-        evaluateAdmission,
-        evaluateLedger: vi.fn(),
-      } as never)
-    ).rejects.toThrow("Clan Pistol must use the PF2E sheet");
+    const error = await executeStartingEquipmentCommand({ type: "initialize" }, context, {
+      mintIdentity: vi.fn(() => ({ draftId: "draft-1", batchId: "batch-1", manifestId: "manifest-1" })),
+      resolvePolicy: vi.fn(() => policy),
+      projectClassGrants: vi.fn(async () => ({
+        grants: [],
+        preparedPlan: null,
+        blockers: [
+          {
+            code: "unsupported-physical-grant",
+            routeId: "clan-pistol",
+            reasonCode: "unprofiled-native-grant",
+            sourceSlotId: "ancestry-feat-level-1",
+            sourceUuid: "Compendium.pf2e.feats-srd.Item.LvVg83ZDj8mabcWF",
+            message: "Clan Pistol must use the PF2E sheet.",
+          },
+        ],
+      })),
+      prepareClassGrantPlan: vi.fn(),
+      prepareNativeGrantLines,
+      evaluateAdmission,
+      evaluateLedger: vi.fn(),
+    } as never).catch((reason) => reason);
 
+    expect(error).toBeInstanceOf(StartingEquipmentCommandBlockedError);
+    expect(error).toMatchObject({ publicMessage: "Clan Pistol must use the PF2E sheet." });
     expect(context.draft.acquisition).toBeNull();
     expect(prepareNativeGrantLines).not.toHaveBeenCalled();
     expect(evaluateAdmission).not.toHaveBeenCalled();
+  });
+
+  it("preserves an economic admission blocker as a public command failure", async () => {
+    const message = "This actor already has foreign physical equipment that must be reviewed before shopping.";
+
+    const error = await executeStartingEquipmentCommand({ type: "initialize" }, commandContext(null), {
+      mintIdentity: vi.fn(() => ({ draftId: "draft-1", batchId: "batch-1", manifestId: "manifest-1" })),
+      resolvePolicy: vi.fn(() => levelOnePolicy()),
+      projectClassGrants: vi.fn(async () => ({ grants: [], preparedPlan: null, blockers: [] })),
+      prepareClassGrantPlan: vi.fn(),
+      prepareNativeGrantLines: vi.fn(async () => []),
+      evaluateAdmission: vi.fn(() => ({ kind: "blocked", message })),
+      evaluateLedger: vi.fn(),
+    } as never).catch((reason) => reason);
+
+    expect(error).toBeInstanceOf(StartingEquipmentCommandBlockedError);
+    expect(error).toMatchObject({ publicMessage: message });
   });
 
   it("rejects an exact registered physical route before higher-level identity or acquisition work", async () => {

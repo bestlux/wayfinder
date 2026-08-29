@@ -52,6 +52,12 @@ import {
   saveTrustedEquipmentPolicyJudgment,
   saveTrustedEquipmentPolicyRequestDecline,
 } from "./equipment-policy-service.js";
+import {
+  StartingEquipmentCommandBlockedError,
+  StartingEquipmentPhysicalGrantCoverageError,
+} from "./starting-equipment-command-error.js";
+
+export { StartingEquipmentPhysicalGrantCoverageError } from "./starting-equipment-command-error.js";
 
 export type StartingEquipmentCommand =
   | { readonly type: "initialize"; readonly selectedRecipe?: OfficialEquipmentRecipe }
@@ -96,20 +102,6 @@ export interface StartingEquipmentCommandResult {
   readonly changed: boolean;
   readonly status: AcquisitionLocalizedMessage;
   readonly policyRequests: readonly EquipmentPolicyRequestV1[];
-}
-
-export class StartingEquipmentPhysicalGrantCoverageError extends Error {
-  readonly blocker: PhysicalGrantCoverageBlocker;
-  readonly blockers: readonly PhysicalGrantCoverageBlocker[];
-
-  constructor(blockers: readonly PhysicalGrantCoverageBlocker[]) {
-    const blocker = blockers[0];
-    if (!blocker) throw new TypeError("A physical-grant coverage error requires at least one blocker.");
-    super(blocker.message);
-    this.name = "StartingEquipmentPhysicalGrantCoverageError";
-    this.blocker = Object.freeze({ ...blocker });
-    this.blockers = Object.freeze(blockers.map((entry) => Object.freeze({ ...entry })));
-  }
 }
 
 interface StartingEquipmentCommandDependencies {
@@ -713,7 +705,7 @@ async function activateAcquisition(
   const unexpectedBlocker = classGrantProjection.blockers.find(
     (blocker) => blocker.code !== "titan-selection-required"
   );
-  if (unexpectedBlocker) throw new Error(unexpectedBlocker.message);
+  if (unexpectedBlocker) throw new StartingEquipmentCommandBlockedError(unexpectedBlocker.message);
   const pendingTitanSelection = classGrantProjection.blockers.some(
     (blocker) => blocker.code === "titan-selection-required"
   );
@@ -751,7 +743,7 @@ async function activateAcquisition(
     classGrantPhase: "before-acquisition",
     capturedAt: context.now(),
   });
-  if (admission.kind === "blocked") throw new Error(admission.message);
+  if (admission.kind === "blocked") throw new StartingEquipmentCommandBlockedError(admission.message);
   return { acquisition: recordEconomicAdmission(acquisition, admission), pendingTitanSelection };
 }
 

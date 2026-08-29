@@ -175,7 +175,10 @@ import {
   type StartingEquipmentCommand,
 } from "./application/starting-equipment-command-service.js";
 import { StartingEquipmentErrorFocusCoordinator } from "./application/starting-equipment-error-focus-service.js";
-import { localizeStartingEquipmentError } from "./application/starting-equipment-failure.js";
+import {
+  localizeStartingEquipmentError,
+  reportUnexpectedStartingEquipmentError,
+} from "./application/starting-equipment-failure.js";
 import {
   advanceStartingEquipmentRenderSession,
   canDeriveStartingEquipmentRender,
@@ -2060,6 +2063,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       this.#statusErrorMessage = null;
       succeeded = true;
     } catch (error) {
+      reportUnexpectedStartingEquipmentError(error, { operation: command.type, stepId });
       const message = localizeStartingEquipmentError(
         localizeAcquisition,
         error,
@@ -2116,6 +2120,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         });
         return;
       }
+      reportUnexpectedStartingEquipmentError(error, { operation: "add-item", stepId });
       const message = localizeStartingEquipmentError(
         localizeAcquisition,
         error,
@@ -2147,6 +2152,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       ];
       await this.#executeStartingEquipmentCommand(stepId, { type: "add-line", line });
     } catch (error) {
+      reportUnexpectedStartingEquipmentError(error, { operation: "choose-titan-mauler", stepId });
       const message = localizeStartingEquipmentError(
         localizeAcquisition,
         error,

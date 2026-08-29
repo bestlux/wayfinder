@@ -10,19 +10,8 @@ import { prepareCurrentClassGrantPlan, projectCurrentClassGrants } from "./class
 import { evaluateActorEconomicAdmission } from "./economic-baseline-service.js";
 import { getFoundryEquipmentAcquisitionRuntime, } from "./equipment-acquisition-runtime-service.js";
 import { createOwnerStartAttestation, resolveEquipmentPolicyForActor, revokeTrustedEquipmentPolicyJudgment, saveTrustedEquipmentPolicyJudgment, saveTrustedEquipmentPolicyRequestDecline, } from "./equipment-policy-service.js";
-export class StartingEquipmentPhysicalGrantCoverageError extends Error {
-    blocker;
-    blockers;
-    constructor(blockers) {
-        const blocker = blockers[0];
-        if (!blocker)
-            throw new TypeError("A physical-grant coverage error requires at least one blocker.");
-        super(blocker.message);
-        this.name = "StartingEquipmentPhysicalGrantCoverageError";
-        this.blocker = Object.freeze({ ...blocker });
-        this.blockers = Object.freeze(blockers.map((entry) => Object.freeze({ ...entry })));
-    }
-}
+import { StartingEquipmentCommandBlockedError, StartingEquipmentPhysicalGrantCoverageError, } from "./starting-equipment-command-error.js";
+export { StartingEquipmentPhysicalGrantCoverageError } from "./starting-equipment-command-error.js";
 const DEFAULT_DEPS = {
     mintIdentity: mintAcquisitionIdentitySeed,
     resolvePolicy: resolveEquipmentPolicyForActor,
@@ -513,7 +502,7 @@ async function activateAcquisition(staged, context, deps, higherLevelStartClaim)
     const classGrantProjection = await deps.projectClassGrants(context.actor, projectionDraft, context.steps);
     const unexpectedBlocker = classGrantProjection.blockers.find((blocker) => blocker.code !== "titan-selection-required");
     if (unexpectedBlocker)
-        throw new Error(unexpectedBlocker.message);
+        throw new StartingEquipmentCommandBlockedError(unexpectedBlocker.message);
     const pendingTitanSelection = classGrantProjection.blockers.some((blocker) => blocker.code === "titan-selection-required");
     acquisition = recordPlannedClassGrants(acquisition, classGrantProjection.grants);
     const subject = acquisition.policySnapshot.material.subject;
@@ -549,7 +538,7 @@ async function activateAcquisition(staged, context, deps, higherLevelStartClaim)
         capturedAt: context.now(),
     });
     if (admission.kind === "blocked")
-        throw new Error(admission.message);
+        throw new StartingEquipmentCommandBlockedError(admission.message);
     return { acquisition: recordEconomicAdmission(acquisition, admission), pendingTitanSelection };
 }
 function selectStagedRecipe(acquisition, selectedRecipe, context, deps) {

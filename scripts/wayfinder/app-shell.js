@@ -52,7 +52,7 @@ import { isSelectionMaterializedOnActor } from "./application/selection-material
 import { SemanticCommandQueue } from "./application/semantic-command-queue.js";
 import { executeStartingEquipmentCommand, } from "./application/starting-equipment-command-service.js";
 import { StartingEquipmentErrorFocusCoordinator } from "./application/starting-equipment-error-focus-service.js";
-import { localizeStartingEquipmentError } from "./application/starting-equipment-failure.js";
+import { localizeStartingEquipmentError, reportUnexpectedStartingEquipmentError, } from "./application/starting-equipment-failure.js";
 import { advanceStartingEquipmentRenderSession, canDeriveStartingEquipmentRender, canUseStartingEquipmentCommandPartial, commitStartingEquipmentRenderSession, createStartingEquipmentRenderSession, EQUIPMENT_CART_PART, EQUIPMENT_CATALOGUE_PART, EQUIPMENT_DETAIL_PART, EQUIPMENT_POLICY_PART, EQUIPMENT_STATUS_PART, startingEquipmentPartsForIntent, startingEquipmentRenderIdentity, } from "./application/starting-equipment-render-session.js";
 import { getStartingEquipmentUiAdapter } from "./application/starting-equipment-ui-adapter.js";
 import { buildDraftSaveView, buildWayfinderContext, } from "./application/wayfinder-context-service.js";
@@ -1521,6 +1521,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             succeeded = true;
         }
         catch (error) {
+            reportUnexpectedStartingEquipmentError(error, { operation: command.type, stepId });
             const message = localizeStartingEquipmentError(localizeAcquisition, error, "wayfinder-pf2e.StartingEquipment.Errors.Update");
             this.#setStartingEquipmentFailure(message);
             ui.notifications.warn(message);
@@ -1566,6 +1567,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 });
                 return;
             }
+            reportUnexpectedStartingEquipmentError(error, { operation: "add-item", stepId });
             const message = localizeStartingEquipmentError(localizeAcquisition, error, "wayfinder-pf2e.StartingEquipment.Errors.Add");
             this.#setStartingEquipmentFailure(message);
             ui.notifications.warn(message);
@@ -1592,6 +1594,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             await this.#executeStartingEquipmentCommand(stepId, { type: "add-line", line });
         }
         catch (error) {
+            reportUnexpectedStartingEquipmentError(error, { operation: "choose-titan-mauler", stepId });
             const message = localizeStartingEquipmentError(localizeAcquisition, error, "wayfinder-pf2e.StartingEquipment.Errors.ChooseTitanMauler");
             this.#setStartingEquipmentFailure(message);
             ui.notifications.warn(message);

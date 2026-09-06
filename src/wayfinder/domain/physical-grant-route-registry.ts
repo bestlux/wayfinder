@@ -27,9 +27,9 @@ export type UnsupportedPhysicalGrantReason =
   | "semantic-prerequisite-mismatch";
 
 export interface PhysicalGrantCoverageBlocker {
-  readonly code: "unsupported-physical-grant" | "coverage-version-mismatch";
+  readonly code: "unsupported-physical-grant";
   readonly routeId: string;
-  readonly reasonCode: UnsupportedPhysicalGrantReason | "pf2e-version-mismatch";
+  readonly reasonCode: UnsupportedPhysicalGrantReason;
   readonly sourceSlotId: string | null;
   readonly sourceUuid: string | null;
   readonly message: string;

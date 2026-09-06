@@ -31,6 +31,8 @@ npm run package:qualified -- --wf51 .wayfinder-smoke\wf51-release-candidate --re
 
 `package:qualified` rechecks generated policy artifacts, binds the current physical-grant registry and WF-080-51 evidence to the exact candidate, builds the package under `dist/qualified-release/`, and writes `package-evidence.json`. The later tag workflow rebuilds the same candidate for public release; the qualified package is the pre-tag evidence contract.
 
+The live WF-080-51 module, Foundry, and PF2E versions must match the packaged version and advertised `verified` versions exactly. The PF2E `minimum` may retain the independently pinned physical-grant registry baseline or equal the current verified version; arbitrary older or intermediate minimum versions remain rejected. For the 0.8.9 hotfix, this preserves the reviewed 8.4.1 support floor while qualifying the current candidate on 8.5.0. Retaining that floor does not claim a fresh 8.4.1 runtime rerun or refresh the full physical-grant route coverage for 8.5.0: the source gate still verifies the exact registry pin, and runtime coverage is recorded separately.
+
 For a CI-style dry run after validation has already passed:
 
 ```powershell

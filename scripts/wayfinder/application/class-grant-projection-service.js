@@ -5,7 +5,7 @@ import { acquisitionPolicyMaterialMatches, createAcquisitionPolicySnapshot } fro
 import { CLASS_GRANT_PROFILE_UUIDS, createPlannedClassGrant, createPreparedClassGrantPlan, evaluateTitanMaulerCandidate, } from "../domain/class-grant-reconciliation.js";
 import { normalizeAcquisitionIdentity } from "../domain/economic-baseline.js";
 import { evaluateEquipmentItemAuthority, } from "../domain/equipment-policy.js";
-import { currentPf2eVersion, findUnsupportedPhysicalGrantRoutes, physicalGrantCoverageBlockers, } from "../domain/physical-grant-coverage.js";
+import { findUnsupportedPhysicalGrantRoutes, physicalGrantCoverageBlockers, } from "../domain/physical-grant-coverage.js";
 import { supportedPhysicalGrantRoute } from "../domain/physical-grant-route-registry.js";
 import { resolveEquipmentPolicyForActor } from "./equipment-policy-service.js";
 const UUIDS = CLASS_GRANT_PROFILE_UUIDS;
@@ -21,7 +21,7 @@ export async function projectCurrentClassGrants(actor, draft, activeSteps, optio
     if (!acquisition?.policySnapshot) {
         throw new TypeError("Starting-equipment Apply requires a reviewed equipment policy.");
     }
-    const coverageBlockers = physicalGrantCoverageBlockers(draft, activeSteps, options.pf2eVersion === undefined ? currentPf2eVersion() : options.pf2eVersion);
+    const coverageBlockers = physicalGrantCoverageBlockers(draft, activeSteps);
     if (coverageBlockers.length > 0) {
         return { grants: [], preparedPlan: null, blockers: coverageBlockers };
     }

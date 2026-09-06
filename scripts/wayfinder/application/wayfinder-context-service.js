@@ -51,6 +51,7 @@ export async function buildWayfinderContext(args) {
         statusNote: args.statusNote,
         statusNoteIsError: args.statusNoteIsError ?? false,
         planningNote: args.planningNote ?? null,
+        compatibilityWarning: args.compatibilityWarning ?? null,
         steps: stepRows,
         levelGroups: railLevels.groups,
         railLevelDisclosureState: railLevels.state,

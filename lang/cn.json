@@ -4,6 +4,8 @@
       "Open": "打开寻路仪"
     },
     "App": {
+      "EquipmentCompatibilityWarning": "初始装备已针对 PF2E {reviewedVersion} 完成全面核验；你当前使用的是 {currentVersion}。你可以继续，但完成后请在角色卡上检查物品和钱币。若要跳过购买，请完成必选物品的选择，从购物车移除购买的物品，然后选择“全部保留”。",
+      "EquipmentCompatibilityUnknown": "初始装备已针对 PF2E {reviewedVersion} 完成全面核验；无法识别你当前使用的版本。你可以继续，但完成后请在角色卡上检查物品和钱币。若要跳过购买，请完成必选物品的选择，从购物车移除购买的物品，然后选择“全部保留”。",
       "Title": "寻路仪",
       "Subtitle": "引导PF2e角色创建与升级",
       "TargetLevel": "目标等级",

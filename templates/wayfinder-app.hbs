@@ -1,4 +1,11 @@
 <section class="wayfinder-shell">
+  {{#if compatibilityWarning}}
+    <div class="status-note" role="status" data-wayfinder-compatibility-warning>
+      <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+      <span>{{#if compatibilityWarning.currentVersion}}{{localize "wayfinder-pf2e.App.EquipmentCompatibilityWarning" reviewedVersion=compatibilityWarning.reviewedVersion currentVersion=compatibilityWarning.currentVersion}}{{else}}{{localize "wayfinder-pf2e.App.EquipmentCompatibilityUnknown" reviewedVersion=compatibilityWarning.reviewedVersion}}{{/if}}</span>
+    </div>
+  {{/if}}
+
   {{#if existingCharacterHistory}}
     <details class="history-report">
       <summary>

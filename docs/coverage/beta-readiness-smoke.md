@@ -47,6 +47,12 @@ The companion static class audit checks the maintained smoke matrix against the 
 npm run audit:classes
 ```
 
+## 2026-09-06 0.8.9 PF2E Compatibility Hotfix
+
+PF2E 8.5.0 exposed a creation-time version restriction: the physical-grant registry's exact 8.4.1 pin rejected Starting Equipment initialization, the explicit retain-all decision, and final character Apply even when the build had no unsupported physical grant. The hotfix separates version advice from build blockers. A localized warning identifies the reviewed registry version and running version, explains that the player can continue, and points to **Keep the coin instead** for a cart with no purchases; required class and ancestry grants may remain. Known unsupported routes, source-shape and price drift, inventory admission, equipment policy, and acquisition recovery remain enforced.
+
+`npm run check` passed 191 test files / 2,135 tests, including format, lint, generated-script synchronization, build, the physical-grant report, and both strict TypeScript projects. The focused regressions cover unknown and newer runtime versions, initialization, empty-cart retain-all, production class-grant preparation, warning/readiness separation, and preserved unsupported-route rejection. The release-only source gate passed against the clean PF2E 8.4.1 registry commit `bf1502676d863c73d67fd615af78c73ff908c10f`; that remains the full physical-route review baseline, independently of live 8.5.0 qualification. The static class audit still reports the two previously documented unsupported base-class paths, Necromancer and Runesmith (27 covered classes of 29); this hotfix does not expand class coverage.
+
 ## 2026-08-29 0.8.8 Targeted Patch Qualification
 
 Issue #36 reported the generic Starting Equipment update warning after the exact level-1 Minotaur, Aiuvarin, Cathedral Child, Pantheon Magic, Spirit Instinct, and Raging Intimidation build opened the outfitter on Foundry 14.366 / PF2E 8.4.1 / Wayfinder 0.8.7. That trigger did not reproduce locally: the exact build passed the guarded core lifecycle, and a distinct non-GM owner opened the real Starting Equipment UI from its actual button on the unpatched 0.8.7 module under Foundry 14.367 / PF2E 8.4.1. The eager official-catalogue health read was retained because it is an intentional fail-closed preflight required by the immediately rendered equipment pane. The reporter's original 14.366 or world-specific underlying exception therefore remains unknown.

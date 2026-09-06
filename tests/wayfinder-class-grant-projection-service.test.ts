@@ -530,7 +530,10 @@ describe("class-grant projection service", () => {
     ).toMatchObject({ preparedPlan: null, blockers: [{ code: "source-drift" }] });
   });
 
-  it("prepares the production plan from live settings, documents, and actor facts", async () => {
+  it.each([
+    "8.4.1",
+    "8.5.0",
+  ])("prepares the production plan from settings, documents, and actor facts on PF2E %s", async (version) => {
     const draft = classDraft(UUID.alchemist, "Alchemist");
     const documents = new Map<string, unknown>([
       [UUID.alchemist, classDocument(UUID.alchemy)],
@@ -561,7 +564,7 @@ describe("class-grant projection service", () => {
     };
     vi.stubGlobal("game", {
       user: { id: "owner-1", isGM: false },
-      system: { id: "pf2e", version: "8.4.1" },
+      system: { id: "pf2e", version },
       settings: {
         get: (moduleId: string, key: string) => {
           if (moduleId === MODULE_ID && key === SETTINGS.equipmentPolicy) return DEFAULT_EQUIPMENT_WORLD_POLICY;
@@ -603,8 +606,13 @@ describe("class-grant projection service", () => {
     }
   });
 
-  it("blocks production projection before source resolution when the PF2E runtime is not pinned", async () => {
+  it("still blocks known unsupported production grants on a newer PF2E runtime, including recovery", async () => {
     const draft = classDraft(UUID.alchemist, "Alchemist");
+    draft.selections["ancestry-feat-level-1"] = selection(
+      "ancestry-feat-level-1",
+      UUID.clanPistolFeature,
+      "Clan Pistol"
+    );
     const policy = equipmentPolicy();
     draft.acquisition = {
       schemaVersion: 3,
@@ -623,44 +631,42 @@ describe("class-grant projection service", () => {
     };
     const fetchDocumentByUuid = vi.fn(async () => null);
     const actor = { id: "actor-1", items: { contents: [] } };
+    const activeSteps = [...SUBJECT.activeSteps, { slotId: "ancestry-feat-level-1" } as PendingStep];
+    vi.stubGlobal("game", { system: { id: "pf2e", version: "8.5.0" } });
 
-    await expect(
-      projectCurrentClassGrants(actor, draft, SUBJECT.activeSteps, {
-        fetchDocumentByUuid,
-        pf2eVersion: "8.4.2",
-      })
-    ).resolves.toMatchObject({
-      grants: [],
-      preparedPlan: null,
-      blockers: [{ code: "coverage-version-mismatch", routeId: "pf2e-version-pin" }],
-    });
-    expect(fetchDocumentByUuid).not.toHaveBeenCalled();
+    try {
+      await expect(
+        projectCurrentClassGrants(actor, draft, activeSteps, { fetchDocumentByUuid })
+      ).resolves.toMatchObject({
+        grants: [],
+        preparedPlan: null,
+        blockers: [{ code: "unsupported-physical-grant", routeId: "clan-pistol" }],
+      });
+      expect(fetchDocumentByUuid).not.toHaveBeenCalled();
 
-    draft.targetLevel = 2;
-    draft.acquisition = { ...draft.acquisition, targetLevel: 2 };
-    await expect(
-      projectCurrentClassGrants(actor, draft, SUBJECT.activeSteps, {
-        fetchDocumentByUuid,
-        pf2eVersion: "8.4.2",
-      })
-    ).resolves.toMatchObject({
-      grants: [],
-      preparedPlan: null,
-      blockers: [{ code: "coverage-version-mismatch", routeId: "pf2e-version-pin" }],
-    });
+      draft.targetLevel = 2;
+      draft.acquisition = { ...draft.acquisition, targetLevel: 2 };
+      await expect(
+        projectCurrentClassGrants(actor, draft, activeSteps, { fetchDocumentByUuid })
+      ).resolves.toMatchObject({
+        grants: [],
+        preparedPlan: null,
+        blockers: [{ code: "unsupported-physical-grant", routeId: "clan-pistol" }],
+      });
 
-    draft.applyCompletedStepIds = ["class-level-1"];
-    await expect(
-      projectCurrentClassGrants(actor, draft, [], {
-        fetchDocumentByUuid,
-        pf2eVersion: "8.4.2",
-      })
-    ).resolves.toMatchObject({
-      grants: [],
-      preparedPlan: null,
-      blockers: [{ code: "coverage-version-mismatch", routeId: "pf2e-version-pin" }],
-    });
-    expect(fetchDocumentByUuid).not.toHaveBeenCalled();
+      draft.applyCompletedStepIds = ["ancestry-feat-level-1"];
+      await expect(projectCurrentClassGrants(actor, draft, [], { fetchDocumentByUuid })).resolves.toMatchObject({
+        grants: [],
+        preparedPlan: null,
+        blockers: [{ code: "unsupported-physical-grant", routeId: "clan-pistol" }],
+      });
+      await expect(prepareCurrentClassGrantPlan(actor, draft, [], { fetchDocumentByUuid })).rejects.toThrow(
+        /Clan Pistol/
+      );
+      expect(fetchDocumentByUuid).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("uses drafted ancestry size and keeps production Titan Access fail-closed without a registered resolver", async () => {

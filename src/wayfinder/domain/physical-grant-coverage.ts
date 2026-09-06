@@ -17,16 +17,24 @@ export {
   type UnsupportedPhysicalGrantRoute,
 } from "./physical-grant-route-registry.js";
 
-export function physicalGrantCoverageVersionBlocker(pf2eVersion: string | null): PhysicalGrantCoverageBlocker | null {
-  if (pf2eVersion === PHYSICAL_GRANT_COVERAGE_PF2E_VERSION) return null;
-  const observed = nonEmpty(pf2eVersion) ? pf2eVersion : "an unknown version";
+export interface PhysicalGrantCoverageWarning {
+  readonly reviewedVersion: string;
+  readonly currentVersion: string | null;
+}
+
+export function physicalGrantCoverageWarning(
+  draft: DraftState,
+  activeSteps: readonly PendingStep[],
+  pf2eVersion: string | null = currentPf2eVersion()
+): PhysicalGrantCoverageWarning | null {
+  if (
+    pf2eVersion === PHYSICAL_GRANT_COVERAGE_PF2E_VERSION ||
+    !hasLevelOnePhysicalGrantCoverageEvidence(draft, activeSteps)
+  )
+    return null;
   return {
-    code: "coverage-version-mismatch",
-    routeId: "pf2e-version-pin",
-    reasonCode: "pf2e-version-mismatch",
-    sourceSlotId: null,
-    sourceUuid: null,
-    message: `Starting-equipment physical-grant coverage is qualified for PF2E ${PHYSICAL_GRANT_COVERAGE_PF2E_VERSION}, not ${observed}. Review is blocked until the coverage matrix is refreshed.`,
+    reviewedVersion: PHYSICAL_GRANT_COVERAGE_PF2E_VERSION,
+    currentVersion: nonEmpty(pf2eVersion) ? pf2eVersion : null,
   };
 }
 
@@ -37,21 +45,16 @@ export function currentPf2eVersion(): string | null {
 
 export function physicalGrantCoverageBlockers(
   draft: DraftState,
-  activeSteps: readonly PendingStep[],
-  pf2eVersion: string | null = currentPf2eVersion()
+  activeSteps: readonly PendingStep[]
 ): readonly PhysicalGrantCoverageBlocker[] {
-  const versionBlocker = hasLevelOnePhysicalGrantCoverageEvidence(draft, activeSteps)
-    ? physicalGrantCoverageVersionBlocker(pf2eVersion)
-    : null;
-  return versionBlocker ? [versionBlocker] : findUnsupportedPhysicalGrantRoutes(draft, activeSteps);
+  return findUnsupportedPhysicalGrantRoutes(draft, activeSteps);
 }
 
 export function physicalGrantCoverageIssues(
   draft: DraftState,
-  activeSteps: readonly PendingStep[],
-  pf2eVersion: string | null = currentPf2eVersion()
+  activeSteps: readonly PendingStep[]
 ): WayfinderStepIssue[] {
-  return physicalGrantCoverageBlockers(draft, activeSteps, pf2eVersion).map((blocker) => ({
+  return physicalGrantCoverageBlockers(draft, activeSteps).map((blocker) => ({
     code: "equipment-review",
     stepId: blocker.sourceSlotId ?? "starting-equipment-coverage",
     slotId: blocker.sourceSlotId ?? "starting-equipment",
@@ -63,10 +66,9 @@ export function physicalGrantCoverageIssues(
 export function withPhysicalGrantCoverageReadiness(
   readiness: WayfinderDraftReadiness,
   draft: DraftState,
-  activeSteps: readonly PendingStep[],
-  pf2eVersion: string | null = currentPf2eVersion()
+  activeSteps: readonly PendingStep[]
 ): WayfinderDraftReadiness {
-  const coverageIssues = physicalGrantCoverageIssues(draft, activeSteps, pf2eVersion);
+  const coverageIssues = physicalGrantCoverageIssues(draft, activeSteps);
   if (coverageIssues.length === 0) return readiness;
   return {
     ...readiness,

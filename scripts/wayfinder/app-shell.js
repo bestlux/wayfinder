@@ -61,7 +61,7 @@ import { ensureWayfinderTemplatesLoaded } from "./application/wayfinder-template
 import { findCurrencyCartAggregationTargets } from "./domain/acquisition-aggregation.js";
 import { acquisitionPolicyMaterialMatches, recordAcquisitionCurrencyConvergenceWitness, recordClassGrantReconciliations, } from "./domain/acquisition-draft.js";
 import { manifestsDescribeSameOutcome } from "./domain/completed-acquisition-manifest.js";
-import { physicalGrantCoverageIssues, withPhysicalGrantCoverageReadiness } from "./domain/physical-grant-coverage.js";
+import { physicalGrantCoverageIssues, physicalGrantCoverageWarning, withPhysicalGrantCoverageReadiness, } from "./domain/physical-grant-coverage.js";
 import { evaluateWayfinderDraftReadiness, isTrainingStepCompleteFromDraft, WayfinderDraftNotReadyError, } from "./domain/step-evaluation.js";
 import { hasDuplicateDraftSelection } from "./draft-decisions.js";
 import { buildAcquisitionReceiptViewModel } from "./panes/acquisition-receipt.js";
@@ -469,6 +469,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             statusNote: this.#statusNote,
             statusNoteIsError: this.#statusNote !== null && this.#statusNote === this.#statusErrorMessage,
             planningNote,
+            compatibilityWarning: physicalGrantCoverageWarning(draft, plan.steps),
             summaryDocuments: {
                 ancestry: effectiveAncestry,
                 heritage: effectiveHeritage,

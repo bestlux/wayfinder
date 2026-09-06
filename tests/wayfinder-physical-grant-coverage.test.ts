@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createEmptyDraft } from "../src/draft-service";
 import type { PendingStep, SelectionRef } from "../src/types";
 import {
@@ -7,13 +7,17 @@ import {
   type PhysicalGrantSelectionChannel,
   physicalGrantCoverageBlockers,
   physicalGrantCoverageIssues,
-  physicalGrantCoverageVersionBlocker,
+  physicalGrantCoverageWarning,
   UNSUPPORTED_PHYSICAL_GRANT_ROUTE_IDS,
   UNSUPPORTED_PHYSICAL_GRANT_ROUTES,
   withPhysicalGrantCoverageReadiness,
 } from "../src/wayfinder/domain/physical-grant-coverage";
 
 describe("physical-grant coverage", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("blocks every registered unsupported route from exact active draft selections", () => {
     expect(UNSUPPORTED_PHYSICAL_GRANT_ROUTES).toHaveLength(46);
     expect(new Set(UNSUPPORTED_PHYSICAL_GRANT_ROUTE_IDS).size).toBe(46);
@@ -268,19 +272,25 @@ describe("physical-grant coverage", () => {
     ]);
   });
 
-  it("fails closed when the running PF2E version is missing or differs from the reviewed pin", () => {
-    expect(physicalGrantCoverageVersionBlocker(PHYSICAL_GRANT_COVERAGE_PF2E_VERSION)).toBeNull();
-    expect(physicalGrantCoverageVersionBlocker(null)).toMatchObject({
-      code: "coverage-version-mismatch",
-      routeId: "pf2e-version-pin",
-      sourceUuid: null,
+  it("warns when the running PF2E version is missing or differs from the reviewed version", () => {
+    const draft = createEmptyDraft(1);
+    const steps = [{ slotId: "starting-equipment-level-1" } as PendingStep];
+
+    expect(physicalGrantCoverageWarning(draft, steps, PHYSICAL_GRANT_COVERAGE_PF2E_VERSION)).toBeNull();
+    expect(physicalGrantCoverageWarning(draft, steps, null)).toEqual({
+      reviewedVersion: "8.4.1",
+      currentVersion: null,
     });
-    expect(physicalGrantCoverageVersionBlocker("8.4.2")?.message).toContain("8.4.2");
-    expect(physicalGrantCoverageVersionBlocker("8.4.1.0")).not.toBeNull();
-    expect(physicalGrantCoverageVersionBlocker("")?.message).toContain("an unknown version");
+    expect(physicalGrantCoverageWarning(draft, steps, "8.5.0")).toEqual({
+      reviewedVersion: "8.4.1",
+      currentVersion: "8.5.0",
+    });
+    expect(physicalGrantCoverageWarning(draft, steps, "8.4.1.0")).not.toBeNull();
+    expect(physicalGrantCoverageWarning(draft, steps, "")?.currentVersion).toBeNull();
   });
 
-  it("surfaces one version blocker before route matching and maps blockers into readiness issues", () => {
+  it("still blocks known unsupported routes and maps readiness issues on a newer PF2E version", () => {
+    vi.stubGlobal("game", { system: { id: "pf2e", version: "8.5.0" } });
     const draft = createEmptyDraft(1);
     draft.selections["ancestry-feat-level-1"] = selection(
       "ancestry-feat-level-1",
@@ -288,10 +298,11 @@ describe("physical-grant coverage", () => {
     );
     const steps = [{ slotId: "ancestry-feat-level-1" } as PendingStep];
 
-    expect(physicalGrantCoverageBlockers(draft, steps, "8.4.2")).toEqual([
-      expect.objectContaining({ code: "coverage-version-mismatch", routeId: "pf2e-version-pin" }),
+    expect(physicalGrantCoverageWarning(draft, steps)?.currentVersion).toBe("8.5.0");
+    expect(physicalGrantCoverageBlockers(draft, steps)).toEqual([
+      expect.objectContaining({ code: "unsupported-physical-grant", routeId: "clan-pistol" }),
     ]);
-    expect(physicalGrantCoverageIssues(draft, steps, PHYSICAL_GRANT_COVERAGE_PF2E_VERSION)).toEqual([
+    expect(physicalGrantCoverageIssues(draft, steps)).toEqual([
       expect.objectContaining({
         code: "equipment-review",
         stepId: "ancestry-feat-level-1",
@@ -300,22 +311,31 @@ describe("physical-grant coverage", () => {
     ]);
   });
 
-  it("applies the version pin when the level-1 starting-equipment surface is active", () => {
+  it("keeps a complete level-1 draft ready while warning about a newer PF2E version", () => {
+    vi.stubGlobal("game", { system: { id: "pf2e", version: "8.5.0" } });
     const draft = createEmptyDraft(1);
+    const steps = [{ slotId: "starting-equipment-level-1" } as PendingStep];
+    const readiness = { ready: true, evaluations: [], blockers: [], firstBlocker: null };
 
-    expect(
-      physicalGrantCoverageBlockers(draft, [{ slotId: "starting-equipment-level-1" } as PendingStep], "8.4.2")
-    ).toEqual([expect.objectContaining({ code: "coverage-version-mismatch", routeId: "pf2e-version-pin" })]);
+    expect(physicalGrantCoverageWarning(draft, steps)).toEqual({
+      reviewedVersion: "8.4.1",
+      currentVersion: "8.5.0",
+    });
+    expect(physicalGrantCoverageBlockers(draft, steps)).toEqual([]);
+    expect(physicalGrantCoverageIssues(draft, steps)).toEqual([]);
+    expect(withPhysicalGrantCoverageReadiness(readiness, draft, steps)).toBe(readiness);
   });
 
-  it("does not apply the level-1 coverage version pin to an ordinary later-level draft without level-1 evidence", () => {
+  it("does not warn on an ordinary later-level draft without level-1 evidence", () => {
     const draft = createEmptyDraft(2);
 
-    expect(physicalGrantCoverageBlockers(draft, [], "8.4.2")).toEqual([]);
-    expect(physicalGrantCoverageIssues(draft, [], null)).toEqual([]);
+    expect(physicalGrantCoverageWarning(draft, [], "8.5.0")).toBeNull();
+    expect(physicalGrantCoverageWarning(draft, [], null)).toBeNull();
+    expect(physicalGrantCoverageBlockers(draft, [])).toEqual([]);
+    expect(physicalGrantCoverageIssues(draft, [])).toEqual([]);
   });
 
-  it("applies the version pin to active level-1 grant evidence in a later-level draft", () => {
+  it("warns for active level-1 grant evidence in a later-level draft", () => {
     const draft = createEmptyDraft(2);
     draft.branchSelections["class-branch-innovation-level-1"] = selection(
       "class-branch-innovation-level-1",
@@ -323,11 +343,11 @@ describe("physical-grant coverage", () => {
     );
 
     expect(
-      physicalGrantCoverageBlockers(draft, [{ slotId: "class-branch-innovation-level-1" } as PendingStep], "8.4.2")
-    ).toEqual([expect.objectContaining({ code: "coverage-version-mismatch", routeId: "pf2e-version-pin" })]);
+      physicalGrantCoverageWarning(draft, [{ slotId: "class-branch-innovation-level-1" } as PendingStep], "8.5.0")
+    ).toEqual({ reviewedVersion: "8.4.1", currentVersion: "8.5.0" });
   });
 
-  it("applies the version pin to frozen level-1 recovery evidence in a later-level draft", () => {
+  it("warns for frozen level-1 recovery evidence in a later-level draft", () => {
     const draft = createEmptyDraft(2);
     draft.selections["ancestry-feat-level-1"] = selection(
       "ancestry-feat-level-1",
@@ -335,15 +355,17 @@ describe("physical-grant coverage", () => {
     );
     draft.applyCompletedStepIds = ["ancestry-feat-level-1"];
 
-    expect(physicalGrantCoverageBlockers(draft, [], "8.4.2")).toEqual([
-      expect.objectContaining({ code: "coverage-version-mismatch", routeId: "pf2e-version-pin" }),
-    ]);
+    expect(physicalGrantCoverageWarning(draft, [], "8.5.0")).toEqual({
+      reviewedVersion: "8.4.1",
+      currentVersion: "8.5.0",
+    });
 
     draft.applyCompletedStepIds = ["starting-equipment-level-1"];
     delete draft.selections["ancestry-feat-level-1"];
-    expect(physicalGrantCoverageBlockers(draft, [], "8.4.2")).toEqual([
-      expect.objectContaining({ code: "coverage-version-mismatch", routeId: "pf2e-version-pin" }),
-    ]);
+    expect(physicalGrantCoverageWarning(draft, [], "8.5.0")).toEqual({
+      reviewedVersion: "8.4.1",
+      currentVersion: "8.5.0",
+    });
   });
 
   it("makes an otherwise complete rendered draft visibly not ready", () => {
@@ -355,8 +377,7 @@ describe("physical-grant coverage", () => {
     const readiness = withPhysicalGrantCoverageReadiness(
       { ready: true, evaluations: [], blockers: [], firstBlocker: null },
       draft,
-      [{ slotId: "ancestry-feat-level-1" } as PendingStep],
-      PHYSICAL_GRANT_COVERAGE_PF2E_VERSION
+      [{ slotId: "ancestry-feat-level-1" } as PendingStep]
     );
 
     expect(readiness).toMatchObject({

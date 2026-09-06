@@ -1305,7 +1305,11 @@ describe("starting equipment command service", () => {
     expect(error).toMatchObject({ publicMessage: message });
   });
 
-  it("rejects an exact registered physical route before higher-level identity or acquisition work", async () => {
+  it.each([
+    "8.4.1",
+    "8.5.0",
+  ])("rejects a registered physical route before any acquisition work on PF2E %s", async (version) => {
+    vi.stubGlobal("game", { system: { id: "pf2e", version } });
     const context = unsupportedArmorCommandContext(null, 5);
     const before = structuredClone(context.draft);
     const mintIdentity = vi.fn();
@@ -1350,48 +1354,54 @@ describe("starting equipment command service", () => {
 
   it.each([
     { label: "unknown", game: undefined },
-    { label: "drifted", game: { system: { id: "pf2e", version: "8.4.2" } } },
-  ])("rejects a $label PF2E coverage version before any initialization operation", async ({ game }) => {
+    { label: "newer", game: { system: { id: "pf2e", version: "8.5.0" } } },
+  ])("initializes and reviews an empty level-1 cart with a $label PF2E version", async ({ game }) => {
     vi.stubGlobal("game", game);
     const context = commandContext(null);
-    const before = structuredClone(context.draft);
-    const mintIdentity = vi.fn();
-    const saveJudgment = vi.fn();
-    const projectClassGrants = vi.fn();
-    const prepareClassGrantPlan = vi.fn();
-    const prepareNativeGrantLines = vi.fn();
-    const evaluateAdmission = vi.fn();
-
-    await expect(
-      executeStartingEquipmentCommand({ type: "initialize" }, context, {
-        mintIdentity,
-        saveJudgment,
-        projectClassGrants,
-        prepareClassGrantPlan,
-        prepareNativeGrantLines,
-        evaluateAdmission,
-      } as never)
-    ).rejects.toMatchObject({
-      name: "StartingEquipmentPhysicalGrantCoverageError",
-      blocker: {
-        code: "coverage-version-mismatch",
-        routeId: "pf2e-version-pin",
-        reasonCode: "pf2e-version-mismatch",
-        sourceSlotId: null,
-        sourceUuid: null,
-      },
+    const baseline = createEconomicBaseline({
+      actorId: "actor-1",
+      capturedAt: context.now(),
+      currencyCopper: 0,
+      physicalItems: [],
     });
-    expect(context.draft).toEqual(before);
-    for (const operation of [
-      mintIdentity,
-      saveJudgment,
-      projectClassGrants,
-      prepareClassGrantPlan,
-      prepareNativeGrantLines,
-      evaluateAdmission,
-    ]) {
-      expect(operation).not.toHaveBeenCalled();
-    }
+    const classGrantPlan = createPreparedClassGrantPlan({
+      actorId: "actor-1",
+      draftId: "draft-1",
+      batchId: "batch-1",
+      targetLevel: 1,
+      grants: [],
+    });
+    const dependencies = {
+      mintIdentity: vi.fn(() => ({ draftId: "draft-1", batchId: "batch-1", manifestId: "manifest-1" })),
+      resolvePolicy: vi.fn(() => levelOnePolicy()),
+      projectClassGrants: vi.fn(async () => ({ grants: [], preparedPlan: classGrantPlan, blockers: [] })),
+      prepareClassGrantPlan: vi.fn(async () => classGrantPlan),
+      prepareNativeGrantLines: vi.fn(async () => []),
+      evaluateAdmission: vi.fn(() => ({ kind: "eligible-empty" as const, baseline })),
+      assertSourceHealth: vi.fn(async () => undefined),
+    };
+
+    const initialized = await executeStartingEquipmentCommand({ type: "initialize" }, context, dependencies);
+    expect(initialized.acquisition).toMatchObject({
+      targetLevel: 1,
+      lines: [],
+      baseline,
+      disposition: { kind: "unreviewed" },
+    });
+    expect(dependencies.projectClassGrants).toHaveBeenCalledOnce();
+    expect(dependencies.evaluateAdmission).toHaveBeenCalledOnce();
+
+    context.draft.acquisition = initialized.acquisition;
+    const reviewed = await executeStartingEquipmentCommand({ type: "retain-all" }, context, dependencies);
+
+    expect(reviewed.acquisition.lines).toEqual([]);
+    expect(reviewed.acquisition.disposition).toMatchObject({
+      kind: "retain-all",
+      retainedCopper: 1_500,
+      review: { reviewedByUserId: "owner-1" },
+    });
+    expect(dependencies.assertSourceHealth).toHaveBeenCalledOnce();
+    expect(dependencies.prepareClassGrantPlan).toHaveBeenCalledOnce();
   });
 
   it("rejects a legacy staged higher-level draft before GM approval can persist judgment", async () => {

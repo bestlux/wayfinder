@@ -4,6 +4,7 @@ import type {
   ExistingCharacterHistoryEntry,
   PendingStep,
 } from "../../types.js";
+import type { PhysicalGrantCoverageWarning } from "../domain/physical-grant-coverage.js";
 import { type WayfinderDraftReadiness, type WayfinderStepIssue } from "../domain/step-evaluation.js";
 import type { AcquisitionReceiptViewModel } from "../panes/acquisition-receipt.js";
 import { modeLabel } from "../plan-service.js";
@@ -39,6 +40,7 @@ export interface BuildWayfinderContextArgs {
   statusNote: string | null;
   statusNoteIsError?: boolean;
   planningNote?: string | null;
+  compatibilityWarning?: PhysicalGrantCoverageWarning | null;
   summaryDocuments: WayfinderSummaryDocuments;
   readiness: WayfinderDraftReadiness;
   canImportExistingHistory?: boolean;
@@ -67,6 +69,7 @@ export interface WayfinderTemplateContext {
   statusNote: string | null;
   statusNoteIsError: boolean;
   planningNote: string | null;
+  compatibilityWarning: PhysicalGrantCoverageWarning | null;
   steps: StepNavRow[];
   levelGroups: readonly RailLevelGroup[];
   railLevelDisclosureState: RailLevelDisclosureState;
@@ -169,6 +172,7 @@ export async function buildWayfinderContext(args: BuildWayfinderContextArgs): Pr
     statusNote: args.statusNote,
     statusNoteIsError: args.statusNoteIsError ?? false,
     planningNote: args.planningNote ?? null,
+    compatibilityWarning: args.compatibilityWarning ?? null,
     steps: stepRows,
     levelGroups: railLevels.groups,
     railLevelDisclosureState: railLevels.state,

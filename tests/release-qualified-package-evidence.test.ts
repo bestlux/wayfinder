@@ -204,17 +204,21 @@ describe("WF-080-52 qualified package evidence", () => {
     ).rejects.toThrow(/forced evidence failure/i);
   });
 
-  it("requires live runtime compatibility and module version to match packaged metadata", () => {
+  it.each([
+    ["8.4.1", "8.4.1"],
+    ["8.4.1", "8.5.0"],
+    ["8.5.0", "8.5.0"],
+  ])("accepts reviewed PF2E minimum %s with exact live verified version %s", (minimum, verified) => {
     const base = {
       candidate: { gitSha: "a".repeat(40), ref: "refs/heads/release" },
-      wf51: { runtime: { moduleVersion: "0.8.0", foundryVersion: "14.366", pf2eVersion: "8.4.1" } },
+      wf51: { runtime: { moduleVersion: "0.8.0", foundryVersion: "14.366", pf2eVersion: verified } },
       policies: { digest: "policy" },
       generatedScripts: { manifestSha256: "scripts" },
       packageEvidence: {
         module: {
           version: "0.8.0",
           compatibility: { minimum: "14", verified: "14.366" },
-          systems: [{ id: "pf2e", compatibility: { minimum: "8.4.1", verified: "8.4.1" } }],
+          systems: [{ id: "pf2e", compatibility: { minimum, verified } }],
         },
       },
     };
@@ -222,23 +226,33 @@ describe("WF-080-52 qualified package evidence", () => {
       schemaVersion: 1,
       evidenceSha256: expect.stringMatching(/^[0-9a-f]{64}$/u),
     });
+    for (const runtimeMismatch of [{ pf2eVersion: "8.4.0" }, { foundryVersion: "14.367" }]) {
+      expect(() =>
+        qualifiedEvidenceDocument({
+          ...base,
+          wf51: { runtime: { ...base.wf51.runtime, ...runtimeMismatch } },
+        })
+      ).toThrow(/advertised verified/i);
+    }
     expect(() =>
       qualifiedEvidenceDocument({
         ...base,
-        wf51: { runtime: { ...base.wf51.runtime, pf2eVersion: "8.4.0" } },
+        wf51: { runtime: { ...base.wf51.runtime, moduleVersion: "0.8.1" } },
       })
-    ).toThrow(/advertised verified/i);
-    expect(() =>
-      qualifiedEvidenceDocument({
-        ...base,
-        packageEvidence: {
-          module: {
-            ...base.packageEvidence.module,
-            systems: [{ id: "pf2e", compatibility: { minimum: "8.1.0", verified: "8.4.1" } }],
+    ).toThrow(/runtime module version/i);
+    for (const unqualifiedMinimum of ["8.1.0", "8.4.2"]) {
+      expect(() =>
+        qualifiedEvidenceDocument({
+          ...base,
+          packageEvidence: {
+            module: {
+              ...base.packageEvidence.module,
+              systems: [{ id: "pf2e", compatibility: { minimum: unqualifiedMinimum, verified } }],
+            },
           },
-        },
-      })
-    ).toThrow(/minimum compatibility remains unqualified/i);
+        })
+      ).toThrow(/minimum compatibility remains unqualified/i);
+    }
   });
 
   it("requires a clean exact candidate through a durable named branch or tag ref", async () => {

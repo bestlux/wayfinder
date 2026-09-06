@@ -24,7 +24,6 @@ import {
   evaluateEquipmentItemAuthority,
 } from "../domain/equipment-policy.js";
 import {
-  currentPf2eVersion,
   findUnsupportedPhysicalGrantRoutes,
   type PhysicalGrantCoverageBlocker,
   physicalGrantCoverageBlockers,
@@ -51,7 +50,6 @@ export interface ClassGrantProjectionResult {
 export interface CurrentClassGrantProjectionOptions {
   readonly fetchDocumentByUuid?: (uuid: string) => Promise<unknown | null>;
   readonly resolveCharacterAccessRef?: (sourceUuid: string) => Promise<string | null> | string | null;
-  readonly pf2eVersion?: string | null;
 }
 
 export async function prepareCurrentClassGrantPlan(
@@ -77,11 +75,7 @@ export async function projectCurrentClassGrants(
   if (!acquisition?.policySnapshot) {
     throw new TypeError("Starting-equipment Apply requires a reviewed equipment policy.");
   }
-  const coverageBlockers = physicalGrantCoverageBlockers(
-    draft,
-    activeSteps,
-    options.pf2eVersion === undefined ? currentPf2eVersion() : options.pf2eVersion
-  );
+  const coverageBlockers = physicalGrantCoverageBlockers(draft, activeSteps);
   if (coverageBlockers.length > 0) {
     return { grants: [], preparedPlan: null, blockers: coverageBlockers };
   }

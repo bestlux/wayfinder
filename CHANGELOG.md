@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.9 - 2026-09-06
+
+- PF2E version differences now show a compatibility warning instead of blocking Starting Equipment and character Apply. Players can finish without buying equipment by completing any required item choices, removing purchases from the cart, and choosing **Keep the coin instead**.
+- Specific unsupported physical grants, changed source data, inventory conflicts, equipment policy, and Apply recovery checks remain enforced. The warning identifies the physical-grant review baseline and recommends checking items and coin on the finished character sheet.
+
 ## 0.8.8 - 2026-08-29
 
 - Starting Equipment now preserves safe class-grant, economic-admission, and physical-grant blocker messages instead of collapsing them into the generic update warning.

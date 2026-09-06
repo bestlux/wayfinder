@@ -1,30 +1,23 @@
 import { PHYSICAL_GRANT_COVERAGE_PF2E_VERSION, UNSUPPORTED_PHYSICAL_GRANT_ROUTES, } from "./physical-grant-route-registry.js";
 export { PHYSICAL_GRANT_COVERAGE_PF2E_VERSION, UNSUPPORTED_PHYSICAL_GRANT_ROUTE_IDS, UNSUPPORTED_PHYSICAL_GRANT_ROUTES, } from "./physical-grant-route-registry.js";
-export function physicalGrantCoverageVersionBlocker(pf2eVersion) {
-    if (pf2eVersion === PHYSICAL_GRANT_COVERAGE_PF2E_VERSION)
+export function physicalGrantCoverageWarning(draft, activeSteps, pf2eVersion = currentPf2eVersion()) {
+    if (pf2eVersion === PHYSICAL_GRANT_COVERAGE_PF2E_VERSION ||
+        !hasLevelOnePhysicalGrantCoverageEvidence(draft, activeSteps))
         return null;
-    const observed = nonEmpty(pf2eVersion) ? pf2eVersion : "an unknown version";
     return {
-        code: "coverage-version-mismatch",
-        routeId: "pf2e-version-pin",
-        reasonCode: "pf2e-version-mismatch",
-        sourceSlotId: null,
-        sourceUuid: null,
-        message: `Starting-equipment physical-grant coverage is qualified for PF2E ${PHYSICAL_GRANT_COVERAGE_PF2E_VERSION}, not ${observed}. Review is blocked until the coverage matrix is refreshed.`,
+        reviewedVersion: PHYSICAL_GRANT_COVERAGE_PF2E_VERSION,
+        currentVersion: nonEmpty(pf2eVersion) ? pf2eVersion : null,
     };
 }
 export function currentPf2eVersion() {
     const currentGame = globalThis.game;
     return currentGame?.system?.id === "pf2e" && nonEmpty(currentGame.system.version) ? currentGame.system.version : null;
 }
-export function physicalGrantCoverageBlockers(draft, activeSteps, pf2eVersion = currentPf2eVersion()) {
-    const versionBlocker = hasLevelOnePhysicalGrantCoverageEvidence(draft, activeSteps)
-        ? physicalGrantCoverageVersionBlocker(pf2eVersion)
-        : null;
-    return versionBlocker ? [versionBlocker] : findUnsupportedPhysicalGrantRoutes(draft, activeSteps);
+export function physicalGrantCoverageBlockers(draft, activeSteps) {
+    return findUnsupportedPhysicalGrantRoutes(draft, activeSteps);
 }
-export function physicalGrantCoverageIssues(draft, activeSteps, pf2eVersion = currentPf2eVersion()) {
-    return physicalGrantCoverageBlockers(draft, activeSteps, pf2eVersion).map((blocker) => ({
+export function physicalGrantCoverageIssues(draft, activeSteps) {
+    return physicalGrantCoverageBlockers(draft, activeSteps).map((blocker) => ({
         code: "equipment-review",
         stepId: blocker.sourceSlotId ?? "starting-equipment-coverage",
         slotId: blocker.sourceSlotId ?? "starting-equipment",
@@ -32,8 +25,8 @@ export function physicalGrantCoverageIssues(draft, activeSteps, pf2eVersion = cu
         message: blocker.message,
     }));
 }
-export function withPhysicalGrantCoverageReadiness(readiness, draft, activeSteps, pf2eVersion = currentPf2eVersion()) {
-    const coverageIssues = physicalGrantCoverageIssues(draft, activeSteps, pf2eVersion);
+export function withPhysicalGrantCoverageReadiness(readiness, draft, activeSteps) {
+    const coverageIssues = physicalGrantCoverageIssues(draft, activeSteps);
     if (coverageIssues.length === 0)
         return readiness;
     return {

@@ -4,6 +4,37 @@ import { buildWayfinderContext } from "../src/wayfinder/application/wayfinder-co
 import { evaluateWayfinderDraftReadiness, type WayfinderStepEvaluation } from "../src/wayfinder/domain/step-evaluation";
 
 describe("wayfinder context service", () => {
+  it.each([true, false])("shows a compatibility warning without changing draft readiness %s", async (ready) => {
+    const steps = [step("class-level-1", "Class")];
+    const compatibilityWarning = { reviewedVersion: "8.4.1", currentVersion: "8.5.0" };
+    const context = await buildWayfinderContext({
+      actorId: "actor-1",
+      actorName: "Valeros",
+      currentLevel: 1,
+      targetLevel: 1,
+      steps,
+      activeStep: steps[0] ?? null,
+      activePane: null,
+      statusNote: null,
+      compatibilityWarning,
+      summaryDocuments: {
+        ancestry: null,
+        heritage: null,
+        background: null,
+        classDocument: null,
+        deity: null,
+      },
+      readiness: await evaluateWayfinderDraftReadiness(steps, async (pendingStep) =>
+        ready ? readyEvaluation("Ready") : blockedEvaluation(pendingStep, "missing-choice", "Missing")
+      ),
+    });
+
+    expect(context.compatibilityWarning).toEqual(compatibilityWarning);
+    expect(context.canApplyDraft).toBe(ready);
+    if (ready) expect(context.applyBlocker).toBeNull();
+    else expect(context.applyBlocker).toMatchObject({ stepId: "class-level-1", code: "missing-choice" });
+  });
+
   it("builds summary rows, dossier text, and navigation state for the active step", async () => {
     const steps = [
       step("ancestry-level-1", "Ancestry"),
@@ -111,6 +142,7 @@ describe("wayfinder context service", () => {
     });
 
     expect(context.dossierLine).toBe("Creation path in progress");
+    expect(context.compatibilityWarning).toBeNull();
     expect(context.summary).toEqual([
       { label: "Ancestry", value: "Missing", complete: false },
       { label: "Heritage", value: "Missing", complete: false },

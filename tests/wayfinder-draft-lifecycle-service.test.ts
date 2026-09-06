@@ -31,10 +31,7 @@ import type { AcquisitionDraftState } from "../src/wayfinder/domain/acquisition-
 import { CHARACTER_WEALTH_POLICY_REF } from "../src/wayfinder/domain/character-wealth-policy";
 import { createPlannedClassGrant } from "../src/wayfinder/domain/class-grant-reconciliation";
 import { createEconomicBaseline } from "../src/wayfinder/domain/economic-baseline";
-import {
-  PHYSICAL_GRANT_COVERAGE_PF2E_VERSION,
-  physicalGrantCoverageIssues,
-} from "../src/wayfinder/domain/physical-grant-coverage";
+import { physicalGrantCoverageIssues } from "../src/wayfinder/domain/physical-grant-coverage";
 import { SEMANTIC_WEALTH_POLICY_REF } from "../src/wayfinder/domain/semantic-wealth-rule-ledger";
 import type { WayfinderStepEvaluation } from "../src/wayfinder/domain/step-evaluation";
 
@@ -724,7 +721,7 @@ describe("wayfinder draft lifecycle service", () => {
       draft,
       steps,
       evaluateStep: async () => readyEvaluation(),
-      additionalBlockers: physicalGrantCoverageIssues(draft, steps, PHYSICAL_GRANT_COVERAGE_PF2E_VERSION),
+      additionalBlockers: physicalGrantCoverageIssues(draft, steps),
       confirmApply,
       beforeApply,
       applyDraftToActor,

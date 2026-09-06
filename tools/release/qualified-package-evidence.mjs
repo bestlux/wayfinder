@@ -4,6 +4,7 @@ import { lstat, readFile, readdir, realpath } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
+import { PHYSICAL_GRANT_COVERAGE_PF2E_VERSION } from "../../scripts/wayfinder/domain/physical-grant-route-registry.js";
 import { qualifyWf51ReleaseOverlay } from "../foundry-smoke/wf51-release-overlay-evidence.mjs";
 import { parseGeneratedCharacterWealthModule } from "../starting-equipment/generate-character-wealth.mjs";
 import {
@@ -460,8 +461,13 @@ export function qualifiedEvidenceDocument({ candidate, wf51, policies, generated
     throw new Error("WF-080-51 runtime does not match the advertised verified Foundry/PF2E compatibility lane.");
   }
   const pf2eCompatibility = packageEvidence.module.systems?.find((entry) => entry.id === "pf2e")?.compatibility;
-  if (pf2eCompatibility?.minimum !== pf2eCompatibility?.verified) {
-    throw new Error("PF2E minimum compatibility remains unqualified; raise it to the exact verified WF-080-51 lane.");
+  if (
+    pf2eCompatibility?.minimum !== pf2eCompatibility?.verified &&
+    pf2eCompatibility?.minimum !== PHYSICAL_GRANT_COVERAGE_PF2E_VERSION
+  ) {
+    throw new Error(
+      "PF2E minimum compatibility remains unqualified; use the exact verified WF-080-51 lane or the pinned physical-grant registry baseline.",
+    );
   }
   const payload = {
     schemaVersion: 1,

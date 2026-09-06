@@ -4,6 +4,8 @@
       "Open": "Open Wayfinder"
     },
     "App": {
+      "EquipmentCompatibilityWarning": "Starting equipment was fully reviewed for PF2E {reviewedVersion}; you are running {currentVersion}. You can continue, but check your items and coin on the character sheet afterward. To skip purchases, complete any required item choices, remove purchases from your cart, and choose “Keep the coin instead.”",
+      "EquipmentCompatibilityUnknown": "Starting equipment was fully reviewed for PF2E {reviewedVersion}; your running version could not be identified. You can continue, but check your items and coin on the character sheet afterward. To skip purchases, complete any required item choices, remove purchases from your cart, and choose “Keep the coin instead.”",
       "Title": "Wayfinder",
       "Subtitle": "Build and level a character, one choice at a time",
       "TargetLevel": "Target Level",

@@ -212,7 +212,11 @@ import {
   recordClassGrantReconciliations,
 } from "./domain/acquisition-draft.js";
 import { manifestsDescribeSameOutcome } from "./domain/completed-acquisition-manifest.js";
-import { physicalGrantCoverageIssues, withPhysicalGrantCoverageReadiness } from "./domain/physical-grant-coverage.js";
+import {
+  physicalGrantCoverageIssues,
+  physicalGrantCoverageWarning,
+  withPhysicalGrantCoverageReadiness,
+} from "./domain/physical-grant-coverage.js";
 import type { SkillProgression } from "./domain/skill-progression.js";
 import {
   evaluateWayfinderDraftReadiness,
@@ -856,6 +860,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       statusNote: this.#statusNote,
       statusNoteIsError: this.#statusNote !== null && this.#statusNote === this.#statusErrorMessage,
       planningNote,
+      compatibilityWarning: physicalGrantCoverageWarning(draft, plan.steps),
       summaryDocuments: {
         ancestry: effectiveAncestry,
         heritage: effectiveHeritage,

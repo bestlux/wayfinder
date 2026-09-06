@@ -319,7 +319,7 @@ globalThis.__inspectWayfinderWf43LiveRegions = function inspectWf43LiveRegions({
   return {
     catalogue: text(".equipment-result-count[role='status']"),
     cart: text(".equipment-cart [role='status'][aria-live='polite']"),
-    review: text(".status-note[role='status'] span"),
+    review: text("[data-application-part='equipment-status'] .status-note[role='status'] span"),
     failure: text(".status-note[role='alert'] span"),
   };
 };

@@ -1,4 +1,3 @@
-import { isSpellRarityWithinCeiling, spellChoiceRarityCeiling } from "./rarity-access.js";
 export function spellMatchesChoice(item, choice, entryId) {
     if (item.type !== "spell") {
         return false;
@@ -29,10 +28,9 @@ export function spellMatchesChoice(item, choice, entryId) {
         if (!traditions.includes(choice.destination.tradition)) {
             return false;
         }
-        const rarity = String(item.system?.traits?.rarity ?? "")
-            .trim()
-            .toLowerCase();
-        return isSpellRarityWithinCeiling(rarity, spellChoiceRarityCeiling(choice));
+        // These spells are already owned. Rarity gates new picks, not reconciliation
+        // after Apply, when the draft's access attestation has been cleared.
+        return true;
     }
     return choice.curriculumSpellNames.some((name) => namesMatch(name, itemName));
 }

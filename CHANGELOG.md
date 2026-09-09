@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.10 - 2026-09-08
+
+- Fixed uncommon and rare spells being requested again when reopening a completed character, including a level-1 Witch's cantrips and familiar spells. Spells already on the matching spellcasting entry now count regardless of rarity.
+- Existing characters benefit automatically; no rebuild is needed. Rarity settings and written access reasons still govern new spell selections.
+
 ## 0.8.9 - 2026-09-06
 
 - PF2E version differences now show a compatibility warning instead of blocking Starting Equipment and character Apply. Players can finish without buying equipment by completing any required item choices, removing purchases from the cart, and choosing **Keep the coin instead**.

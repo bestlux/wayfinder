@@ -747,9 +747,28 @@ describe("wayfinder spell-choice step builders", () => {
     expect(steps).toEqual([]);
   });
 
-  it("suppresses all level-1 witch choices when the familiar's known spells are already on the entry", async () => {
+  it.each(
+    ["common", "uncommon", "rare", "unique"].flatMap((rarity) => [true, false].map((stamped) => ({ rarity, stamped })))
+  )("preserves $rarity witch spells on reopen (slot stamped: $stamped)", async ({ rarity, stamped }) => {
     const entryId = "witch-entry";
+    const cantripSlot = "spell-choice-witch-cantrips-level-1";
+    const rankOneSlot = "spell-choice-witch-rank-1-level-1";
+    const patronSlot = "spell-choice-witch-patron-lesson-level-1";
+    const ownedSpell = (name: string, cantrip: boolean, slotId: string) => {
+      const spell = knownWitchSpell(entryId, name, cantrip);
+      return {
+        ...spell,
+        flags: stamped ? { "wayfinder-pf2e": { slotId } } : {},
+        system: { ...spell.system, traits: { ...spell.system.traits, rarity } },
+      };
+    };
+    const cantrips = Array.from({ length: 10 }, (_, index) => ownedSpell(`Cantrip ${index + 1}`, true, cantripSlot));
+    const rankOne = Array.from({ length: 5 }, (_, index) => ownedSpell(`Rank One ${index + 1}`, false, rankOneSlot));
     const actor = {
+      system: { details: { level: { value: 1 } } },
+      flags: stamped
+        ? { "wayfinder-pf2e": { state: { completedStepIds: [cantripSlot, rankOneSlot, patronSlot] } } }
+        : {},
       items: {
         contents: [
           {
@@ -762,27 +781,38 @@ describe("wayfinder spell-choice step builders", () => {
               tradition: { value: "occult" },
             },
           },
-          ...Array.from({ length: 10 }, (_, index) => knownWitchSpell(entryId, `Cantrip ${index + 1}`, true)),
-          ...Array.from({ length: 5 }, (_, index) => knownWitchSpell(entryId, `Rank One ${index + 1}`, false)),
-          knownWitchSpell(entryId, "Sure Strike", false),
+          ...cantrips,
+          ...rankOne,
+          ownedSpell("Sure Strike", false, patronSlot),
         ],
       },
     };
-    const steps = await buildSpellChoiceSteps({
-      draft: createEmptyDraft(1),
-      currentLevel: 1,
-      effectiveClassDocument: classDocument("witch", "Witch Spellcasting"),
-      effectiveDeityDocument: null,
-      effectiveSchoolDocument: null,
-      effectiveClassFeatureDocuments: [
-        classFeatureDocument("Spinner of Threads", "witch-patron", "Spell List", "occult", ["Sure Strike"]),
-      ],
-      targetLevel: 1,
-      extractSlug,
-      readExistingSpellChoiceSelections: (choice) => readExistingSpellChoiceSelections(actor, choice),
-    });
+    const reopen = () =>
+      buildSpellChoiceSteps({
+        draft: createEmptyDraft(1),
+        currentLevel: 1,
+        effectiveClassDocument: classDocument("witch", "Witch Spellcasting"),
+        effectiveDeityDocument: null,
+        effectiveSchoolDocument: null,
+        effectiveClassFeatureDocuments: [
+          classFeatureDocument("Spinner of Threads", "witch-patron", "Spell List", "occult", ["Sure Strike"]),
+        ],
+        targetLevel: 1,
+        extractSlug,
+        readExistingSpellChoiceSelections: (choice) => readExistingSpellChoiceSelections(actor, choice),
+      });
 
-    expect(steps).toEqual([]);
+    expect(await reopen()).toEqual([]);
+    expect(await reopen()).toEqual([]);
+
+    actor.items.contents = actor.items.contents.filter((item) => item.id !== cantrips[0]!.id);
+    expect((await reopen()).map((step) => step.slotId)).toEqual([cantripSlot]);
+
+    // A saved completion marker cannot stand in for spells still owned by the matching entry.
+    for (const spell of rankOne) {
+      spell.system.location.value = "another-entry";
+    }
+    expect((await reopen()).map((step) => step.slotId)).toEqual([cantripSlot, rankOneSlot]);
   });
 
   it("builds branch-derived sorcerer spontaneous repertoire steps", async () => {

@@ -1,5 +1,4 @@
 import type { SpellChoiceMeta } from "../../types.js";
-import { isSpellRarityWithinCeiling, spellChoiceRarityCeiling } from "./rarity-access.js";
 import type { SpellChoiceItem } from "./types.js";
 
 export function spellMatchesChoice(item: SpellChoiceItem, choice: SpellChoiceMeta, entryId: string): boolean {
@@ -42,10 +41,9 @@ export function spellMatchesChoice(item: SpellChoiceItem, choice: SpellChoiceMet
       return false;
     }
 
-    const rarity = String(item.system?.traits?.rarity ?? "")
-      .trim()
-      .toLowerCase();
-    return isSpellRarityWithinCeiling(rarity, spellChoiceRarityCeiling(choice));
+    // These spells are already owned. Rarity gates new picks, not reconciliation
+    // after Apply, when the draft's access attestation has been cleared.
+    return true;
   }
 
   return choice.curriculumSpellNames.some((name) => namesMatch(name, itemName));

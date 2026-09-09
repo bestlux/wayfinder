@@ -1,6 +1,6 @@
 # Beta Readiness Foundry Smoke
 
-Last updated: 2026-09-06.
+Last updated: 2026-09-08.
 
 This is the launch-readiness live smoke layer for Wayfinder. It complements unit tests by exercising the built module inside a real Foundry world against live PF2E compendia.
 
@@ -46,6 +46,14 @@ The companion static class audit checks the maintained smoke matrix against the 
 ```powershell
 npm run audit:classes
 ```
+
+## 2026-09-08 0.8.10 Owned Spell Rarity Hotfix
+
+Issue #37 reproduced on Wayfinder 0.8.9 / Foundry 14.367 / PF2E 8.5.0 in `testing-world` with a level-1 Elf Witch and Free Archetype enabled. Common-only selections applied and reran cleanly. With unrestricted rarity, both the cantrip and rank-1 choices returned after Apply despite the spells being present on the actor. The written-access-reason route reproduced the same repeat prompts. Owned-spell reconciliation was reapplying the default common-only acquisition filter after the draft was cleared.
+
+The fix removes rarity filtering only from owned-spell matching. Entry, rank, cantrip, tradition, curriculum, completed-slot, and historical-level checks remain; new-pick rarity and attestation policy are unchanged. Permanent regressions cover all four rarities on stamped and legacy Witch actors, repeated reopening, removed cantrips, and spells moved to another entry. The focused suites passed 71 tests, and `npm run check` passed 191 files / 2,145 tests plus formatting, lint, generated output, build, policy artifacts, and strict TypeScript checks.
+
+The version-exact 0.8.10 probe passed all three cases in `.wayfinder-smoke/issue37-0.8.10-exact.json`: common-only, unrestricted rarity, and written access reasons. Restricted cases selected uncommon and rare cantrips (Join Pasts and Invoke True Name) and rank-1 spells (Unbroken Panoply and Scorching Blast). Each case applied through the normal lifecycle, verified draft cleanup and zero pending rerun steps, and deleted its disposable actor. The probe restored rarity and Free Archetype settings. The release-only source gate passed against the clean PF2E 8.4.1 registry pin; the static audit retains the documented Necromancer and Runesmith base-class coverage gaps.
 
 ## 2026-09-06 0.8.9 PF2E Compatibility Hotfix
 

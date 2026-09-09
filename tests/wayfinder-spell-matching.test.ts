@@ -66,7 +66,7 @@ describe("wayfinder spell matching", () => {
     ).toBe(false);
   });
 
-  it("rejects uncommon non-exception spells on common-only choices", () => {
+  it.each(["common", "uncommon", "rare", "unique"])("recognizes owned %s spells on common-only choices", (rarity) => {
     const choice = spellChoice({
       restrictToCommon: true,
       destination: {
@@ -84,12 +84,12 @@ describe("wayfinder spell matching", () => {
       spellMatchesChoice(
         spellItem("entry-1", "Rare Blessing", 1, {
           traditions: ["divine"],
-          rarity: "rare",
+          rarity,
         }),
         choice,
         "entry-1"
       )
-    ).toBe(false);
+    ).toBe(true);
   });
 });
 

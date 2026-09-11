@@ -55,6 +55,8 @@ Issue #38 was reproduced against PF2E 8.5.0: the picker classified Pistolero's s
 - A separate level-1 probe on module 0.8.11 selected Intimidation and verified its saved choice, trained rank, granted actions, and zero pending steps. Artifact: `.wayfinder-smoke/issue-38-intimidation-0811`.
 - `npm run check` passed all 191 suites / 2,148 tests, including three new picker/coverage regressions. The physical-grant source gate passed against the unchanged clean PF2E 8.4.1 pin.
 - The static class audit against PF2E 8.5.0 reports the existing 27 covered class slugs and two unrepresented classes, Necromancer and Runesmith. This hotfix does not add class coverage beyond the maintained matrix.
+- Full WF-080-51 qualification passed all 11 children, 55 matrix executions / 54 unique scenarios, both locales, recovery, and all 15 aggregate rows on the exact `4a121b02b95af1742e117ff82702f0b73071dd88` candidate. Artifact: `.wayfinder-smoke/wf51-release-0811`.
+- The 280-entry qualified package under `dist/qualified-release-0811` matched the public ZIP SHA-256 `613571c968e93f19741e59998fed59e7ffba2e04895ac22278e216f9a8230357`. Tag `v0.8.11`, release workflow `34629131462`, versioned/latest manifests, and Foundry registration were verified. Issue #38 was closed with a resolution comment after publication.
 
 ## 2026-09-08 0.8.10 Owned Spell Rarity Hotfix
 

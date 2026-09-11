@@ -1,6 +1,6 @@
 # Beta Readiness Foundry Smoke
 
-Last updated: 2026-09-08.
+Last updated: 2026-09-11.
 
 This is the launch-readiness live smoke layer for Wayfinder. It complements unit tests by exercising the built module inside a real Foundry world against live PF2E compendia.
 
@@ -46,6 +46,15 @@ The companion static class audit checks the maintained smoke matrix against the 
 ```powershell
 npm run audit:classes
 ```
+
+## 2026-09-11 0.8.11 Pistolero Picker Hotfix
+
+Issue #38 was reproduced against PF2E 8.5.0: the picker classified Pistolero's skill ChoiceSet as uncovered even though the skill-training workflow supported it. The classifier now recognizes class-feature skill training while preserving suppression of unsupported sibling choices.
+
+- The maintained Gunslinger level-1-to-5 smoke case now requires Pistolero, both skill options, its granted actions, and the persisted Deception choice. It no longer falls back to Sniper. The focused patched-code run passed on Foundry 14.367 / PF2E 8.5.0 in `testing-world`, before the version bump, with no native choice dialogs or pending steps on fresh-plan reconstruction. Artifact: `.wayfinder-smoke/issue-38-focused`.
+- A separate level-1 probe on module 0.8.11 selected Intimidation and verified its saved choice, trained rank, granted actions, and zero pending steps. Artifact: `.wayfinder-smoke/issue-38-intimidation-0811`.
+- `npm run check` passed all 191 suites / 2,148 tests, including three new picker/coverage regressions. The physical-grant source gate passed against the unchanged clean PF2E 8.4.1 pin.
+- The static class audit against PF2E 8.5.0 reports the existing 27 covered class slugs and two unrepresented classes, Necromancer and Runesmith. This hotfix does not add class coverage beyond the maintained matrix.
 
 ## 2026-09-08 0.8.10 Owned Spell Rarity Hotfix
 

@@ -171,6 +171,26 @@ describe("embedded choice policy", () => {
     expect(result.rules).toEqual([{ ruleIndex: 0, coveredBy: ["class-choice"] }]);
   });
 
+  it("covers Pistolero's skill choice on a class branch", () => {
+    const result = classifyEmbeddedChoices(pistoleroEntry(), "pf2e.classfeatures", {
+      sourceItemType: "classfeature",
+      classSlug: "gunslinger",
+    });
+
+    expect(result.rules).toEqual([{ ruleIndex: 2, coveredBy: ["skill-training"] }]);
+    expect(result.uncovered).toEqual([]);
+  });
+
+  it("does not let a supported class-feature skill choice cover an unsupported sibling", () => {
+    const entry = pistoleroEntry();
+    entry.system.rules.push({ key: "ChoiceSet", flag: "unsupported", choices: "flags.system.unknown" });
+
+    const result = classifyEmbeddedChoices(entry, "pf2e.classfeatures", { sourceItemType: "classfeature" });
+
+    expect(result.covered).toEqual([2]);
+    expect(result.uncovered).toEqual([4]);
+  });
+
   it("covers Dragon Eidolon's PF2E 8.4.1 tradition prompt while Angel needs no prompt", () => {
     expect(
       classifyEmbeddedChoices(pf2e841DragonEidolonEntry() as any, "pf2e.classfeatures", {
@@ -225,4 +245,26 @@ function classFeatureEntry(slug: string, name: string, rules: unknown[]): any {
       rules,
     },
   };
+}
+
+function pistoleroEntry(): any {
+  // PF2E 8.5.0 rule shape; omit descriptive content and unrelated grant payloads.
+  return classFeatureEntry("way-of-the-pistolero", "Way of the Pistolero", [
+    { key: "GrantItem", predicate: ["class:gunslinger"] },
+    { key: "GrantItem", predicate: ["class:gunslinger"] },
+    {
+      key: "ChoiceSet",
+      flag: "skill",
+      choices: [
+        { value: "deception", label: "PF2E.Skill.Deception" },
+        { value: "intimidation", label: "PF2E.Skill.Intimidation" },
+      ],
+    },
+    {
+      key: "ActiveEffectLike",
+      mode: "upgrade",
+      path: "system.skills.{item|flags.system.rulesSelections.skill}.rank",
+      value: 1,
+    },
+  ]);
 }

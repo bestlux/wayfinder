@@ -914,18 +914,36 @@ export const smokeCases = [
     },
     preferredSkills: ["athletics", "intimidation", "medicine", "society", "survival"],
   }),
-  classCase({
-    className: "Gunslinger",
-    classSlug: "gunslinger",
-    keyAbility: "dex",
-    expectedStepIds: ["class-archetype-gunslingers-way-level-1", "class-branch-gunslingers-way-level-1"],
-    preferredSelections: {
-      "class-archetype-gunslingers-way-level-1": ["Standard class path"],
-      "class-branch-gunslingers-way-level-1": ["Way of the Pistolero", "Way of the Sniper"],
-      "class-feat": ["Cover Fire", "Hit the Dirt!"],
+  {
+    ...classCase({
+      className: "Gunslinger",
+      classSlug: "gunslinger",
+      keyAbility: "dex",
+      expectedStepIds: [
+        "class-archetype-gunslingers-way-level-1",
+        "class-branch-gunslingers-way-level-1",
+        "skill-training-gunslinger-level-1",
+      ],
+      preferredSelections: {
+        "class-archetype-gunslingers-way-level-1": ["Standard class path"],
+        "class-branch-gunslingers-way-level-1": ["Way of the Pistolero"],
+        "class-feat": ["Cover Fire", "Hit the Dirt!"],
+      },
+      preferredSkills: ["acrobatics", "crafting", "deception", "intimidation", "stealth", "survival"],
+    }),
+    preferredRuleChoices: { skill: "deception" },
+    expectedItemNames: ["Way of the Pistolero", "Raconteur's Reload", "Ten Paces"],
+    expectedItemRuleSelections: { "Way of the Pistolero": { skill: "deception" } },
+    expectedSkillTrainingChoiceSections: {
+      "skill-training-gunslinger-level-1": [
+        {
+          key: "classfeature:way-of-the-pistolero:skill",
+          sourceLabel: "Way of the Pistolero",
+          optionSlugs: ["deception", "intimidation"],
+        },
+      ],
     },
-    preferredSkills: ["acrobatics", "crafting", "deception", "intimidation", "stealth", "survival"],
-  }),
+  },
   {
     ...classCase({
       className: "Gunslinger",

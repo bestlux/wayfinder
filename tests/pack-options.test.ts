@@ -1867,6 +1867,55 @@ describe("pack options dependency filtering", () => {
     ]);
   });
 
+  it("keeps Pistolero visible while suppressing an unsupported Gunslinger way", async () => {
+    setPack("pf2e.classfeatures", [
+      classFeatureEntry("pistolero", "Way of the Pistolero", ["gunslinger"], ["gunslinger-way"], {
+        rules: [
+          {
+            key: "ChoiceSet",
+            flag: "skill",
+            choices: [
+              { value: "deception", label: "Deception" },
+              { value: "intimidation", label: "Intimidation" },
+            ],
+          },
+        ],
+      }),
+      classFeatureEntry("unsupported-way", "Unsupported Way", ["gunslinger"], ["gunslinger-way"], {
+        rules: [{ key: "ChoiceSet", flag: "skill", choices: "flags.system.unknown" }],
+      }),
+    ]);
+    const slotId = "class-branch-gunslingers-way-level-1";
+    const options = await getOptionsForStep(
+      {
+        id: slotId,
+        level: 1,
+        kind: "class-branch",
+        slotKind: "class-branch",
+        title: "Gunslinger's Way",
+        description: "Choose a way.",
+        required: true,
+        slotId,
+        filters: { itemType: "feat", featTypes: ["classfeature"], maxLevel: 1 },
+        branch: {
+          slotId,
+          selectorPackId: "pf2e.classfeatures",
+          selectorDocumentId: "gunslingers-way",
+          selectorUuid: "Compendium.pf2e.classfeatures.Item.gunslingers-way",
+          selectorName: "Gunslinger's Way",
+          selectorRuleIndex: 0,
+          flag: "way",
+          optionTag: "gunslinger-way",
+          classSlug: "gunslinger",
+          dependsOn: "class",
+        },
+      },
+      { ...EMPTY_CONTEXT, classSlug: "gunslinger" }
+    );
+
+    expect(options.map((option) => option.name)).toEqual(["Way of the Pistolero"]);
+  });
+
   it("filters class-branch choices to the selector tag for the drafted class", async () => {
     setPack("pf2e.classfeatures", [
       classFeatureEntry("scoundrel", "Scoundrel", ["rogue"], ["rogue-racket"]),

@@ -103,8 +103,8 @@ function classifyOwnEmbeddedChoices(entry, packId, choiceSetRuleIndexes, options
     markFlagChoiceCoverage(entry, sourceItemType, sourceSelection, coveredByRuleIndex, options);
     if (sourceItemType === "feat") {
         markFeatSingletonCoverage(entry, sourceSelection, coveredByRuleIndex, options.localize ?? identity, activeRollOptions, options.optionContext?.registeredDynamicChoices);
-        markFeatSkillTrainingCoverage(entry, sourceSelection, coveredByRuleIndex, options.localize ?? identity, activeRollOptions);
     }
+    markSkillTrainingCoverage(entry, sourceItemType, sourceSelection, coveredByRuleIndex, options.localize ?? identity, activeRollOptions);
     if (sourceItemType === "classfeature") {
         markClassChoiceCoverage(entry, sourceSelection, coveredByRuleIndex, options);
     }
@@ -181,11 +181,11 @@ function markFeatSingletonCoverage(entry, _sourceSelection, coveredByRuleIndex, 
         markCovered(coveredByRuleIndex, spec.sourceRuleIndex, "singleton-choice");
     }
 }
-function markFeatSkillTrainingCoverage(entry, sourceSelection, coveredByRuleIndex, localize, activeRollOptions) {
+function markSkillTrainingCoverage(entry, sourceItemType, sourceSelection, coveredByRuleIndex, localize, activeRollOptions) {
     const training = discoverSourceSkillTrainingMeta({
         sources: [
             {
-                sourceItemType: "feat",
+                sourceItemType,
                 sourceSelection,
                 sourceDocument: entry,
             },

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.11 - 2026-09-11
+
+- Restored Way of the Pistolero in the Gunslinger's Way picker. Its required Deception or Intimidation choice is guided through skill training and saved when applying the character.
+
 ## 0.8.10 - 2026-09-08
 
 - Fixed uncommon and rare spells being requested again when reopening a completed character, including a level-1 Witch's cantrips and familiar spells. Spells already on the matching spellcasting entry now count regardless of rarity.

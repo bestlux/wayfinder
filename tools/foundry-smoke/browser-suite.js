@@ -3423,6 +3423,20 @@ function readActorCompletedStepIds(actor, moduleId) {
 }
 
 async function fillSkillTraining(actor, draft, step, smokeCase, modules, planSteps = []) {
+  const expectedTraining = smokeCase.expectedTraining?.[step.slotId];
+  if (expectedTraining) {
+    const actualFixed = [...step.training.fixedSkills].sort();
+    const expectedFixed = [...expectedTraining.fixedSkills].sort();
+    if (JSON.stringify(actualFixed) !== JSON.stringify(expectedFixed)) {
+      throw new Error(`${step.slotId}: fixed skills ${actualFixed.join(", ")} did not match ${expectedFixed.join(", ")}.`);
+    }
+    const expectedAdditionalCount = expectedTraining.additionalCountByTargetLevel
+      ? expectedTraining.additionalCountByTargetLevel[smokeCase.targetLevel]
+      : expectedTraining.additionalCount;
+    if (step.training.additionalCount !== expectedAdditionalCount) {
+      throw new Error(`${step.slotId}: additional skill count ${step.training.additionalCount} did not match ${expectedAdditionalCount}.`);
+    }
+  }
   const preferred = smokeCase.preferredSkills ?? [];
   const used = new Set([...step.training.fixedSkills]);
   const ruleChoices = {};
@@ -3649,6 +3663,7 @@ function collectActorEvidence(actor, modules, moduleId) {
       name: item.name,
       slotId: item.flags?.[moduleId]?.slotId ?? null,
       destinationKey: item.flags?.[moduleId]?.destinationKey ?? null,
+      tracklessJourneyTerrain: item.flags?.[moduleId]?.tracklessJourneyTerrain ?? null,
       grantedById: item.flags?.pf2e?.grantedBy?.id ?? null,
       grantAncestryIds: collectGrantAncestryIds(item, itemsById),
       grantRules: (Array.isArray(item.system?.rules) ? item.system.rules : []).flatMap((rule) =>
@@ -3723,6 +3738,7 @@ function collectActorEvidence(actor, modules, moduleId) {
       `${left.slotId ?? ""}:${left.name}`.localeCompare(`${right.slotId ?? ""}:${right.name}`),
     ),
     levelAfterApply: Number(actor.system?.details?.level?.value ?? 0),
+    focusPool: Number(actor.system?.resources?.focus?.max ?? 0),
     moduleDraftAfterApply: actor.getFlag(moduleId, "draft") ?? null,
     moduleStateAfterApply: actor.getFlag(moduleId, "state") ?? null,
     skillRanks: Object.fromEntries(
@@ -3951,6 +3967,15 @@ function validateIncrementalCase({
 }
 
 function validateActorExpectations(actorEvidence, smokeCase, failures) {
+  if (smokeCase.expectedFocusPool !== undefined && actorEvidence.focusPool !== smokeCase.expectedFocusPool) {
+    failures.push(`Actor focus pool is ${actorEvidence.focusPool}, expected ${smokeCase.expectedFocusPool}.`);
+  }
+  if (smokeCase.expectedTracklessJourneyTerrain !== undefined) {
+    const feature = actorEvidence.items.find((item) => item.name === "Trackless Journey");
+    if (feature?.tracklessJourneyTerrain !== smokeCase.expectedTracklessJourneyTerrain) {
+      failures.push(`Trackless Journey terrain is ${feature?.tracklessJourneyTerrain ?? "missing"}, expected ${smokeCase.expectedTracklessJourneyTerrain}.`);
+    }
+  }
   if (Number.isSafeInteger(smokeCase.expectedItemCount) && actorEvidence.itemCount !== smokeCase.expectedItemCount) {
     failures.push(`Actor item count is ${actorEvidence.itemCount}, expected ${smokeCase.expectedItemCount}`);
   }

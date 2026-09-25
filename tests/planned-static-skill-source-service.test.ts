@@ -4,8 +4,10 @@ import { createEmptyDraft } from "../src/draft-service";
 import type { PendingStep } from "../src/types";
 import {
   listPlannedStaticSkillSources,
+  resolveActiveClassArchetypeProfile,
   synchronizeRetainedClassArchetypeChoice,
 } from "../src/wayfinder/application/planned-static-skill-source-service";
+import { buildVindicatorTracklessJourneySteps, VINDICATOR_UUID } from "../src/wayfinder/class-archetype/vindicator";
 import { createClassArchetypeStep } from "../src/wayfinder/domain/step-types";
 
 const DOCTRINE_UUID = "Compendium.pf2e.classfeatures.Item.tyrBwBTzo5t9Zho7";
@@ -14,6 +16,36 @@ const DEDICATION_UUID = "Compendium.pf2e.feats-srd.Item.K7YK5ESDoreohCe8";
 const SLOT_ID = "class-archetype-doctrine-level-1";
 
 describe("planned static skill source service", () => {
+  it("reconstructs retained Vindicator authority when only the level-5 terrain decision remains", () => {
+    const draft = createEmptyDraft(5);
+    const items = retainedProfileActorItems({
+      classSlug: "ranger",
+      selectorFlag: "huntersEdge",
+      selectorUuid: "Compendium.pf2e.classfeatures.Item.mzkkj9LEWjJPBhaq",
+      profileUuid: VINDICATOR_UUID,
+    });
+    const steps = buildVindicatorTracklessJourneySteps({ draft, actorItems: items, targetLevel: 5 });
+    expect(steps).toHaveLength(1);
+    synchronizeRetainedClassArchetypeChoice(draft, steps, items);
+    expect(draft.classArchetypeChoices).toEqual({ "class-archetype-hunters-edge-level-1": "vindicator" });
+    expect(resolveActiveClassArchetypeProfile(draft, steps, items)?.value).toBe("vindicator");
+  });
+
+  it("does not authorize an unrelated or forged terrain step from retained Vindicator history", () => {
+    const items = retainedProfileActorItems({
+      classSlug: "ranger",
+      selectorFlag: "huntersEdge",
+      selectorUuid: "Compendium.pf2e.classfeatures.Item.mzkkj9LEWjJPBhaq",
+      profileUuid: VINDICATOR_UUID,
+    });
+    const draft = createEmptyDraft(5);
+    const [step] = buildVindicatorTracklessJourneySteps({ draft, actorItems: items, targetLevel: 5 });
+    step.classChoice!.sourceRuleIndex = 0;
+    synchronizeRetainedClassArchetypeChoice(draft, [step], items);
+    expect(draft.classArchetypeChoices).toEqual({});
+    expect(resolveActiveClassArchetypeProfile(draft, [step], items)).toBeNull();
+  });
+
   it("reconstructs a completed retained profile when actor provenance and the active plan agree", () => {
     const draft = createEmptyDraft(5);
     const steps = [battleHarbingerTrainingStep()];

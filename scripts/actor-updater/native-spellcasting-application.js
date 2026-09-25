@@ -6,15 +6,22 @@ import { isBattleCreedSelected } from "../wayfinder/class-archetype/registry.js"
 import { SLOT_IDS } from "../wayfinder/slot-ids.js";
 import { createEmbeddedSource } from "./selection-application.js";
 import { createBattleFontEntrySource, createClericFontEntrySource, createClericPreparedEntrySource, ensureSpellcastingEntryFromSource, spellLocationId, syncSpellcastingEntry, } from "./spellcasting-entry-support.js";
+import { syncVindicatorSpellcasting, vindicatorSpellcastingSourceSelections, } from "./vindicator-spellcasting-application.js";
 const BATTLE_CREED_UUID = "Compendium.pf2e.classfeatures.Item.49CkgA3kj7Im6gZ5";
 export async function syncNativeClassSpellcasting(actor, draft, sourceFactory = createEmbeddedSource) {
     const classSlug = getCurrentClassSlug(actor, draft);
+    if (classSlug === "ranger") {
+        await syncVindicatorSpellcasting(actor, draft, sourceFactory);
+        return;
+    }
     if (classSlug !== "cleric") {
         return;
     }
     await syncClericSpellcasting(actor, draft, sourceFactory);
 }
 export function nativeSpellcastingSourceSelections(actor, draft) {
+    if (getCurrentClassSlug(actor, draft) === "ranger")
+        return vindicatorSpellcastingSourceSelections(actor, draft);
     if (getCurrentClassSlug(actor, draft) !== "cleric")
         return [];
     if (hasBattleCreed(actor, draft))

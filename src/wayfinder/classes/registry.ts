@@ -1,3 +1,4 @@
+import { barbarianContributor } from "./barbarian-contributor.js";
 import { bardContributor } from "./bard-contributor.js";
 import { baseContributor } from "./base-contributor.js";
 import {
@@ -17,6 +18,7 @@ import type { ClassContributor } from "./types.js";
 import { wizardContributor } from "./wizard-contributor.js";
 
 const CONTRIBUTORS = [
+  barbarianContributor,
   wizardContributor,
   clericContributor,
   gunslingerContributor,

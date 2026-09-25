@@ -15,6 +15,10 @@ import {
   spellLocationId,
   syncSpellcastingEntry,
 } from "./spellcasting-entry-support.js";
+import {
+  syncVindicatorSpellcasting,
+  vindicatorSpellcastingSourceSelections,
+} from "./vindicator-spellcasting-application.js";
 
 const BATTLE_CREED_UUID = "Compendium.pf2e.classfeatures.Item.49CkgA3kj7Im6gZ5";
 
@@ -26,6 +30,10 @@ export async function syncNativeClassSpellcasting(
   sourceFactory: SpellSourceFactory = createEmbeddedSource
 ): Promise<void> {
   const classSlug = getCurrentClassSlug(actor, draft);
+  if (classSlug === "ranger") {
+    await syncVindicatorSpellcasting(actor, draft, sourceFactory);
+    return;
+  }
   if (classSlug !== "cleric") {
     return;
   }
@@ -34,6 +42,7 @@ export async function syncNativeClassSpellcasting(
 }
 
 export function nativeSpellcastingSourceSelections(actor: ActorLike, draft: DraftState): SelectionRef[] {
+  if (getCurrentClassSlug(actor, draft) === "ranger") return vindicatorSpellcastingSourceSelections(actor, draft);
   if (getCurrentClassSlug(actor, draft) !== "cleric") return [];
   if (hasBattleCreed(actor, draft)) return battleFontSpellSelections("prepared");
   const divineFont = resolveClericDivineFont(actor, draft);

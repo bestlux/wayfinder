@@ -20,6 +20,7 @@ export function makeSpellChoiceStep(args) {
         maxRank: args.maxRank,
         cantrip: args.cantrip,
         ...(args.allowedSpellSlugs ? { allowedSpellSlugs: args.allowedSpellSlugs } : {}),
+        ...(args.requiredTraits ? { requiredTraits: args.requiredTraits } : {}),
         ...(args.excludedTraditions ? { excludedTraditions: args.excludedTraditions } : {}),
         curriculumSpellNames: args.curriculumSpellNames,
         ...(args.requiresCurriculum !== undefined ? { requiresCurriculum: args.requiresCurriculum } : {}),

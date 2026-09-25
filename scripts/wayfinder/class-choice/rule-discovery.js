@@ -1,5 +1,6 @@
 import { parseCompendiumItemUuid } from "../../shared/compendium.js";
 import { cloneStructuredEidolonTraditionValue, projectStructuredEidolonTraditionChoiceOptions, } from "../../shared/structured-eidolon-tradition-choice.js";
+import { isBloodragerTraditionChoice } from "../class-archetype/bloodrager.js";
 import { formatSlug } from "../formatting.js";
 import { isRecord, matchesChoicePredicateAgainstRollOptions, toNonEmptyString } from "../rule-data.js";
 import { registeredInitialClassSkillChoices } from "./initial-skill-choice-registry.js";
@@ -178,7 +179,8 @@ export function discoverGrantedItemMeta(args) {
 export function discoverClassChoiceMeta(args) {
     const { sourceDocument, sourceSelection, classSlug, extractSlug, localize, rollOptions } = args;
     const document = sourceDocument;
-    if (document?.type !== "feat" || document.system?.category !== "classfeature") {
+    if (document?.type !== "feat" ||
+        (document.system?.category !== "classfeature" && !isBloodragerTraditionChoice(sourceSelection.uuid, 0))) {
         return [];
     }
     const sourceSlug = extractSlug(sourceDocument) ?? sourceSelection.documentId;
@@ -220,7 +222,8 @@ export function discoverClassChoiceMeta(args) {
                 ruleValue: cloneStructuredEidolonTraditionValue(option),
             }))
             : resolveClassChoiceOptions(rule.choices, activeRollOptions, localize);
-        const isTrainingChoice = looksLikeSkillChoiceRule(rule, options.map((option) => option.value.trim().toLowerCase()), configuredSkills);
+        const isTrainingChoice = !isBloodragerTraditionChoice(sourceSelection.uuid, ruleIndex) &&
+            looksLikeSkillChoiceRule(rule, options.map((option) => option.value.trim().toLowerCase()), configuredSkills);
         const dependencyRefs = sameItemChoiceDependencies(rule, choiceRefs);
         if (options.length > 0 && !isTrainingChoice) {
             result.push({

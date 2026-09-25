@@ -1,5 +1,6 @@
 import { listActorItems } from "../build-state.js";
 import { MODULE_ID } from "../constants.js";
+import { documentIsRisingBloodMagic, RISING_BLOOD_MAGIC_UUID } from "../shared/bloodrager-spellcasting.js";
 import { slugifyName } from "../shared/slug.js";
 import { findSpellcastingEntryForChoice, magusMaxSpellRank, wizardMaxSpellRank } from "../shared/spellcasting.js";
 import { SLOT_IDS } from "../wayfinder/slot-ids.js";
@@ -233,6 +234,9 @@ export function createClericFontEntrySource(actor, draft, divineFont, spellId = 
 }
 export function spellcastingEntryPublication(spellChoice) {
     const destinationKey = spellChoice.destination.key;
+    if (destinationKey.startsWith("bloodrager-")) {
+        return generatedEntryPublication("Pathfinder War of Immortals", "ORC", true);
+    }
     if (destinationKey === "necromancer-occult-dirge") {
         return generatedEntryPublication("Pathfinder Impossible Magic", "ORC", true);
     }
@@ -322,6 +326,15 @@ export function spellLocationId(item) {
 }
 function buildSpellcastingEntrySlots(spellChoice, actor, draft) {
     const preparedCantripSlots = spellChoice.destination.preparedCantripSlots;
+    if (spellChoice.destination.key.startsWith("bloodrager-")) {
+        const level = Math.max(Number(actor.system?.details?.level?.value ?? 1) || 1, draft.targetLevel || 1);
+        const hasRisingBloodMagic = Object.values(draft.selections).some((selection) => selection.uuid === RISING_BLOOD_MAGIC_UUID) ||
+            listActorItems(actor).some(documentIsRisingBloodMagic);
+        return {
+            slot0: makePreparedSlotGroup(2),
+            ...(level >= 4 && hasRisingBloodMagic ? { slot1: makePreparedSlotGroup(1) } : {}),
+        };
+    }
     if (typeof preparedCantripSlots === "number" && Number.isInteger(preparedCantripSlots) && preparedCantripSlots > 0) {
         return {
             slot0: makePreparedSlotGroup(preparedCantripSlots),

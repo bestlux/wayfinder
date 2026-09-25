@@ -113,6 +113,9 @@ export function createSpellChoiceStep(level, title, description, spellChoice, op
         }),
         filters: options.filters ?? {
             itemType: "spell",
+            ...(spellChoice.requiredTraits?.length
+                ? { traits: spellChoice.requiredTraits, traitConjunction: "and" }
+                : {}),
         },
         spellChoice,
     };

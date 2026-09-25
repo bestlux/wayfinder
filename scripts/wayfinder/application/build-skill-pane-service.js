@@ -2,19 +2,21 @@ import { SKILL_LABELS } from "../../constants.js";
 import { resolveSingletonChoiceSkillGrant } from "../../shared/singleton-choice-skill-grants.js";
 import { extractDocumentSlug } from "../../shared/slug.js";
 import { sourceIdOf } from "../../shared/source-id.js";
+import { classArchetypeInitialTrainingProjection } from "../class-archetype/training-policy.js";
 import { compileSkillProgression } from "../domain/skill-progression.js";
 import { buildAdditionalTrainingSkillsBySlotId, projectDraftSkillRanks } from "../domain/skill-rank-projection.js";
 import { projectStaticSkillSourceGrants } from "../domain/static-skill-source-grants.js";
 import { formatSlug } from "../formatting.js";
 import { buildSkillIncreasePane, buildSkillTrainingPane } from "../panes/skill-pane.js";
 import { discoverSingletonChoiceSpecs } from "../singleton-choice/rule-discovery.js";
-import { listPlannedStaticSkillSources } from "./planned-static-skill-source-service.js";
+import { listPlannedStaticSkillSources, resolveClassArchetypeSkillProjectionProfile, } from "./planned-static-skill-source-service.js";
 export async function buildSkillPane(step, draft, deps) {
     if (step.kind !== "skill-training" && step.kind !== "skill-increase") {
         return null;
     }
     const progression = deps.skillProgression ??
         (await compileSkillPaneProgression(draft, {
+            actorDocuments: deps.actorDocuments,
             baseSkillRanks: deps.baseSkillRanks,
             steps: deps.steps ?? [step],
             validSkillSlugs: validSkillSlugs(deps.baseSkillRanks, deps.configSkills),
@@ -48,6 +50,8 @@ export async function projectSkillRanks(draft, upToSlotId, deps) {
             deps.resolveDocument("background"),
             deps.resolveDocument("class"),
         ]);
+        const profile = resolveClassArchetypeSkillProjectionProfile(draft, [], deps.actorDocuments ?? []);
+        documents[3] = classArchetypeInitialTrainingProjection(documents[3], profile);
         for (const slug of documents.flatMap(extractFixedTrainedSkills)) {
             projected[slug] = Math.max(projected[slug] ?? 0, 1);
         }
@@ -63,11 +67,12 @@ export async function compileSkillPaneProgression(draft, deps) {
         deps.resolveDocument("background"),
         deps.resolveDocument("class"),
     ]);
+    const profile = resolveClassArchetypeSkillProjectionProfile(draft, deps.steps ?? [], deps.actorDocuments ?? []);
     const sourceDocuments = [
         { itemType: "background", document: backgroundDocument },
         { itemType: "ancestry", document: ancestryDocument },
         { itemType: "heritage", document: heritageDocument },
-        { itemType: "class", document: classDocument },
+        { itemType: "class", document: classArchetypeInitialTrainingProjection(classDocument, profile) },
     ];
     const plannedStaticSources = listPlannedStaticSkillSources(draft, deps.steps ?? []);
     const additionalStaticSources = plannedStaticSources.filter(({ selection }) => !isSkillDocumentType(selection.itemType));

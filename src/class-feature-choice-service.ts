@@ -1,3 +1,4 @@
+import { applyVindicatorTracklessJourneyDraft } from "./actor-updater/vindicator-choice-application.js";
 import { listActorItems } from "./build-state.js";
 import { MODULE_ID } from "./constants.js";
 import {
@@ -25,7 +26,7 @@ import type {
   SelectionRef,
   StaticGrantOwnerMeta,
 } from "./types.js";
-import { selectedClassArchetypeInternalChoices } from "./wayfinder/class-archetype/registry.js";
+import { profileForSelection, selectedClassArchetypeInternalChoices } from "./wayfinder/class-archetype/registry.js";
 import { materializeClassChoiceSelection } from "./wayfinder/class-choice/selection-value.js";
 
 type ApplyClassFeatureChoiceDependencies = SelectorApplicationDependencies;
@@ -72,6 +73,7 @@ export async function applyClassFeatureChoiceDraft(
       await applyFeatureGroup(actor, draft, steps, deps, preparation.group);
     }
   }
+  await applyVindicatorTracklessJourneyDraft(actor, draft, steps, deps);
 }
 
 async function applyFeatureGroup(
@@ -91,7 +93,11 @@ async function applyFeatureGroup(
 }
 
 function buildFeatureGroupPlan(group: PendingFeatureGroup): SelectorApplicationPlan {
-  const selectorSlotId = group.grantEntries[0]?.step.slotId ?? group.choiceEntries[0]?.step.slotId ?? null;
+  const profile = profileForSelection(group.sourceSelection);
+  const selectorSlotId =
+    profile?.selection.uuid === group.sourceSelection.uuid
+      ? profile.decisionSlotId
+      : (group.grantEntries[0]?.step.slotId ?? group.choiceEntries[0]?.step.slotId ?? null);
   return {
     selectorSelection: group.sourceSelection,
     slotId: selectorSlotId,
@@ -371,7 +377,7 @@ function collectFeatureGroups(draft: DraftState, steps: PendingStep[]): PendingF
       continue;
     }
 
-    if (step.kind === "class-choice" && step.classChoice) {
+    if (step.kind === "class-choice" && step.classChoice && !step.classChoice.profileChoice) {
       const value = draft.classChoices[step.slotId];
       if (!value) {
         continue;

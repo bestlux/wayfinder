@@ -7,6 +7,9 @@ export function spellMatchesChoice(item, choice, entryId) {
         return false;
     }
     const traits = readNormalizedStringList(item.system?.traits?.value);
+    if (choice.requiredTraits?.some((trait) => !traits.includes(trait))) {
+        return false;
+    }
     const isCantrip = traits.includes("cantrip");
     if (choice.cantrip !== isCantrip) {
         return false;

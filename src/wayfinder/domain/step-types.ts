@@ -186,6 +186,8 @@ export interface ClassChoiceMeta {
   sourceUuid: string;
   sourceName: string;
   sourceRuleIndex: number;
+  /** Explicit profile policy for a descriptive choice without a native PF2E ChoiceSet. */
+  profileChoice?: "vindicator-trackless-journey";
   flag: string;
   rollOption?: string | null;
   classSlug: string | null;
@@ -271,6 +273,7 @@ export interface SpellChoiceMeta {
   maxRank: number;
   cantrip: boolean;
   allowedSpellSlugs?: string[];
+  requiredTraits?: string[];
   excludedTraditions?: string[];
   curriculumSpellNames: string[];
   requiresCurriculum?: boolean;
@@ -741,6 +744,9 @@ export function createSpellChoiceStep(
     }),
     filters: options.filters ?? {
       itemType: "spell",
+      ...(spellChoice.requiredTraits?.length
+        ? { traits: spellChoice.requiredTraits, traitConjunction: "and" as const }
+        : {}),
     },
     spellChoice,
   };

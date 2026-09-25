@@ -78,7 +78,7 @@ function buildClassBranchStepsFromFeatures(classFeatures, classSlug, extractSlug
     }
     return steps;
 }
-function buildClassGrantedItemStepsFromFeatures(classFeatures, classSlug) {
+export function buildClassGrantedItemStepsFromFeatures(classFeatures, classSlug) {
     const steps = [];
     const activeRollOptions = new Set();
     if (classSlug) {
@@ -95,7 +95,7 @@ function buildClassGrantedItemStepsFromFeatures(classFeatures, classSlug) {
             continue;
         }
         steps.push(createPickItemStep(grant.itemType === "deity" ? "deity" : "grant-choice", feature.level, grant.itemType === "deity" ? "Choose a deity" : `Choose ${grant.selectorName.toLowerCase()}`, grant.itemType === "deity"
-            ? "Your deity sets your divine skill, favored weapon, sanctification, and divine font."
+            ? "Choose the deity you follow. Your class features determine which of its benefits you gain."
             : `Pick the ${grant.selectorName.toLowerCase()} this class feature hands you.`, grant.filters, {
             slotId: grant.slotId,
             grantSelection: grant,

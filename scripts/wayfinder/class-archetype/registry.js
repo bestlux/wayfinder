@@ -1,6 +1,7 @@
 import { MODULE_ID } from "../../constants.js";
 import { slugifyName } from "../../shared/slug.js";
 import { sourceIdOf } from "../../shared/source-id.js";
+import { BLOODRAGER, VINDICATOR } from "./requested-profiles.js";
 export const STANDARD_CLASS_PATH = "standard";
 const BATTLE_CREED = {
     value: "battle-creed",
@@ -208,7 +209,7 @@ const PALATINE_DETECTIVE = {
     fallbackFeatChoices: [],
     internalClassFeatureChoices: [],
 };
-const PROFILES = [BATTLE_CREED, WAY_OF_THE_SPELLSHOT, PALATINE_DETECTIVE];
+const PROFILES = [BATTLE_CREED, WAY_OF_THE_SPELLSHOT, PALATINE_DETECTIVE, BLOODRAGER, VINDICATOR];
 const PROFILES_BY_VALUE = new Map(PROFILES.map((profile) => [profile.value, profile]));
 export function classArchetypeProfilesForSelector(branch) {
     return PROFILES.filter((profile) => profile.classSlug === branch.classSlug && profile.selectorTag === branch.optionTag);

@@ -1,6 +1,8 @@
 import { slugifyName } from "../shared/slug.js";
+import { projectBloodragerTrainingSource } from "./class-archetype/bloodrager.js";
 import { classArchetypeProfilesForSelector, classArchetypeSlotId, isBattleCreedSelected, STANDARD_CLASS_PATH, } from "./class-archetype/registry.js";
-import { buildClassBranchStepsFromRules, buildClassChoiceStepsFromFeatureSources, buildClassChoiceStepsFromRules, buildClassGrantedItemStepsFromRules, buildClassTrainingStepsFromRules, } from "./class-choice/step-builders.js";
+import { withClassArchetypeInitialTraining } from "./class-archetype/training-policy.js";
+import { buildClassBranchStepsFromRules, buildClassChoiceStepsFromFeatureSources, buildClassChoiceStepsFromRules, buildClassGrantedItemStepsFromFeatures, buildClassGrantedItemStepsFromRules, buildClassTrainingStepsFromRules, } from "./class-choice/step-builders.js";
 import { remainingCreationBoostChoices } from "./domain/boost-rules.js";
 import { createPickItemStep, createSkillTrainingStep, } from "./domain/step-types.js";
 import { matchesChoicePredicateListAgainstRollOptions } from "./rule-data.js";
@@ -18,12 +20,13 @@ export async function buildClassTrainingSteps(params) {
             remainingCreationBoostChoices(effectiveBuildState) > 0)) {
         return [];
     }
-    const effectiveClassDocument = await fetchSelectionDocument(draftClassSelection);
+    const effectiveClassDocument = withClassArchetypeInitialTraining(await fetchSelectionDocument(draftClassSelection), params.classArchetypeProfile);
+    const trainingSources = sourceSelections.map((source) => projectBloodragerTrainingSource(source, params.draft));
     if (!includeBaseClassTraining) {
-        return buildSourceTrainingSteps(sourceSelections, effectiveClassDocument, params);
+        return buildSourceTrainingSteps(trainingSources, effectiveClassDocument, params);
     }
-    const baseSources = sourceSelections.filter((source) => !source.sourceSelection || selectionTakenLevel(source.sourceSelection) <= 1);
-    const laterSources = sourceSelections.filter((source) => !!source.sourceSelection && selectionTakenLevel(source.sourceSelection) > 1);
+    const baseSources = trainingSources.filter((source) => !source.sourceSelection || selectionTakenLevel(source.sourceSelection) <= 1);
+    const laterSources = trainingSources.filter((source) => !!source.sourceSelection && selectionTakenLevel(source.sourceSelection) > 1);
     const sourceTraining = discoverSourceSkillTrainingMeta({
         sources: baseSources,
         localize,
@@ -181,8 +184,11 @@ function possibleClassChoiceRollOptionKeys(slotId) {
     return parts.map((_, index) => parts.slice(index).join("-")).filter(Boolean);
 }
 export async function buildClassGrantedItemSteps(params) {
-    const steps = await buildClassGrantedItemStepsFromRules(params);
-    return steps.filter((step) => !step.grantSelection ||
+    const steps = [
+        ...(await buildClassGrantedItemStepsFromRules(params)),
+        ...buildClassGrantedItemStepsFromFeatures(params.additionalClassFeatures ?? [], params.effectiveClassDocument ? params.extractSlug(params.effectiveClassDocument) : null),
+    ];
+    return dedupeStepsBySlotId(steps).filter((step) => !step.grantSelection ||
         !shouldSkipExistingStep(params.draft.selections[step.slotId], params.readExistingGrantedSelection(step.grantSelection)));
 }
 export async function buildClassChoiceSteps(params) {

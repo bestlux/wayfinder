@@ -371,6 +371,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             const plan = await this._buildRenderPlan(snapshot, draft);
             const effectiveBuildState = await getEffectiveBuildState(this.actor, draft);
             const skillProgression = await compileSkillPaneProgression(draft, {
+                actorDocuments: listActorItems(this.actor),
                 baseSkillRanks: snapshot.skillRanks,
                 steps: plan.steps,
                 resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType, draft),
@@ -1419,6 +1420,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             }));
         }
         const skillPane = await buildSkillPane(step, this.#requireDraft(), {
+            actorDocuments: listActorItems(this.actor),
             baseSkillRanks: inspectActor(this.actor).skillRanks,
             steps: planSteps,
             skillProgression,
@@ -2248,6 +2250,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         const plan = await this.#buildPlan();
         const baseSkillRanks = inspectActor(this.actor).skillRanks;
         const trainingChanged = await synchronizeDependentSkillTrainingChoices({
+            actorDocuments: listActorItems(this.actor),
             state: this.#draftAdjustmentState(),
             steps: plan.steps,
             baseSkillRanks,
@@ -2688,6 +2691,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             const steps = cloneData(plan.steps);
             const effectiveBuildState = await getEffectiveBuildState(this.actor, draft);
             const skillProgression = await compileSkillPaneProgression(draft, {
+                actorDocuments: listActorItems(this.actor),
                 baseSkillRanks: snapshot.skillRanks,
                 steps,
                 resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType, draft),
@@ -3054,8 +3058,17 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                     const entry = findSpellcastingEntryForChoice(this.actor, step.spellChoice);
                     return typeof entry?.id === "string" && actorItemLocationId(item) === entry.id;
                 }));
-        if (alreadyApplied)
-            return true;
+        if (alreadyApplied) {
+            const requiredTraits = step.kind === "spell-choice" ? (step.spellChoice.requiredTraits ?? []) : [];
+            if (requiredTraits.length === 0 ||
+                actorItems.some((item) => {
+                    const traits = item.system?.traits?.value;
+                    return (sourceIdOf(item)?.trim().toLowerCase() === normalizedUuid &&
+                        Array.isArray(traits) &&
+                        requiredTraits.every((trait) => traits.includes(trait)));
+                }))
+                return true;
+        }
         if ((step.kind !== "pick-item" && step.kind !== "class-branch" && step.kind !== "spell-choice") || !step.filters) {
             return true;
         }

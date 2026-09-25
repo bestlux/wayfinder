@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 import { applySafetySmokeCases, gradualBoostsSmokeCases, smokeCases } from "./class-cases.mjs";
+import { classArchetypeExpansionCases } from "./class-archetype-expansion-cases.mjs";
 import { ancestryParagonSection, campaignFeatSmokeCases } from "./campaign-feat-cases.mjs";
 import { freeArchetypeSmokeCases } from "./free-archetype-cases.mjs";
 import { assertIncrementalSmokeCasesSupported, qualifySmokeResult } from "./evidence-contract.mjs";
@@ -22,6 +23,7 @@ const repoRoot = path.resolve(fileURLToPath(new URL("../../", import.meta.url)))
 const defaultArtifactRoot = ".wayfinder-smoke";
 const allSmokeCases = [
   ...smokeCases,
+  ...classArchetypeExpansionCases,
   ...freeArchetypeSmokeCases,
   ...campaignFeatSmokeCases,
   ...gradualBoostsSmokeCases,

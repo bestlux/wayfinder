@@ -5,6 +5,7 @@ import { applySkillProgressionReconciliation, type DraftAdjustmentState } from "
 type SkillDocumentType = "ancestry" | "heritage" | "background" | "class";
 
 export interface SynchronizeDependentSkillTrainingOptions {
+  actorDocuments?: Iterable<unknown>;
   state: DraftAdjustmentState;
   steps: readonly PendingStep[];
   baseSkillRanks: Record<string, number>;
@@ -17,6 +18,7 @@ export async function synchronizeDependentSkillTrainingChoices(
   options: SynchronizeDependentSkillTrainingOptions
 ): Promise<boolean> {
   const progression = await compileSkillPaneProgression(options.state.draft, {
+    actorDocuments: options.actorDocuments,
     baseSkillRanks: options.baseSkillRanks,
     steps: options.steps,
     resolveDocument: options.resolveDocument,

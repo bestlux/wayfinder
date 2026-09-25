@@ -17,7 +17,7 @@ Character creation and leveling in PF2E means juggling class tables, compendium 
 
 - **One flow from level 1 to level up.** Ancestry, heritage, background, class, class branches, feats, boosts, skill increases, languages, spells, and Starting Equipment — all in order, in one window.
 - **Reviewed Starting Equipment.** Build a running-budget cart, use the Adventurer's Pack shortcut, or keep all starting currency under the recipe and sources your GM enabled.
-- **Dedicated class-archetype decisions.** Battle Creed, Way of the Spellshot, and Palatine Detective are guided as complete progression profiles instead of ordinary subclass options.
+- **Five class-archetype paths through level 5.** Battle Creed, Way of the Spellshot, Palatine Detective, Bloodrager, and Vindicator have dedicated choices, training, grants, and spellcasting setup.
 - **Native Free Archetype slots.** When PF2E's Free Archetype variant is enabled, Wayfinder adds separate even-level archetype choices without consuming normal class feats.
 - **Earlier picks filter later ones.** You stop scrolling past feats and options you can't take anyway.
 - **Beginner-friendly, veteran-fast.** Each step explains what you're choosing; experienced players just search, pick, next.
@@ -25,20 +25,13 @@ Character creation and leveling in PF2E means juggling class tables, compendium 
 - **Resumable drafts.** Progress is saved on the actor, so you can leave mid-build and come back later.
 - **Honest about its limits.** When Wayfinder can't model a step confidently, it says so and points you at the right native PF2E control instead of silently guessing.
 
-## What's new in 0.8.6
+## What's new in 0.9.0
 
-- **Existing deities remain selectable.** If a Cleric actor already has an eligible deity such as Wulgren but the class selector is unresolved, Wayfinder now keeps that deity in the picker instead of returning an empty search.
-- **Apply adopts rather than duplicates.** One loose matching deity is linked into the PF2E class-feature grant graph while retaining its actor item identity. Ambiguous, foreign-owned, and non-deity grants still fail closed.
-- **Current PF2E wizard curricula populate correctly.** Quantic Control, Keen Inquiry, Mentalism, Nexian Spaces, and Magical Technologies now expose their curriculum spells instead of blocking the build with a false prompt to choose an arcane school.
-- **Multiclass spell lists stay in their lane.** Supplemental curriculum merging now requires a wizard class feature, so Oracle granted spells and Animist apparition spells cannot become wizard curriculum choices.
-- **Level-1 kits confirm correctly.** The final ledger now accepts the same common level-1 items that the catalogue and prepared purchase path allow, so a cart containing minor healing potions or elixirs no longer fails at **Confirm this kit**.
-- **Level-1 consumables are on the shelf.** A fresh level-1 character can spend the official 15 gp budget on common level-1 items such as minor healing potions and elixirs of life. Higher-level residual and lump-sum currency still follows the separate below-target-level rule.
-- **The whole outfitter, with no blank-scroll wait.** Starting Equipment keeps the complete matching shelf in memory and mounts a bounded adaptive window around the viewport, including additional rows when Wayfinder is made taller.
-- **Useful ways to narrow the shelf.** Results prioritize policy-available and query-relevant gear and can be filtered by availability, level, type, rarity, source, traits, and contextual Titan Mauler eligibility.
-- **Enough detail to make the purchase.** Item previews show enriched rules text, Bulk, and hands, and cart quantities accept direct numeric entry for ammunition and other bulk purchases.
-- **Browse speed without weaker Apply checks.** The catalogue reuses lightweight compendium facts and materializes only mounted rows. Preview and Apply still resolve current PF2E documents, prices, world policy, and authority before anything is purchased or written.
+- **Bloodrager through level 5.** Start with the archetype's Athletics and Medicine training, take its reserved level-2 dedication, and choose an arcane or divine Charisma-based repertoire with an attack cantrip and one other cantrip. Arcana or Religion training includes an already-trained fallback. Optional Rising Blood Magic at level 4 adds one 1st-rank spell and slot.
+- **Vindicator through level 5.** Choose a deity and sanctification, replace Nature training with Religion, and gain Wisdom-based divine Vindicator's Mark with a focus pool. Its dedication uses the level-2 class feat; Trackless Journey offers an urban or natural terrain choice at level 5.
+- **Ordinary class progression remains available.** Both profiles preserve the level-4 class feat, and Standard Barbarian and Ranger paths remain available. Combining Bloodrager or Vindicator with Free Archetype requires a GM decision and manual PF2E setup; that combination is not qualified in this candidate.
 
-Release 0.8.6 is available from the [GitHub release page](https://github.com/bestlux/wayfinder/releases/tag/v0.8.6). Its targeted qualification and package evidence are recorded in the [live smoke log](docs/coverage/beta-readiness-smoke.md#2026-08-26-086-targeted-patch-qualification).
+See the [release page](https://github.com/bestlux/wayfinder/releases/latest) for the latest published version and the [live smoke log](docs/coverage/beta-readiness-smoke.md) for exact qualification. Bloodrager and Vindicator progression from level 6 onward, and optional Vindicator domain-spell feats, are outside the qualified scope.
 
 ## Installation
 
@@ -82,9 +75,13 @@ Wayfinder has a verified guided path from a blank level-1 character through leve
 
 Five representative profiles are verified further, to level 10: a martial (Fighter), a prepared caster (Wizard), a spontaneous caster (Bard), a bounded caster (Magus), and a skill-heavy class (Investigator). One class — Fighter — is verified to level 20. Those runs check more than a clean apply: the ability-boost milestones at levels 10, 15, and 20 each spend four boosts into PF2E's native build data, skill increases land at the expected proficiency ranks through legendary, and caster pickers offer the spell ranks their progression allows. High-level *caster* play above level 10 is not yet proven — spell ranks 6 through 9 and the level-19/20 caster milestones remain unverified.
 
-Three class-archetype profiles are guided through level 5. Battle Creed handles its Doctrine replacement, Battle Harbinger Dedication, alternate prepared progression, Battle Font, and grant fallbacks. Way of the Spellshot replaces Gunslinger's Way, applies Spellshot Dedication, and builds its Intelligence-based arcane spellbook. Palatine Detective replaces Investigator Methodology, persists its skill choice, creates separate divine and occult innate cantrips, and applies its dedication. Other class archetypes remain filtered until they have the same end-to-end support.
+Five class-archetype profiles are guided through level 5. Battle Creed handles its Doctrine replacement, Battle Harbinger Dedication, alternate prepared progression, Battle Font, and grant fallbacks. Way of the Spellshot replaces Gunslinger's Way, applies Spellshot Dedication, and builds its Intelligence-based arcane spellbook. Palatine Detective replaces Investigator Methodology, persists its skill choice, creates separate divine and occult innate cantrips, and applies its dedication. Bloodrager replaces Barbarian training, supplies its dedication and Charisma-based arcane or divine repertoire, and supports optional Rising Blood Magic at level 4. Vindicator replaces Ranger training, guides deity and sanctification, supplies divine Wisdom-based Vindicator's Mark and its dedication, and records Trackless Journey's level-5 terrain choice.
+
+Bloodrager and Vindicator are scoped through level 5 with Free Archetype disabled. Their level-6-and-later progression and optional Vindicator domain-spell feats are not qualified. Eight other class archetypes remain filtered and are listed in the [class-archetype roadmap](docs/roadmap.md#parallel-breadth--class-archetypes).
 
 PF2E's Free Archetype variant is guided through its own even-level feat lane, applying choices to `archetype-2`, `archetype-4`, and later native slots.
+
+Those separate slots still exist for Bloodrager and Vindicator, but the required level-2 class dedication engages the normal dedication lockout and blocks the tested unrelated Free Archetype dedication. These combinations are not qualified. Agree on any exception with your GM and configure it manually on the PF2E sheet; Wayfinder does not automatically waive the lockout.
 
 Both that lane and ordinary class-feat slots share one archetype legality check. Wayfinder verifies that a new dedication is not a duplicate and not your own class's multiclass dedication, that an existing dedication is not still owed two feats from its archetype, that an archetype feat belongs to a family you actually have a dedication for, and that supported skill-rank prerequisites are met — counting choices you have only drafted, not just applied. This is stricter than PF2E's own picker, which checks only whether you have any dedication at all.
 
@@ -109,7 +106,7 @@ These stay in the native PF2E sheet for now, and Wayfinder will tell you so when
 - Necromancer and Runesmith base-class paths
 - Daily preparations
 - Archetype requirements or benefits that only exist as prose — access entries, campaign permission, feat/class-feature/attribute prerequisites, manual follow-on setup, and dedications whose own text rewrites the lockout rule
-- Class archetypes other than Battle Creed, Way of the Spellshot, and Palatine Detective
+- Class archetypes other than the five named above; Bloodrager/Vindicator progression beyond level 5, their Free Archetype combinations, and optional Vindicator domain-spell feats
 - Retroactive spell reconciliation for characters levelled outside Wayfinder — their earlier spell choices are treated as settled, and Wayfinder says so
 - Retraining and table-specific campaign systems
 

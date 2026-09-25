@@ -11,6 +11,7 @@ import type {
   SelectionRef,
   SkillTrainingMeta,
 } from "../../types.js";
+import { isBloodragerTraditionChoice } from "../class-archetype/bloodrager.js";
 import { formatSlug } from "../formatting.js";
 import { isRecord, matchesChoicePredicateAgainstRollOptions, toNonEmptyString } from "../rule-data.js";
 import { registeredInitialClassSkillChoices } from "./initial-skill-choice-registry.js";
@@ -298,7 +299,10 @@ export function discoverClassChoiceMeta(args: {
 }): ClassChoiceMeta[] {
   const { sourceDocument, sourceSelection, classSlug, extractSlug, localize, rollOptions } = args;
   const document = sourceDocument as NamedDocumentLike | null | undefined;
-  if (document?.type !== "feat" || document.system?.category !== "classfeature") {
+  if (
+    document?.type !== "feat" ||
+    (document.system?.category !== "classfeature" && !isBloodragerTraditionChoice(sourceSelection.uuid, 0))
+  ) {
     return [];
   }
 
@@ -347,11 +351,13 @@ export function discoverClassChoiceMeta(args: {
           ruleValue: cloneStructuredEidolonTraditionValue(option),
         }))
       : resolveClassChoiceOptions(rule.choices, activeRollOptions, localize);
-    const isTrainingChoice = looksLikeSkillChoiceRule(
-      rule,
-      options.map((option) => option.value.trim().toLowerCase()),
-      configuredSkills
-    );
+    const isTrainingChoice =
+      !isBloodragerTraditionChoice(sourceSelection.uuid, ruleIndex) &&
+      looksLikeSkillChoiceRule(
+        rule,
+        options.map((option) => option.value.trim().toLowerCase()),
+        configuredSkills
+      );
 
     const dependencyRefs = sameItemChoiceDependencies(rule, choiceRefs);
     if (options.length > 0 && !isTrainingChoice) {

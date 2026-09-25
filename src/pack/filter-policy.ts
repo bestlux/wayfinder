@@ -668,6 +668,9 @@ function matchesSpellChoiceContext(entry: PackIndexEntry, packId: string, step: 
   const isAdditionallyAllowedByUuid = additionalAllowedSpellUuids.has(entryUuid.toLowerCase());
   const traits = extractEntryTraits(entry);
   const isCantrip = traits.includes("cantrip");
+  if (spellChoice.requiredTraits?.some((trait) => !traits.includes(trait))) {
+    return false;
+  }
   if (spellChoice.cantrip !== isCantrip) {
     return false;
   }

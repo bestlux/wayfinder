@@ -2,6 +2,7 @@ import { compileSkillPaneProgression } from "./build-skill-pane-service.js";
 import { applySkillProgressionReconciliation } from "./draft-adjustment-service.js";
 export async function synchronizeDependentSkillTrainingChoices(options) {
     const progression = await compileSkillPaneProgression(options.state.draft, {
+        actorDocuments: options.actorDocuments,
         baseSkillRanks: options.baseSkillRanks,
         steps: options.steps,
         resolveDocument: options.resolveDocument,

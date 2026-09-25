@@ -8,16 +8,20 @@ import type {
   PendingStep,
   SelectionRef,
 } from "../types.js";
+import { projectBloodragerTrainingSource } from "./class-archetype/bloodrager.js";
 import {
+  type ClassArchetypeProfile,
   classArchetypeProfilesForSelector,
   classArchetypeSlotId,
   isBattleCreedSelected,
   STANDARD_CLASS_PATH,
 } from "./class-archetype/registry.js";
+import { withClassArchetypeInitialTraining } from "./class-archetype/training-policy.js";
 import {
   buildClassBranchStepsFromRules,
   buildClassChoiceStepsFromFeatureSources,
   buildClassChoiceStepsFromRules,
+  buildClassGrantedItemStepsFromFeatures,
   buildClassGrantedItemStepsFromRules,
   buildClassTrainingStepsFromRules,
   type ClassFeatureSelectionSource,
@@ -34,6 +38,8 @@ import { selectionTakenLevel } from "./selection-level.js";
 import { discoverSourceSkillTrainingMeta, type SkillTrainingSourceContext } from "./skill-training/source-discovery.js";
 
 interface BuildClassTrainingStepsParams {
+  draft?: DraftState;
+  classArchetypeProfile?: ClassArchetypeProfile | null;
   draftClassSelection: SelectionRef | null;
   includeBaseClassTraining?: boolean;
   sourceSelections?: SkillTrainingSourceContext[];
@@ -72,6 +78,7 @@ interface BuildClassBranchStepsParams {
 interface BuildClassGrantedItemStepsParams {
   draft: DraftState;
   effectiveClassDocument: unknown | null;
+  additionalClassFeatures?: ClassFeatureSelectionSource[];
   targetLevel: number;
   fetchSelectionDocument: (selection: SelectionRef) => Promise<unknown | null>;
   extractSlug: (document: unknown) => string | null;
@@ -127,15 +134,19 @@ export async function buildClassTrainingSteps(params: BuildClassTrainingStepsPar
     return [];
   }
 
-  const effectiveClassDocument = await fetchSelectionDocument(draftClassSelection);
+  const effectiveClassDocument = withClassArchetypeInitialTraining(
+    await fetchSelectionDocument(draftClassSelection),
+    params.classArchetypeProfile
+  );
+  const trainingSources = sourceSelections.map((source) => projectBloodragerTrainingSource(source, params.draft));
   if (!includeBaseClassTraining) {
-    return buildSourceTrainingSteps(sourceSelections, effectiveClassDocument, params);
+    return buildSourceTrainingSteps(trainingSources, effectiveClassDocument, params);
   }
 
-  const baseSources = sourceSelections.filter(
+  const baseSources = trainingSources.filter(
     (source) => !source.sourceSelection || selectionTakenLevel(source.sourceSelection) <= 1
   );
-  const laterSources = sourceSelections.filter(
+  const laterSources = trainingSources.filter(
     (source) => !!source.sourceSelection && selectionTakenLevel(source.sourceSelection) > 1
   );
   const sourceTraining = discoverSourceSkillTrainingMeta({
@@ -334,8 +345,14 @@ function possibleClassChoiceRollOptionKeys(slotId: string): string[] {
 }
 
 export async function buildClassGrantedItemSteps(params: BuildClassGrantedItemStepsParams): Promise<PendingStep[]> {
-  const steps = await buildClassGrantedItemStepsFromRules(params);
-  return steps.filter(
+  const steps = [
+    ...(await buildClassGrantedItemStepsFromRules(params)),
+    ...buildClassGrantedItemStepsFromFeatures(
+      params.additionalClassFeatures ?? [],
+      params.effectiveClassDocument ? params.extractSlug(params.effectiveClassDocument) : null
+    ),
+  ];
+  return dedupeStepsBySlotId(steps).filter(
     (step) =>
       !step.grantSelection ||
       !shouldSkipExistingStep(

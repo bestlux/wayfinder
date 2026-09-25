@@ -3,7 +3,9 @@ import {
   type ClassArchetypeProfile,
   classArchetypeProfile,
   inspectRetainedClassArchetypeProfileDocuments,
+  retainedClassArchetypeProfileForDocuments,
 } from "../class-archetype/registry.js";
+import { isVindicatorTracklessMeta, VINDICATOR_TRACKLESS_SLOT } from "../class-archetype/vindicator.js";
 
 const FOUNDATION_ITEM_TYPES = new Set(["ancestry", "heritage", "background", "class"]);
 
@@ -55,6 +57,28 @@ export function resolveActiveClassArchetypeProfile(
   );
   if (hasActiveDecision) return null;
   return retainedClassArchetypeProfile(draft, steps, actorDocuments);
+}
+
+/** Fixed class training remains active on levels without a new profile-specific choice. */
+export function resolveClassArchetypeSkillProjectionProfile(
+  draft: DraftState,
+  steps: readonly PendingStep[],
+  actorDocuments: Iterable<unknown>
+): ClassArchetypeProfile | null {
+  const planned = activePlannedClassArchetypeProfile(draft, steps);
+  if (planned) return planned;
+  if (
+    steps.some((step) => step.kind === "class-archetype") ||
+    Object.values(draft.selections).some((selection) => selection.itemType === "class")
+  ) {
+    return null;
+  }
+  const retained = retainedClassArchetypeProfileForDocuments(actorDocuments);
+  return retained &&
+    (Object.keys(draft.classArchetypeChoices).length === 0 ||
+      draft.classArchetypeChoices[retained.decisionSlotId] === retained.value)
+    ? retained
+    : null;
 }
 
 export function retainActiveClassArchetypeChoices(draft: DraftState, steps: readonly PendingStep[]): void {
@@ -157,6 +181,19 @@ function activePlanReferencesProjectedProfileGrant(
   targetLevel: number,
   steps: readonly PendingStep[]
 ): boolean {
+  if (
+    profile.value === "vindicator" &&
+    targetLevel >= 5 &&
+    steps.some(
+      (step) =>
+        step.kind === "class-choice" &&
+        step.level === 5 &&
+        step.slotId === VINDICATOR_TRACKLESS_SLOT &&
+        isVindicatorTracklessMeta(step.classChoice)
+    )
+  ) {
+    return true;
+  }
   const activeProfileSourceUuids = new Set([
     profile.selection.uuid,
     ...profile.projectedFeatGrants

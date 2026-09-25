@@ -1,8 +1,10 @@
 import { resolveSingletonChoiceSkillGrant } from "../shared/singleton-choice-skill-grants.js";
-import { listPlannedStaticSkillSources } from "../wayfinder/application/planned-static-skill-source-service.js";
+import { listPlannedStaticSkillSources, resolveClassArchetypeSkillProjectionProfile, } from "../wayfinder/application/planned-static-skill-source-service.js";
+import { classArchetypeInitialTrainingProjection } from "../wayfinder/class-archetype/training-policy.js";
 import { projectStaticSkillSourceGrants } from "../wayfinder/domain/static-skill-source-grants.js";
 const FOUNDATION_ITEM_TYPES = new Set(["ancestry", "heritage", "background", "class"]);
 export function projectPreparedSkillSources(args) {
+    const profile = resolveClassArchetypeSkillProjectionProfile(args.draft, args.steps, args.actorDocuments ?? []);
     const sourcesByUuid = new Map();
     for (const entry of args.sources) {
         if (!sourcesByUuid.has(entry.selection.uuid))
@@ -23,7 +25,9 @@ export function projectPreparedSkillSources(args) {
         if (!plannedSource && !retainedFoundation)
             continue;
         const staticGrants = projectStaticSkillSourceGrants({
-            document: entry.source,
+            document: entry.selection.itemType === "class"
+                ? classArchetypeInitialTrainingProjection(entry.source, profile)
+                : entry.source,
             sourceId: entry.selection.uuid,
             validSkillSlugs: args.validSkillSlugs,
         });

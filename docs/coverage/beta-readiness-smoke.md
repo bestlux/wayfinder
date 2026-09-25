@@ -1,6 +1,6 @@
 # Beta Readiness Foundry Smoke
 
-Last updated: 2026-09-11.
+Last updated: 2026-09-24.
 
 This is the launch-readiness live smoke layer for Wayfinder. It complements unit tests by exercising the built module inside a real Foundry world against live PF2E compendia.
 
@@ -46,6 +46,20 @@ The companion static class audit checks the maintained smoke matrix against the 
 ```powershell
 npm run audit:classes
 ```
+
+## 2026-09-24 0.9.0 Bloodrager and Vindicator qualification
+
+Issue #7's bounded implementation adds Bloodrager and Vindicator through level 5. The other eight PF2E 8.5.0 class-archetype profiles remain in the [separate expansion backlog](../roadmap.md#parallel-breadth--class-archetypes). Issue #22 was closed after its existing draft-persistence and Apply-readiness behavior passed its six focused suites (189 tests).
+
+On Foundry 14.367 / PF2E 8.5.0 / Wayfinder 0.9.0, `.wayfinder-smoke/issue7-090-direct-incremental-final-20260924` records **12 passing scoped executions**: Standard Barbarian and Ranger; direct and incremental Bloodrager with both traditions; direct and incremental Rising Blood Magic through its level-4 first-rank spell; and direct and incremental Vindicator with both terrain choices. Each successful path verifies forced dedication placement, retained level-4 class feats, training, spell entries and destinations, draft cleanup, no extra native dialogs, and a zero-step rerun. The Vindicator cases additionally verify its deity, focus pool, and persisted terrain.
+
+The same run includes one extra Champion Dedication scenario that times out. An earlier broad run also failed Ancient Elf/Necromancer Dedication with a prepared skill drift. Serving the previous release's unchanged `HEAD` scripts through a local browser route reproduced both failures on PF2E 8.5.0 (`.wayfinder-smoke/issue7-prior-release-extra-probe-20260924`). The candidate initially also rerouted Champion Dedication's deity; that regression was corrected by limiting new generic grant discovery to the exact active profile. The corrected candidate retains the previous release's deity route and timeout. These two extra scenarios remain unresolved compatibility findings and are outside the frozen WF-080-51 matrix; this release does not claim they pass.
+
+Free Archetype probing in `.wayfinder-smoke/issue7-090-free-archetype-ready-20260924` rejected a second level-2 dedication for both profiles. Their forced dedication occupies the native class slot and enforces the ordinary two-follow-up restriction. There is no automatic GM waiver. This is a documented manual-setup boundary, **not successful Free Archetype qualification**; invalid dual-dedication fixtures were removed. Existing unrelated Free Archetype paths remain in the frozen release matrix. Optional Vindicator domain-spell feats and Bloodrager/Vindicator progression beyond level 5 also remain unqualified.
+
+Repository validation passed `npm run check`: 197 suites / 2,214 tests, formatting, lint, generated scripts, both type checks, and generated policy reports. The release-only physical-grant source check passed against the unchanged clean PF2E 8.4.1 pin. Independent review fixed retained Vindicator provenance and level-5 authority failures, verified safe serialization of existing Foundry items, and verified the scoped dedication-route correction. Final review reported no outstanding P0-P2 defects in the scoped implementation.
+
+The exact committed release candidate still requires the full WF-080-51 coordinator and evidence-bound package. Its planned artifact directory is `.wayfinder-smoke/wf51-090-issue7-candidate`; the coordinator's final qualification and package evidence determine release readiness. Supplemental profile evidence above does not substitute for that gate.
 
 ## 2026-09-11 0.8.11 Pistolero Picker Hotfix
 

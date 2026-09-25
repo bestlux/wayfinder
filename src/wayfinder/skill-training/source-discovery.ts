@@ -37,6 +37,7 @@ export interface SkillTrainingSourceContext {
   sourceItemType: TrainingSourceItemType;
   sourceSelection: SelectionRef | null;
   sourceDocument: unknown | null;
+  trainingOverride?: Pick<SkillTrainingMeta, "fixedSkills" | "fixedLores" | "choiceRules" | "loreChoices">;
 }
 
 interface DerivedTrainingMeta {
@@ -59,6 +60,13 @@ export function discoverSourceSkillTrainingMeta(args: {
   const loreChoices: SkillTrainingLoreChoiceMeta[] = [];
 
   for (const source of args.sources) {
+    if (source.trainingOverride) {
+      fixedSkills.push(...source.trainingOverride.fixedSkills);
+      fixedLores.push(...source.trainingOverride.fixedLores);
+      choiceRules.push(...source.trainingOverride.choiceRules);
+      loreChoices.push(...source.trainingOverride.loreChoices);
+      continue;
+    }
     const document = source.sourceDocument as TrainingSourceDocumentLike | null;
     if (!document) {
       continue;

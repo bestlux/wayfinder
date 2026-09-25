@@ -1,6 +1,6 @@
 # Wayfinder Roadmap
 
-Updated 2026-08-26 after the 0.8.6 actor-owned deity reconciliation correction. This is the forward-looking product plan; shipped behavior and exact evidence live in the [coverage matrices](coverage/) and [release smoke log](coverage/beta-readiness-smoke.md).
+Updated 2026-09-24 for the unpublished 0.9.0 Bloodrager/Vindicator candidate. This is the forward-looking product plan; implementation scope and exact qualification evidence live in the [coverage matrices](coverage/) and [release smoke log](coverage/beta-readiness-smoke.md).
 
 ## Where Wayfinder stands
 
@@ -8,10 +8,10 @@ Release 0.8.0 added reviewed Starting Equipment to Wayfinder's existing guided c
 
 The common mechanical path now includes ancestry, heritage, background, class, supported class branches and class archetypes, feats, boosts, skills, languages, spells, Free Archetype, Ancestry Paragon and other PF2E campaign feat sections, Gradual Ability Boosts, and creation-time Starting Equipment. Archetype legality is checked against projected draft state where PF2E data is structured. Existing characters can be mapped and their spell progression audited without mutation. Adjacent 0.8.0 player-trust hardening also projects PF2E-prepared fixed ancestry flaws before later ability and skill choices (issue #32).
 
-GMs currently have world settings for Equipment Policy, supplemental Item packs, and the spell-rarity ceiling. Players and GMs can open the Feedback panel from Wayfinder or Foundry settings. With issue #23 completed in 0.7.2, the remaining open work is:
+GMs currently have world settings for Equipment Policy, supplemental Item packs, and the spell-rarity ceiling. Players and GMs can open the Feedback panel from Wayfinder or Foundry settings. Related issue status and current scope:
 
-- [#22 — allow temporarily invalid drafts and gate Apply](https://github.com/bestlux/wayfinder/issues/22) supplied the shared readiness and review foundation now used by the 0.8.0 cart. Its remaining scope is broader draft-editing UX and bookkeeping, not an apply-correctness prerequisite.
-- [#7 — class archetypes at level 1](https://github.com/bestlux/wayfinder/issues/7) remains a parallel, profile-by-profile expansion track.
+- [#22 — allow temporarily invalid drafts and gate Apply](https://github.com/bestlux/wayfinder/issues/22) is closed. Its implemented spell-overselection and Apply-readiness behavior also supplies the foundation used by the 0.8.0 cart. Broader draft-editing UX can be considered separately.
+- [#7 — class archetypes at level 1](https://github.com/bestlux/wayfinder/issues/7) is scoped for completion with Bloodrager and Vindicator through level 5 without Free Archetype. The 0.9.0 candidate adds them to Battle Creed, Way of the Spellshot, and Palatine Detective; publication and issue closure remain subject to final qualification. The eight other profiles stay separate in the expansion backlog below.
 
 The largest remaining product gaps are a satisfying character-completion chapter and high-level caster evidence beyond level 10. The apply path now prepares supported authority and sources before writing, executes named per-actor phases, verifies outcomes, and retains the draft when a phase fails.
 
@@ -108,7 +108,7 @@ An unresolved Cleric deity selector now keeps one eligible actor-owned deity vis
 
 Keep further equipment work evidence-led and bounded: funding-aware affordability filtering, row-level quick-buy, clearer kit-content disclosure, and measured convergence of sorting and filtering across equipment, feat, spell, Language, and Lore surfaces. Item images remain deferred unless a new live profile demonstrates that they preserve the catalogue's interaction, DOM, network, and long-task budgets. Quick Equipment Packages remain a separate, fully reviewed slice rather than an implied partial feature.
 
-### 0.9.0 — Identity Epilogue and completion
+### Next product arc — Identity Epilogue and completion
 
 Add an optional final chapter for name, pronouns, age, appearance, backstory, edicts and anathema, deity notes, portrait, and prototype token. Write to PF2E and Foundry fields the sheet already owns. File selection is in scope; image editing is not.
 
@@ -116,7 +116,17 @@ Replace the current anticlimactic empty state with a reviewable completion summa
 
 ### Parallel breadth — class archetypes
 
-Continue #7 without blocking the main release train. Each profile needs complete planning, apply, rerun, and live evidence; a `class-archetype` tag alone is not a support claim. Prioritize shared training/grant substrate, then the most requested and structurally regular profiles.
+The 0.9.0 candidate rounds out the requested Bloodrager and Vindicator paths through level 5. Bloodrager covers replacement training, Arcana/Religion and fallback training, two Charisma-based cantrips including a spell attack, its level-2 dedication, and optional Rising Blood Magic's first-rank spell at level 4. Vindicator covers Religion replacing Nature, deity and sanctification, divine Wisdom-based Vindicator's Mark and focus setup, its level-2 dedication, and the level-5 Trackless Journey terrain choice. Progression from level 6 onward and optional Vindicator domain-spell feats remain unqualified.
+
+The two new profiles are scoped with Free Archetype disabled. Separate Free Archetype slots still exist, but their mandatory class dedication engages the normal dedication lockout; the tested level-2 unrelated dedication cannot be selected under that policy. Combining these profiles with Free Archetype requires a GM decision and manual PF2E setup and is not qualified. No automatic lockout waiver or new GM exception setting is included in this scope.
+
+The exact PF2E 8.5.0 source has thirteen level-1 class-archetype profiles. Five are registered for guided level-1-to-5 paths; the following eight remain separate, unsupported work:
+
+- Light Mortar Innovation and Avenger: next candidates for profile expansion after their individual mechanics are scoped.
+- Runelord, Warrior of Legend, and Seneschal: separate class-rewrite projects.
+- Flexible Spell Preparation, Wellspring Magic, and Elemental Magic: separate cross-class spellcasting projects.
+
+These entries are the explicit remaining-profile backlog, not claims that #7 delivers every archetype. Each future profile needs complete planning, Apply, incremental advancement, rerun, and live evidence before it is exposed. Do not infer support from the `class-archetype` tag alone.
 
 ## What 1.0 means
 

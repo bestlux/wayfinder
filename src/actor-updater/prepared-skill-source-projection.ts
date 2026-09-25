@@ -1,7 +1,11 @@
 import type { EmbeddedItemSource } from "../shared/actor-model.js";
 import { resolveSingletonChoiceSkillGrant } from "../shared/singleton-choice-skill-grants.js";
 import type { DraftState, PendingStep, SelectionRef } from "../types.js";
-import { listPlannedStaticSkillSources } from "../wayfinder/application/planned-static-skill-source-service.js";
+import {
+  listPlannedStaticSkillSources,
+  resolveClassArchetypeSkillProjectionProfile,
+} from "../wayfinder/application/planned-static-skill-source-service.js";
+import { classArchetypeInitialTrainingProjection } from "../wayfinder/class-archetype/training-policy.js";
 import type { SkillSourceGrant } from "../wayfinder/domain/skill-progression.js";
 import { projectStaticSkillSourceGrants } from "../wayfinder/domain/static-skill-source-grants.js";
 
@@ -23,7 +27,9 @@ export function projectPreparedSkillSources(args: {
   readonly steps: readonly PendingStep[];
   readonly sources: readonly PreparedSkillSourceRecord[];
   readonly validSkillSlugs: ReadonlySet<string>;
+  readonly actorDocuments?: Iterable<unknown>;
 }): PreparedSkillSourceProjection {
+  const profile = resolveClassArchetypeSkillProjectionProfile(args.draft, args.steps, args.actorDocuments ?? []);
   const sourcesByUuid = new Map<string, PreparedSkillSourceRecord>();
   for (const entry of args.sources) {
     if (!sourcesByUuid.has(entry.selection.uuid)) sourcesByUuid.set(entry.selection.uuid, entry);
@@ -48,7 +54,10 @@ export function projectPreparedSkillSources(args: {
       FOUNDATION_ITEM_TYPES.has(entry.selection.itemType) && selectedFoundationUuid === undefined;
     if (!plannedSource && !retainedFoundation) continue;
     const staticGrants = projectStaticSkillSourceGrants({
-      document: entry.source,
+      document:
+        entry.selection.itemType === "class"
+          ? classArchetypeInitialTrainingProjection(entry.source, profile)
+          : entry.source,
       sourceId: entry.selection.uuid,
       validSkillSlugs: args.validSkillSlugs,
     });

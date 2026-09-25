@@ -1,9 +1,10 @@
+import { applyVindicatorTracklessJourneyDraft } from "./actor-updater/vindicator-choice-application.js";
 import { listActorItems } from "./build-state.js";
 import { MODULE_ID } from "./constants.js";
 import { applySelectorApplication, assertExistingSelectorGrantAuthority, assertManualStaticGrantReconciliation, assertManualStaticGrantSourcesAvailable, buildSelectorSelection, createManualStaticGrantedItems, readManualStaticItemGrants, stripSelectedSelectorEntries, } from "./selector-application.js";
 import { allowsActorOwnedGrantAdoption, usesNativeGrantItemCreation } from "./shared/grant-creation-policy.js";
 import { itemMatchesSourceId } from "./shared/source-id.js";
-import { selectedClassArchetypeInternalChoices } from "./wayfinder/class-archetype/registry.js";
+import { profileForSelection, selectedClassArchetypeInternalChoices } from "./wayfinder/class-archetype/registry.js";
 import { materializeClassChoiceSelection } from "./wayfinder/class-choice/selection-value.js";
 export async function applyClassFeatureChoiceDraft(actor, draft, steps, deps) {
     const groups = collectFeatureGroups(draft, steps);
@@ -23,6 +24,7 @@ export async function applyClassFeatureChoiceDraft(actor, draft, steps, deps) {
             await applyFeatureGroup(actor, draft, steps, deps, preparation.group);
         }
     }
+    await applyVindicatorTracklessJourneyDraft(actor, draft, steps, deps);
 }
 async function applyFeatureGroup(actor, draft, steps, deps, group) {
     const plan = buildFeatureGroupPlan(group);
@@ -32,7 +34,10 @@ async function applyFeatureGroup(actor, draft, steps, deps, group) {
     });
 }
 function buildFeatureGroupPlan(group) {
-    const selectorSlotId = group.grantEntries[0]?.step.slotId ?? group.choiceEntries[0]?.step.slotId ?? null;
+    const profile = profileForSelection(group.sourceSelection);
+    const selectorSlotId = profile?.selection.uuid === group.sourceSelection.uuid
+        ? profile.decisionSlotId
+        : (group.grantEntries[0]?.step.slotId ?? group.choiceEntries[0]?.step.slotId ?? null);
     return {
         selectorSelection: group.sourceSelection,
         slotId: selectorSlotId,
@@ -247,7 +252,7 @@ function collectFeatureGroups(draft, steps) {
             groups.set(key, group);
             continue;
         }
-        if (step.kind === "class-choice" && step.classChoice) {
+        if (step.kind === "class-choice" && step.classChoice && !step.classChoice.profileChoice) {
             const value = draft.classChoices[step.slotId];
             if (!value) {
                 continue;

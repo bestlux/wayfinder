@@ -241,6 +241,7 @@ export async function buildOptionContext(deps: OptionContextDependencies): Promi
     deps.skillProgression ??
     ((deps.steps?.length ?? 0) > 0
       ? await compileSkillPaneProgression(effectiveDraft, {
+          actorDocuments: actorItems,
           baseSkillRanks: deps.skillRanks ?? {},
           steps: deps.steps,
           resolveDocument: (itemType) => deps.resolveDocument(itemType),

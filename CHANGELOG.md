@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.0 - 2026-09-24
+
+- Added guided Bloodrager and Vindicator class-archetype paths through level 5, including their replacement training, forced level-2 dedications, and ordinary level-4 class feats.
+- Bloodrager guides Arcana or Religion tradition selection, replacement skill training when needed, and two Charisma-based cantrips with at least one spell-attack cantrip. Rising Blood Magic also guides its level-4 spell and single 1st-rank slot.
+- Vindicator guides deity and sanctification choices, replaces Nature training with Religion, supplies divine Wisdom-based Vindicator's Mark and its focus entry, and saves the level-5 choice between natural and urban Trackless Journey terrain.
+- Both profiles preserve their choices when reopening and advancing an existing character. Combining them with Free Archetype requires manual GM setup because their mandatory dedication still enforces the usual restriction on taking another dedication. Other class archetypes and spell progression beyond the tested level-5 paths remain outside this release's support claim.
+
 ## 0.8.11 - 2026-09-11
 
 - Restored Way of the Pistolero in the Gunslinger's Way picker. Its required Deception or Intimidation choice is guided through skill training and saved when applying the character.

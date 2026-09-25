@@ -20,6 +20,8 @@ import type {
   SelectionRef,
   SkillTrainingChoiceMeta,
 } from "../types.js";
+import { resolveActiveClassArchetypeProfile } from "../wayfinder/application/planned-static-skill-source-service.js";
+import { withClassArchetypeInitialTraining } from "../wayfinder/class-archetype/training-policy.js";
 import { materializeClassChoiceSelection } from "../wayfinder/class-choice/selection-value.js";
 import { stripManualSystemItemGrants } from "./manual-system-item-grants.js";
 import { EXPLICIT_GRANT_SOURCE_ITEM_TYPES } from "./selection-constants.js";
@@ -45,8 +47,12 @@ export async function createEmbeddedSource(
     return null;
   }
 
-  const source = document.toObject();
+  let source = document.toObject();
   if (selection.itemType === "class" && draft) {
+    source = withClassArchetypeInitialTraining(
+      source,
+      resolveActiveClassArchetypeProfile(draft, steps, [])
+    ) as EmbeddedItemSource;
     deps.stripPreselectedClassFeatureEntries(source, draft, steps);
     deps.stripPreselectedClassBranchEntries(source, draft, steps);
   }
@@ -253,7 +259,12 @@ function applyPendingClassChoices(
   }
 
   for (const step of steps) {
-    if (step.kind !== "class-choice" || !step.classChoice || step.classChoice.sourceUuid !== selection.uuid) {
+    if (
+      step.kind !== "class-choice" ||
+      !step.classChoice ||
+      step.classChoice.profileChoice ||
+      step.classChoice.sourceUuid !== selection.uuid
+    ) {
       continue;
     }
 

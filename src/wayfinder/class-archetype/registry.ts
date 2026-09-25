@@ -2,6 +2,7 @@ import { MODULE_ID } from "../../constants.js";
 import { slugifyName } from "../../shared/slug.js";
 import { sourceIdOf } from "../../shared/source-id.js";
 import type { ClassArchetypeMeta, ClassBranchMeta, DraftState, SelectionRef, StepFilters } from "../../types.js";
+import { BLOODRAGER, VINDICATOR } from "./requested-profiles.js";
 
 export const STANDARD_CLASS_PATH = "standard";
 
@@ -21,6 +22,7 @@ export interface ClassArchetypeProfile {
   selection: Omit<SelectionRef, "slotId">;
   reservedClassFeatLevels: number[];
   dedicationName: string | null;
+  initialTraining?: { fixedSkills: string[]; additional?: number };
   projectedFeatGrants: Array<{
     minimumLevel: number;
     selection: Omit<SelectionRef, "slotId">;
@@ -263,7 +265,7 @@ const PALATINE_DETECTIVE: ClassArchetypeProfile = {
   internalClassFeatureChoices: [],
 };
 
-const PROFILES = [BATTLE_CREED, WAY_OF_THE_SPELLSHOT, PALATINE_DETECTIVE] as const;
+const PROFILES = [BATTLE_CREED, WAY_OF_THE_SPELLSHOT, PALATINE_DETECTIVE, BLOODRAGER, VINDICATOR] as const;
 const PROFILES_BY_VALUE = new Map<string, ClassArchetypeProfile>(PROFILES.map((profile) => [profile.value, profile]));
 
 export function classArchetypeProfilesForSelector(branch: ClassBranchMeta): ClassArchetypeProfile[] {

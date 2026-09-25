@@ -4,8 +4,10 @@ import { fetchSelectionDocument } from "../../pack/access.js";
 import { parseCompendiumItemUuid } from "../../shared/compendium.js";
 import { extractDocumentSlug } from "../../shared/slug.js";
 import { sourceIdOf } from "../../shared/source-id.js";
-import { projectedClassArchetypeFeatSelections, reservedClassFeatSlotIds, selectedClassArchetypeSelection, withExistingClassArchetypeChoice, } from "../class-archetype/registry.js";
+import { BLOODRAGER_DEDICATION_UUID } from "../class-archetype/bloodrager.js";
+import { activeClassArchetypeProfile, projectedClassArchetypeFeatSelections, reservedClassFeatSlotIds, selectedClassArchetypeSelection, withExistingClassArchetypeChoice, } from "../class-archetype/registry.js";
 import { buildClassArchetypeFallbackFeatSteps, buildClassArchetypeSteps } from "../class-archetype/service.js";
+import { buildVindicatorTracklessJourneySteps } from "../class-archetype/vindicator.js";
 import { buildClassBranchSteps, buildClassChoiceSteps, buildClassFeatSteps, buildClassGrantedItemSteps, buildClassSkillFeatSteps, buildClassTrainingSteps, } from "../class-choice-service.js";
 import { projectDraftSkillRanks } from "../domain/skill-rank-projection.js";
 import { findDraftSelectionByType } from "../draft-decisions.js";
@@ -109,6 +111,8 @@ export async function buildWayfinderAppPlan(args, deps = DEFAULT_DEPS) {
                 },
             ];
             return deps.buildClassTrainingSteps({
+                draft: classArchetypeDraft,
+                classArchetypeProfile: activeClassArchetypeProfile(classArchetypeDraft, listActorItems(args.actor)),
                 draftClassSelection: effectiveClassSelection,
                 includeBaseClassTraining: !!draftedClassSelection,
                 sourceSelections,
@@ -205,26 +209,34 @@ export async function buildWayfinderAppPlan(args, deps = DEFAULT_DEPS) {
             fetchSelectionDocument: deps.fetchSelectionDocument,
             extractSlug: deps.extractDocumentSlug,
             readExistingGrantedSelection: (grant) => deps.readExistingGrantedSelection(args.actor, grant),
+            additionalClassFeatures: (await resolveSelectedClassFeatureChoiceSources(classArchetypeDraft, args, deps)).filter((source) => source.selection.uuid === selectedClassArchetypeSelection(classArchetypeDraft)?.uuid),
         }),
         buildClassChoiceSteps: async (_planSnapshot, planDraft, targetLevel) => {
             const additionalClassFeatures = await resolveSelectedClassFeatureChoiceSources(classArchetypeDraft, args, deps);
-            return deps.buildClassChoiceSteps({
-                draft: classArchetypeDraft,
-                effectiveClassDocument: await args.resolveDocument("class"),
-                effectiveDeityDocument: await args.resolveDocument("deity"),
-                additionalClassFeatures,
-                activeRollOptions: await resolveProjectedRuleRollOptions(planDraft, additionalClassFeatures.map((source) => ({
-                    sourceItemType: "classfeature",
-                    sourceSelection: source.selection,
-                    sourceDocument: source.document,
-                    sourceLevel: source.level,
-                })), args, deps),
-                targetLevel,
-                fetchSelectionDocument: deps.fetchSelectionDocument,
-                extractSlug: deps.extractDocumentSlug,
-                localize: args.localize,
-                readExistingClassChoiceSelection: (choice) => deps.readExistingClassChoiceSelection(args.actor, choice),
-            });
+            return [
+                ...(await deps.buildClassChoiceSteps({
+                    draft: classArchetypeDraft,
+                    effectiveClassDocument: await args.resolveDocument("class"),
+                    effectiveDeityDocument: await args.resolveDocument("deity"),
+                    additionalClassFeatures,
+                    activeRollOptions: await resolveProjectedRuleRollOptions(planDraft, additionalClassFeatures.map((source) => ({
+                        sourceItemType: "classfeature",
+                        sourceSelection: source.selection,
+                        sourceDocument: source.document,
+                        sourceLevel: source.level,
+                    })), args, deps),
+                    targetLevel,
+                    fetchSelectionDocument: deps.fetchSelectionDocument,
+                    extractSlug: deps.extractDocumentSlug,
+                    localize: args.localize,
+                    readExistingClassChoiceSelection: (choice) => deps.readExistingClassChoiceSelection(args.actor, choice),
+                })),
+                ...buildVindicatorTracklessJourneySteps({
+                    draft: classArchetypeDraft,
+                    actorItems: listActorItems(args.actor),
+                    targetLevel,
+                }),
+            ];
         },
         buildSpellChoiceSteps: async (planSnapshot, _planDraft, targetLevel) => {
             const effectiveClassDocument = await args.resolveDocument("class");
@@ -498,9 +510,19 @@ function isGrantChoiceSourceFeatSelection(selection) {
     return selection.itemType === "feat" && selection.featType !== "classfeature";
 }
 async function resolveSpellChoiceClassFeatureDocuments(draft, args, deps) {
-    const selections = resolveSelectedClassFeatureSelections(draft, args.actor);
+    const selections = [
+        ...resolveSelectedClassFeatureSelections(draft, args.actor),
+        ...projectedClassArchetypeFeatSelections(draft, draft.targetLevel).filter((selection) => selection.uuid === BLOODRAGER_DEDICATION_UUID),
+        ...Object.values(draft.selections).filter((selection) => selection.uuid === "Compendium.pf2e.feats-srd.Item.QRqs9NIWeh0ONRSP"),
+    ];
     const documents = await Promise.all(selections.map((selection) => deps.fetchSelectionDocument(selection)));
-    return documents.filter((document) => document !== null);
+    const ownedDedication = listActorItems(args.actor).find((item) => sourceIdOf(item) === BLOODRAGER_DEDICATION_UUID);
+    const ownedRisingMagic = listActorItems(args.actor).find((item) => sourceIdOf(item) === "Compendium.pf2e.feats-srd.Item.QRqs9NIWeh0ONRSP");
+    return [
+        ...(ownedDedication ? [ownedDedication] : []),
+        ...(ownedRisingMagic ? [ownedRisingMagic] : []),
+        ...documents.filter((document) => document !== null),
+    ];
 }
 async function resolveRegisteredDynamicChoices(draft, args, deps) {
     const selections = resolveSelectedClassFeatureSelections(draft, args.actor);
@@ -510,7 +532,10 @@ async function resolveRegisteredDynamicChoices(draft, args, deps) {
 async function resolveSelectedClassFeatureChoiceSources(draft, args, deps) {
     const effectiveClassDocument = await args.resolveDocument("class");
     const classSlug = effectiveClassDocument ? deps.extractDocumentSlug(effectiveClassDocument) : null;
-    const directSelections = resolveSelectedClassFeatureSelections(draft, args.actor);
+    const directSelections = dedupeSelectionsByUuid([
+        ...resolveSelectedClassFeatureSelections(draft, args.actor),
+        ...projectedClassArchetypeFeatSelections(draft, draft.targetLevel).filter((selection) => selection.uuid === BLOODRAGER_DEDICATION_UUID),
+    ]);
     const directDocuments = await Promise.all(directSelections.map((selection) => deps.fetchSelectionDocument(selection)));
     const directSources = directSelections.flatMap((selection, index) => {
         const document = directDocuments[index];

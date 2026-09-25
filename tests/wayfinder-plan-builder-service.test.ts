@@ -64,6 +64,7 @@ describe("wayfinder plan builder service", () => {
     };
     const grantSources: string[] = [];
     const additionalClassFeatureSources: string[] = [];
+    const additionalClassGrantSources: string[] = [];
 
     await buildWayfinderAppPlan(
       {
@@ -77,6 +78,7 @@ describe("wayfinder plan builder service", () => {
       {
         buildWayfinderPlan: async (receivedSnapshot, receivedDraft, deps) => {
           await deps.buildGrantChoiceSteps(receivedSnapshot, receivedDraft, 2);
+          await deps.buildClassGrantedItemSteps(receivedSnapshot, receivedDraft, 2);
           await deps.buildClassChoiceSteps(receivedSnapshot, receivedDraft, 2);
           return { recommendedTargetLevel: 2, targetLevel: 2, steps: [] };
         },
@@ -92,7 +94,12 @@ describe("wayfinder plan builder service", () => {
         buildLanguageChoiceSteps: async () => [],
         buildClassArchetypeSteps: async () => [],
         buildClassBranchSteps: async () => [],
-        buildClassGrantedItemSteps: async () => [],
+        buildClassGrantedItemSteps: async (params) => {
+          additionalClassGrantSources.push(
+            ...(params.additionalClassFeatures ?? []).map((source) => source.selection.uuid)
+          );
+          return [];
+        },
         buildClassChoiceSteps: async (params) => {
           additionalClassFeatureSources.push(...params.additionalClassFeatures.map((source) => source.selection.uuid));
           return [];
@@ -127,6 +134,9 @@ describe("wayfinder plan builder service", () => {
         "Compendium.pf2e.classfeatures.Item.Eidolon",
       ])
     );
+    // Dedication-owned deity/eidolon grants keep their original grant-choice
+    // identity and parent ownership rather than becoming base-class grants.
+    expect(additionalClassGrantSources).toEqual([]);
   });
 
   it("assembles the actor-facing plan builders with resolved documents and actor readers", async () => {

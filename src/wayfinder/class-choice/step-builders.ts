@@ -151,7 +151,7 @@ function buildClassBranchStepsFromFeatures(
   return steps;
 }
 
-function buildClassGrantedItemStepsFromFeatures(
+export function buildClassGrantedItemStepsFromFeatures(
   classFeatures: ClassFeatureSelectionSource[],
   classSlug: string | null
 ): PickItemStep[] {
@@ -178,7 +178,7 @@ function buildClassGrantedItemStepsFromFeatures(
         feature.level,
         grant.itemType === "deity" ? "Choose a deity" : `Choose ${grant.selectorName.toLowerCase()}`,
         grant.itemType === "deity"
-          ? "Your deity sets your divine skill, favored weapon, sanctification, and divine font."
+          ? "Choose the deity you follow. Your class features determine which of its benefits you gain."
           : `Pick the ${grant.selectorName.toLowerCase()} this class feature hands you.`,
         grant.filters,
         {

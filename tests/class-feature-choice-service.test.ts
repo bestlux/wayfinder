@@ -991,7 +991,10 @@ describe("class-feature-choice-service", () => {
     ]);
   });
 
-  it("reconciles an existing granted deity before updating the selector feature", async () => {
+  it.each([
+    { sourceId: "Compendium.pf2e.classfeatures.Item.deity-champion", slotId: "deity-level-1" },
+    { sourceId: "Compendium.pf2e.classfeatures.Item.QOOwC3S41CKGkxlN", slotId: "class-archetype-hunters-edge-level-1" },
+  ])("reconciles an existing deity while preserving its selector slot $slotId", async ({ sourceId, slotId }) => {
     const draft = createEmptyDraft(1);
     draft.selections["deity-level-1"] = selection("pf2e.deities", "iomedae", "Iomedae", "deity");
 
@@ -1009,7 +1012,7 @@ describe("class-feature-choice-service", () => {
             type: "feat",
             flags: {
               core: {
-                sourceId: "Compendium.pf2e.classfeatures.Item.deity-champion",
+                sourceId,
               },
               pf2e: {
                 rulesSelections: {
@@ -1065,7 +1068,10 @@ describe("class-feature-choice-service", () => {
       deleteEmbeddedDocuments: vi.fn(async () => []),
     };
 
-    await applyClassFeatureChoiceDraft(actor as any, draft, [championDeityStep()], {
+    const step = championDeityStep();
+    step.grantSelection!.selectorUuid = sourceId;
+    step.grantSelection!.selectorDocumentId = sourceId.split(".").at(-1)!;
+    await applyClassFeatureChoiceDraft(actor as any, draft, [step], {
       createEmbeddedSource: async () => null,
       fetchSelectionDocument: async () => null,
     });
@@ -1093,7 +1099,7 @@ describe("class-feature-choice-service", () => {
           },
         ],
         "flags.pf2e.rulesSelections.deity": "Compendium.pf2e.deities.Item.iomedae",
-        "flags.wayfinder-pf2e.slotId": "deity-level-1",
+        "flags.wayfinder-pf2e.slotId": slotId,
       },
     ]);
     expect(actor.updateEmbeddedDocuments).toHaveBeenNthCalledWith(

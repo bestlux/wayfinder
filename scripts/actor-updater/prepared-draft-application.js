@@ -13,6 +13,7 @@ import { findSpellcastingEntryForChoice } from "../shared/spellcasting.js";
 import { captureObservedClassGrantItems } from "../wayfinder/application/class-grant-projection-service.js";
 import { listPlannedStaticSkillSources, resolveActiveClassArchetypeProfile, synchronizeRetainedClassArchetypeChoice, } from "../wayfinder/application/planned-static-skill-source-service.js";
 import { inspectRetainedClassArchetypeProfileDocuments } from "../wayfinder/class-archetype/registry.js";
+import { assertVindicatorTracklessChoice } from "../wayfinder/class-archetype/vindicator.js";
 import { assertPreparedClassGrantPlanMatches, reconcilePreparedClassGrants, } from "../wayfinder/domain/class-grant-reconciliation.js";
 import { compileSkillProgression, skillProgressionInputFingerprint, } from "../wayfinder/domain/skill-progression.js";
 import { assertDraftBackedStepsReady, evaluateWayfinderDraftReadiness, evaluateWayfinderStep, WayfinderDraftNotReadyError, } from "../wayfinder/domain/step-evaluation.js";
@@ -164,6 +165,7 @@ export async function prepareDraftApplication(actor, draftInput, stepsInput, dep
     assertClassArchetypeStaticGrantGraph(actor, draft, steps, sources);
     const validSkillSlugs = buildValidSkillSlugs(actor, deps.validSkillSlugs);
     const skillSourceProjection = projectPreparedSkillSources({
+        actorDocuments: listActorItems(actor),
         draft,
         steps,
         sources: sources.skillSources,
@@ -1192,7 +1194,13 @@ async function validatePersistenceTargets(actor, draft, steps, sources) {
             await validateRuleTarget(sourceSelection(step.slotId, step.singletonChoice), step.singletonChoice, sources);
         }
         if (step.kind === "class-choice" && step.classChoice && draft.classChoices[step.slotId]) {
-            await validateRuleTarget(sourceSelection(step.slotId, step.classChoice), step.classChoice, sources);
+            if (step.classChoice.profileChoice) {
+                const document = await sources.fetchSelectionDocument(sourceSelection(step.slotId, step.classChoice));
+                assertVindicatorTracklessChoice(step, draft.classChoices[step.slotId], document?.toObject(), activeProfile?.value, draft.targetLevel, listActorItems(actor));
+            }
+            else {
+                await validateRuleTarget(sourceSelection(step.slotId, step.classChoice), step.classChoice, sources);
+            }
         }
         if (step.kind === "pick-item" && step.flagChoice && draft.selections[step.slotId]) {
             await validateRuleTarget(sourceSelection(step.slotId, step.flagChoice), step.flagChoice, sources);

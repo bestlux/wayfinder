@@ -1,6 +1,6 @@
 # Beta Readiness Foundry Smoke
 
-Last updated: 2026-09-24.
+Last updated: 2026-09-25.
 
 This is the launch-readiness live smoke layer for Wayfinder. It complements unit tests by exercising the built module inside a real Foundry world against live PF2E compendia.
 
@@ -47,9 +47,9 @@ The companion static class audit checks the maintained smoke matrix against the 
 npm run audit:classes
 ```
 
-## 2026-09-24 0.9.0 Bloodrager and Vindicator qualification
+## 2026-09-25 Release 0.9.0 Bloodrager and Vindicator
 
-Issue #7's bounded implementation adds Bloodrager and Vindicator through level 5. The other eight PF2E 8.5.0 class-archetype profiles remain in the [separate expansion backlog](../roadmap.md#parallel-breadth--class-archetypes). Issue #22 was closed after its existing draft-persistence and Apply-readiness behavior passed its six focused suites (189 tests).
+Issue #7 closed after 0.9.0 shipped Bloodrager and Vindicator through level 5. The other eight PF2E 8.5.0 class-archetype profiles remain in [follow-up #39](https://github.com/bestlux/wayfinder/issues/39) and the [separate expansion backlog](../roadmap.md#parallel-breadth--class-archetypes). Issue #22 was closed after its existing draft-persistence and Apply-readiness behavior passed its six focused suites (189 tests).
 
 On Foundry 14.367 / PF2E 8.5.0 / Wayfinder 0.9.0, `.wayfinder-smoke/issue7-090-direct-incremental-final-20260924` records **12 passing scoped executions**: Standard Barbarian and Ranger; direct and incremental Bloodrager with both traditions; direct and incremental Rising Blood Magic through its level-4 first-rank spell; and direct and incremental Vindicator with both terrain choices. Each successful path verifies forced dedication placement, retained level-4 class feats, training, spell entries and destinations, draft cleanup, no extra native dialogs, and a zero-step rerun. The Vindicator cases additionally verify its deity, focus pool, and persisted terrain.
 
@@ -59,7 +59,9 @@ Free Archetype probing in `.wayfinder-smoke/issue7-090-free-archetype-ready-2026
 
 Repository validation passed `npm run check`: 197 suites / 2,214 tests, formatting, lint, generated scripts, both type checks, and generated policy reports. The release-only physical-grant source check passed against the unchanged clean PF2E 8.4.1 pin. Independent review fixed retained Vindicator provenance and level-5 authority failures, verified safe serialization of existing Foundry items, and verified the scoped dedication-route correction. Final review reported no outstanding P0-P2 defects in the scoped implementation.
 
-The exact committed release candidate still requires the full WF-080-51 coordinator and evidence-bound package. Its planned artifact directory is `.wayfinder-smoke/wf51-090-issue7-candidate`; the coordinator's final qualification and package evidence determine release readiness. Supplemental profile evidence above does not substitute for that gate.
+The exact candidate `2e4672e8ed11202e53b37f9cc01994be8a1bbb84` passed the full WF-080-51 coordinator in `.wayfinder-smoke/wf51-090-issue7-candidate`: all 11 children, 55 character executions / 54 unique scenarios, GM/player authority, English/Chinese flows, recovery, and all 15 aggregate rows on Foundry 14.367 / PF2E 8.5.0 / Wayfinder 0.9.0. Run `19ed1186-46ca-4d5f-a758-784f283d5d43` completed at `2026-09-25T04:52:19.541Z` without candidate drift. The 12 scoped profile passes above supplement this frozen matrix.
+
+Tag `v0.9.0` and [release workflow `36152812046`](https://github.com/bestlux/wayfinder/actions/runs/36152812046) published that exact candidate. All three jobs passed, including Foundry dry-run and registration. The 289-entry public ZIP matches `dist/qualified-0.9.0-issue7` and GitHub's asset digest at SHA-256 `801f999779b27015e51266575847ef6a2ba689a30ea65074aa080802108714fc`. Unauthenticated downloads verified identical versioned/latest manifests, matching archive inventories, and the version-specific download URL; published notes match the qualified notes. The public Foundry page lists 0.9.0 and its version-specific manifest. [Issue #7's resolution comment](https://github.com/bestlux/wayfinder/issues/7#issuecomment-5834835132) and closure followed that verification. Master advances only with this documentation record after the immutable release tag.
 
 ## 2026-09-11 0.8.11 Pistolero Picker Hotfix
 
@@ -423,6 +425,6 @@ These cases first applied a level 1 actor, reopened Wayfinder against that exist
 - Direct feat options and tag-based class-branch options with embedded `ChoiceSet` rules are shown only when every embedded choice is covered by a guided follow-up lane; predicate-backed branch steps keep their curated options visible. Supported feat-owned and selected class-feature follow-ups are preselected before PF2E native rules run.
 - Standalone filtered no-grant `ChoiceSet` rules are guided through flag-choice steps when filters resolve to supported item types and required actor placeholders are known from draft context. Same-item class-choice option predicates are guided when later choices depend on earlier same-source class-choice roll options.
 - Remaining embedded-`ChoiceSet` caveats are selected-item and equipment predicates, dynamic flags-path choices, and cross-item dependency graphs.
-- Battle Creed, Way of the Spellshot, and Palatine Detective are guided through the dedicated class-archetype lane. Other class-archetype branch options stay filtered until a complete profile is registered.
+- Battle Creed, Way of the Spellshot, Palatine Detective, Bloodrager, and Vindicator are guided through the dedicated class-archetype lane through level 5. Bloodrager/Vindicator Free Archetype combinations require manual GM setup. Other class-archetype branch options stay filtered until a complete profile is registered.
 - Free Archetype uses PF2E's separate `archetype` feat group. Wayfinder checks duplicate and own-class dedications, the ordinary two-feat dedication lockout, resolved archetype-family membership, and supported skill-rank prerequisites against projected draft state. Access entries, prose prerequisites, unresolved families, campaign permission, and feats whose text rewrites the lockout remain visible GM-confirmation boundaries.
 - Daily preparations, ongoing purchasing, selling, crafting, rune transfer, retraining, and table-specific campaign systems remain PF2E-native/manual. Starting acquisition is guided only for an economically eligible new or GM-authorized replacement character; foreign or unresolved wealth produces a zero-write handoff.

@@ -29,7 +29,7 @@ Character creation and leveling in PF2E means juggling class tables, compendium 
 
 - **Bloodrager through level 5.** Start with the archetype's Athletics and Medicine training, take its reserved level-2 dedication, and choose an arcane or divine Charisma-based repertoire with an attack cantrip and one other cantrip. Arcana or Religion training includes an already-trained fallback. Optional Rising Blood Magic at level 4 adds one 1st-rank spell and slot.
 - **Vindicator through level 5.** Choose a deity and sanctification, replace Nature training with Religion, and gain Wisdom-based divine Vindicator's Mark with a focus pool. Its dedication uses the level-2 class feat; Trackless Journey offers an urban or natural terrain choice at level 5.
-- **Ordinary class progression remains available.** Both profiles preserve the level-4 class feat, and Standard Barbarian and Ranger paths remain available. Combining Bloodrager or Vindicator with Free Archetype requires a GM decision and manual PF2E setup; that combination is not qualified in this candidate.
+- **Ordinary class progression remains available.** Both profiles preserve the level-4 class feat, and Standard Barbarian and Ranger paths remain available. Combining Bloodrager or Vindicator with Free Archetype requires a GM decision and manual PF2E setup; that combination is not qualified in this release.
 
 See the [release page](https://github.com/bestlux/wayfinder/releases/latest) for the latest published version and the [live smoke log](docs/coverage/beta-readiness-smoke.md) for exact qualification. Bloodrager and Vindicator progression from level 6 onward, and optional Vindicator domain-spell feats, are outside the qualified scope.
 

@@ -4,7 +4,7 @@ This document defines how Wayfinder guides PF2E class archetypes without mixing 
 
 ## Current scope and evidence
 
-The unpublished 0.9.0 candidate registers five profiles with guided scope through level 5:
+Wayfinder 0.9.0 registers five profiles with guided scope through level 5:
 
 - Cleric **Battle Creed** replaces Doctrine, reserves the level-2 class feat for Battle Harbinger Dedication, changes prepared-spell progression, creates Battle Font, and handles skill/static-grant fallbacks.
 - Gunslinger **Way of the Spellshot** replaces Gunslinger's Way, reserves the level-2 class feat for Spellshot Dedication, projects its class-feature and dedication training, and creates an Intelligence-based arcane spellbook with four cantrips and two open cantrip preparation positions.
@@ -12,7 +12,7 @@ The unpublished 0.9.0 candidate registers five profiles with guided scope throug
 - Barbarian **Bloodrager** replaces Instinct and initial skill training, reserves the level-2 class feat for Bloodrager Dedication, and creates an arcane or divine Charisma-based repertoire. Its two cantrips include at least one spell attack; optional Rising Blood Magic adds one 1st-rank spell and slot at level 4.
 - Ranger **Vindicator** replaces Hunter's Edge and Nature training, guides deity and sanctification, supplies divine Wisdom-based Vindicator's Mark and focus setup, reserves its level-2 dedication, and persists Trackless Journey's urban/natural choice at level 5.
 
-Bloodrager/Vindicator support is scoped through level 5 with Free Archetype disabled. Their Free Archetype combinations, advancement from level 6 onward, and optional Vindicator domain-spell feats remain outside the qualified scope. The other eight profiles remain intentionally filtered and are tracked in the [roadmap](../roadmap.md#parallel-breadth--class-archetypes). Current candidate results and publication status belong in the [release smoke log](../coverage/beta-readiness-smoke.md); the dated results below predate these two additions.
+Bloodrager/Vindicator support is scoped through level 5 with Free Archetype disabled. Their Free Archetype combinations, advancement from level 6 onward, and optional Vindicator domain-spell feats remain outside the qualified scope. The other eight profiles remain intentionally filtered and are tracked in [#39](https://github.com/bestlux/wayfinder/issues/39) and the [roadmap](../roadmap.md#parallel-breadth--class-archetypes). Qualification and publication evidence is recorded in the [release smoke log](../coverage/beta-readiness-smoke.md); the dated results below predate these two additions.
 
 The release matrix passed live apply/rerun smoke on 2026-07-11 against Foundry VTT 14.364 and PF2E 8.3.0: 35 direct level-1-to-5 cases plus seven incremental existing-character cases, with 42 passing, zero classified/manual, and zero failed. Direct and incremental cases cover all three registered profiles; Battle Creed also retains its skill and static-grant fallback cases. Artifact: `.wayfinder-smoke/release-0.4.0-full-4`.
 
@@ -138,7 +138,7 @@ Free Archetype is implemented as a separate variant progression path with these 
 
 The lane intentionally stops short of a second archetype rules engine. Shared structured legality now blocks duplicate and own-class dedications, enforces the ordinary two-feat lockout, requires resolved follow-up family membership, and checks supported skill-rank prerequisites against projected draft state. Access, prose prerequisites, unresolved families, campaign permission, and feats whose text changes the ordinary lockout remain visible GM-confirmation boundaries. The class-archetype registry and projected-feat context inform the picker, but a registered class-archetype profile does not move its forced dedication into a Free Archetype slot.
 
-Bloodrager and Vindicator combined with Free Archetype are not qualified. Their mandatory level-2 class dedication participates in the ordinary dedication lockout, so the attempted level-2 Archer Dedication fixture was blocked. The presence of separate slots does not establish a legal completed combination. This candidate requires a GM decision and manual PF2E setup for that combination; it adds neither a blanket class-archetype exemption nor a GM waiver setting.
+Bloodrager and Vindicator combined with Free Archetype are not qualified. Their mandatory level-2 class dedication participates in the ordinary dedication lockout, so the attempted level-2 Archer Dedication fixture was blocked. The presence of separate slots does not establish a legal completed combination. Wayfinder 0.9.0 requires a GM decision and manual PF2E setup for that combination; it adds neither a blanket class-archetype exemption nor a GM waiver setting.
 
 ## Acceptance gates
 
@@ -165,7 +165,7 @@ Live release gates completed on 2026-07-11:
 5. Retain Battle Creed's both-skills-trained, actor-owned Toughness, and same-draft Shielded Fortune conflict cases.
 6. Run Free Archetype separately so its additional slots cannot mask class-feat or class-archetype regressions.
 
-The historical baseline artifacts are `.wayfinder-smoke/release-0.5.0-baseline-final` and `.wayfinder-smoke/release-0.5.0-free-archetype-final`. The 0.8.0 exact-candidate matrix and six `.wayfinder-smoke/release-0.7.3-rc-*` artifacts are also historical baselines. Bloodrager/Vindicator qualification adds separate direct, incremental, training-fallback, Rising Blood Magic, and Standard-path scenarios in `tools/foundry-smoke/class-archetype-expansion-cases.mjs`; it does not change WF-080-51's frozen equipment matrix. Their attempted Free Archetype combinations did not qualify and remain a manual GM setup boundary. Record final outcomes in the release smoke log before publishing the candidate.
+The historical baseline artifacts are `.wayfinder-smoke/release-0.5.0-baseline-final` and `.wayfinder-smoke/release-0.5.0-free-archetype-final`. The 0.8.0 exact-candidate matrix and six `.wayfinder-smoke/release-0.7.3-rc-*` artifacts are also historical baselines. Bloodrager/Vindicator qualification adds separate direct, incremental, training-fallback, Rising Blood Magic, and Standard-path scenarios in `tools/foundry-smoke/class-archetype-expansion-cases.mjs`; it does not change WF-080-51's frozen equipment matrix. Their attempted Free Archetype combinations did not qualify and remain a manual GM setup boundary. Final outcomes are recorded in the release smoke log.
 
 ## Adding another class archetype
 

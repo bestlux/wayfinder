@@ -1,4 +1,5 @@
 import { cloneData } from "../../shared/cloning.js";
+import { secureRandomUuid } from "../../shared/cryptography.js";
 import { materializedPhysicalItemSize } from "./equipment-size-preparation-service.js";
 export const MAX_BROWSE_PHYSICAL_PREPARATION_ENTRIES = 12;
 export function isBrowsePhysicalBatchSafeSource(source) {
@@ -121,7 +122,7 @@ function transientId() {
     const mint = record(randomId).randomID;
     if (typeof mint === "function")
         return mint(16);
-    return crypto.randomUUID().replace(/-/g, "").slice(0, 16);
+    return secureRandomUuid().replace(/-/g, "").slice(0, 16);
 }
 function record(value) {
     return value !== null && typeof value === "object" ? value : {};

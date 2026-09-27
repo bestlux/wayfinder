@@ -1,4 +1,5 @@
 import { MODULE_ID } from "../../constants.js";
+import { secureRandomUuid } from "../../shared/cryptography.js";
 import { WayfinderGmCommandAuthorityError } from "./gm-command-authority.js";
 
 const SOCKET_CHANNEL = `module.${MODULE_ID}`;
@@ -82,7 +83,7 @@ export async function coordinateEquipmentAuthorityOperation<T>(
   if (authorityUserId === currentUserId) return enqueueLocal<T>(operation, liveRequester);
   if (!registered) throw new Error("Wayfinder equipment authority socket is not ready.");
 
-  const correlationId = crypto.randomUUID();
+  const correlationId = secureRandomUuid();
   return new Promise<T>((resolve, reject) => {
     const timeout = setTimeout(() => {
       pending.delete(correlationId);

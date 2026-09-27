@@ -1,5 +1,6 @@
 import { MODULE_ID } from "../../constants.js";
 import { cloneData } from "../../shared/cloning.js";
+import { secureRandomUuid } from "../../shared/cryptography.js";
 import { resolveUuid } from "../../shared/foundry-compat.js";
 import { acquisitionPolicyMaterialMatches, createAcquisitionPolicySnapshot, invalidateAcquisitionReview, normalizeAcquisitionDraft, recordPlannedClassGrants, } from "../domain/acquisition-draft.js";
 import { mintAcquisitionLineId } from "../domain/acquisition-identity.js";
@@ -1704,7 +1705,7 @@ function transientId() {
     const mint = record(randomId).randomID;
     if (typeof mint === "function")
         return mint(16);
-    return crypto.randomUUID().replace(/-/g, "").slice(0, 16);
+    return secureRandomUuid().replace(/-/g, "").slice(0, 16);
 }
 function fingerprintPreparedPrice(price) {
     const text = canonicalJson({ version: 1, price });

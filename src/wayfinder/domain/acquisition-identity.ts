@@ -1,3 +1,4 @@
+import { secureRandomUuid, sha256Hex } from "../../shared/cryptography.js";
 import { acquisitionPreAggregationMaterial, aggregateRequestedQuantity } from "./acquisition-aggregation.js";
 import { normalizeAcquisitionDraft } from "./acquisition-draft.js";
 import {
@@ -73,7 +74,7 @@ export interface PreparedAcquisitionIdentityPlanV1 {
 
 const preparedIdentityPlans = new WeakSet<object>();
 
-export function mintAcquisitionIdentitySeed(randomUuid: () => string = defaultRandomUuid): AcquisitionIdentitySeedV1 {
+export function mintAcquisitionIdentitySeed(randomUuid: () => string = secureRandomUuid): AcquisitionIdentitySeedV1 {
   const suffixes = [randomUuid(), randomUuid(), randomUuid()];
   if (new Set(suffixes.map((value) => String(value).trim().toLowerCase())).size !== 3) {
     throw new Error("Acquisition identity generation returned duplicate identities.");
@@ -84,7 +85,7 @@ export function mintAcquisitionIdentitySeed(randomUuid: () => string = defaultRa
   return { draftId, batchId, manifestId };
 }
 
-export function mintAcquisitionLineId(randomUuid: () => string = defaultRandomUuid): string {
+export function mintAcquisitionLineId(randomUuid: () => string = secureRandomUuid): string {
   return prefixedOpaqueId("wf-line", randomUuid());
 }
 
@@ -392,8 +393,7 @@ function deepFreezeData<T>(value: T): T {
 
 async function digest(prefix: string, value: unknown): Promise<string> {
   const bytes = new TextEncoder().encode(canonicalJson(value));
-  const hash = await crypto.subtle.digest("SHA-256", bytes);
-  const hex = [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  const hex = await sha256Hex(bytes);
   return `${prefix}-sha256-${hex}`;
 }
 
@@ -423,12 +423,6 @@ function prefixedOpaqueId(prefix: string, value: string): string {
     throw new TypeError("Acquisition identity generation returned an invalid opaque value.");
   }
   return `${prefix}-${normalized}`;
-}
-
-function defaultRandomUuid(): string {
-  if (typeof crypto.randomUUID !== "function")
-    throw new Error("Secure acquisition identity generation is unavailable.");
-  return crypto.randomUUID();
 }
 
 function safeAdd(left: number, right: number): number {

@@ -1,6 +1,7 @@
 import { MODULE_ID } from "../../constants.js";
 import type { EmbeddedItemSource } from "../../shared/actor-model.js";
 import { cloneData } from "../../shared/cloning.js";
+import { secureRandomUuid } from "../../shared/cryptography.js";
 import { resolveUuid } from "../../shared/foundry-compat.js";
 import type { DraftState } from "../../types.js";
 import {
@@ -2163,7 +2164,7 @@ function transientId(): string {
   const randomId = record(record(globalThis).foundry).utils;
   const mint = record(randomId).randomID;
   if (typeof mint === "function") return (mint as (length: number) => string)(16);
-  return crypto.randomUUID().replace(/-/g, "").slice(0, 16);
+  return secureRandomUuid().replace(/-/g, "").slice(0, 16);
 }
 
 function fingerprintPreparedPrice(price: AcquisitionPriceSnapshot): string {

@@ -1,4 +1,5 @@
 import { getEquipmentWorldPolicySetting } from "../../settings.js";
+import { secureRandomUuid } from "../../shared/cryptography.js";
 import type { DraftState, ModuleState, PendingStep } from "../../types.js";
 import { findCurrencyCartAggregationTargets } from "../domain/acquisition-aggregation.js";
 import {
@@ -140,8 +141,8 @@ const DEFAULT_DEPS: StartingEquipmentCommandDependencies = {
   revokeJudgment: revokeTrustedEquipmentPolicyJudgment,
   declineRequest: saveTrustedEquipmentPolicyRequestDecline,
   createRequest: createEquipmentPolicyRequest,
-  mintRequestId: () => crypto.randomUUID(),
-  mintJudgmentId: () => crypto.randomUUID(),
+  mintRequestId: secureRandomUuid,
+  mintJudgmentId: secureRandomUuid,
   projectClassGrants: projectCurrentClassGrants,
   prepareClassGrantPlan: prepareCurrentClassGrantPlan,
   prepareNativeGrantLines: (request) => getFoundryEquipmentAcquisitionRuntime().prepareNativeClassGrantLines(request),

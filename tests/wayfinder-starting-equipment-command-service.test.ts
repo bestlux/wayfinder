@@ -1,3 +1,4 @@
+import { webcrypto } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createEmptyDraft, normalizeState } from "../src/draft-service";
 import { localizeAcquisitionMessage } from "../src/wayfinder/application/acquisition-localization";
@@ -36,6 +37,37 @@ describe("starting equipment command service", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("initializes and reopens the same draft with only secure random bytes available", async () => {
+    vi.stubGlobal("crypto", { getRandomValues: webcrypto.getRandomValues.bind(webcrypto) });
+    const context = commandContext(null, 5);
+    const dependencies = { getWorldPolicy: () => DEFAULT_EQUIPMENT_WORLD_POLICY };
+    const initialized = await executeStartingEquipmentCommand({ type: "initialize" }, context, dependencies);
+    context.draft.acquisition = JSON.parse(JSON.stringify(initialized.acquisition));
+    const saved = structuredClone(context.draft);
+
+    const reopened = await executeStartingEquipmentCommand({ type: "initialize" }, context, dependencies);
+    expect(reopened.acquisition).toEqual(initialized.acquisition);
+    expect(context.draft).toEqual(saved);
+    const requested = await executeStartingEquipmentCommand(
+      { type: "request-higher-level-start", startKind: "replacement-character", reason: "Replacement character" },
+      context
+    );
+    expect(requested.policyRequests).toHaveLength(1);
+    expect(requested.policyRequests[0]?.requestId).toMatch(/^[0-9a-f-]{36}$/u);
+  });
+
+  it("leaves the draft unchanged and stops before policy resolution when secure entropy is absent", async () => {
+    vi.stubGlobal("crypto", {});
+    const context = commandContext(null, 1);
+    const original = structuredClone(context.draft);
+    const resolvePolicy = vi.fn();
+    await expect(executeStartingEquipmentCommand({ type: "initialize" }, context, { resolvePolicy })).rejects.toThrow(
+      "Secure acquisition identity generation is unavailable."
+    );
+    expect(resolvePolicy).not.toHaveBeenCalled();
+    expect(context.draft).toEqual(original);
   });
 
   it("stages a higher-level identity before draft-bound authority exists", async () => {

@@ -1,4 +1,5 @@
 import { getEquipmentWorldPolicySetting } from "../../settings.js";
+import { secureRandomUuid } from "../../shared/cryptography.js";
 import { findCurrencyCartAggregationTargets } from "../domain/acquisition-aggregation.js";
 import { acknowledgeAcquisitionHandoff, createAcquisitionDraft, createAcquisitionPolicySnapshot, invalidateAcquisitionReview, normalizeAcquisitionDraft, recordConfiguredItemHandoff, recordEconomicAdmission, recordPlannedClassGrants, } from "../domain/acquisition-draft.js";
 import { mintAcquisitionIdentitySeed } from "../domain/acquisition-identity.js";
@@ -21,8 +22,8 @@ const DEFAULT_DEPS = {
     revokeJudgment: revokeTrustedEquipmentPolicyJudgment,
     declineRequest: saveTrustedEquipmentPolicyRequestDecline,
     createRequest: createEquipmentPolicyRequest,
-    mintRequestId: () => crypto.randomUUID(),
-    mintJudgmentId: () => crypto.randomUUID(),
+    mintRequestId: secureRandomUuid,
+    mintJudgmentId: secureRandomUuid,
     projectClassGrants: projectCurrentClassGrants,
     prepareClassGrantPlan: prepareCurrentClassGrantPlan,
     prepareNativeGrantLines: (request) => getFoundryEquipmentAcquisitionRuntime().prepareNativeClassGrantLines(request),

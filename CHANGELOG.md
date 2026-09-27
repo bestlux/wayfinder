@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.1 - 2026-09-27
+
+- Fixed Starting Equipment failing to initialize when Foundry is accessed over ordinary HTTP. Acquisition and equipment-policy IDs now use cryptographically strong random bytes when the browser's UUID API is unavailable.
+- Preserved equipment Apply and recovery on the same connections with a SHA-256 fallback that produces the same persisted identities as the native browser implementation. Missing secure randomness and native cryptographic failures still stop the operation.
+
 ## 0.9.0 - 2026-09-24
 
 - Added guided Bloodrager and Vindicator class-archetype paths through level 5, including their replacement training, forced level-2 dedications, and ordinary level-4 class feats.

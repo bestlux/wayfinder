@@ -1,4 +1,5 @@
 import { cloneData } from "../../shared/cloning.js";
+import { secureRandomUuid } from "../../shared/cryptography.js";
 import { materializeStructuredCreatureSizeChoice } from "../../shared/structured-creature-size-choice.js";
 export function materializedPhysicalItemSize(size) {
     const sizes = {
@@ -157,7 +158,7 @@ function transientId() {
     const mint = record(randomId).randomID;
     if (typeof mint === "function")
         return mint(16);
-    return crypto.randomUUID().replace(/-/g, "").slice(0, 16);
+    return secureRandomUuid().replace(/-/g, "").slice(0, 16);
 }
 function record(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value) ? value : {};

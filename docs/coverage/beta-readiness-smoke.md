@@ -1,6 +1,6 @@
 # Beta Readiness Foundry Smoke
 
-Last updated: 2026-09-25.
+Last updated: 2026-09-27.
 
 This is the launch-readiness live smoke layer for Wayfinder. It complements unit tests by exercising the built module inside a real Foundry world against live PF2E compendia.
 
@@ -46,6 +46,20 @@ The companion static class audit checks the maintained smoke matrix against the 
 ```powershell
 npm run audit:classes
 ```
+
+## 2026-09-27 Issue #40 HTTP equipment candidate
+
+Issue #40 reports `Secure acquisition identity generation is unavailable.` during a blank level-1 Dwarf Fighter's equipment initialization on Wayfinder 0.9.0 / Foundry 14.365 / PF2E 8.5.1. The issue had no comments when refreshed. The reporter's browser and connection scheme remain unknown.
+
+An actual Chromium non-secure HTTP origin reproduced the exact error from the unchanged 0.9.0 scripts: `crypto.getRandomValues` was available, while `crypto.randomUUID` and `crypto.subtle` were absent. Direct deterministic identity preparation also failed at `subtle.digest`. The permanent browser regression failed with the reported identity error before rebuilding the fix and passes with the candidate, comparing complete prepared acquisition plans and JSON save/reopen between actual HTTP and HTTPS capability profiles.
+
+The fix centralizes equipment UUID generation, uses 122 cryptographically random bits with UUIDv4 version/variant bits when the native UUID API is absent, and retains a pinned upstream SHA-256 implementation for environments without SubtleCrypto. It preserves canonical JSON, digest prefixes, identity schemas, and native failure propagation. Unit coverage includes absent/throwing entropy, duplicate identity rejection, command initialization without draft mutation on failure, saved identity reuse, native digest rejection, fixed SHA-256 vectors, Unicode, padding boundaries, and differential Node hashes. No weak-random or noncryptographic-digest fallback was introduced.
+
+In the existing testing world on Foundry 14.367 / PF2E 8.5.0, the pre-fix non-GM Dwarf Fighter scenario stalled at equipment initialization over the machine's ordinary HTTP LAN origin (`.wayfinder-smoke/issue40-before-http-live`). The patched HTTP run passed all ten acquisition scenarios (`.wayfinder-smoke/issue40-after-http`): purchases, retain-all, item/currency/final-write recovery, lost acknowledgement, native Dwarf Clan Dagger and Sarangay Head Gem, GM review, post-reload durability, and guarded fixture cleanup. This first patched probe still used the 0.9.0 manifest before the 0.9.1 candidate version bump.
+
+The physical-grant 8.4.1 notice is independent version advice, not the failing crypto path. Its coverage pin and unsupported-route blockers remain unchanged. The reporter's exact Foundry 14.365 / PF2E 8.5.1 combination has not been run locally. Version 0.9.1 is a local release candidate; publication is pending authorization.
+
+The candidate passed `npm run check`: 200 suites / 2,257 tests, formatting, lint, generated-script synchronization, build, generated policy reports, and both TypeScript projects. The release-only physical-grant source gate passed against the clean pinned PF2E 8.4.1 checkout. `npm run audit:classes` still reports the pre-existing Necromancer/Runesmith coverage gaps (27 of 29 base classes covered); this equipment fix does not expand class support.
 
 ## 2026-09-25 Release 0.9.0 Bloodrager and Vindicator
 

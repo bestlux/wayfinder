@@ -1,9 +1,10 @@
+import { secureRandomUuid, sha256Hex } from "../../shared/cryptography.js";
 import { acquisitionPreAggregationMaterial, aggregateRequestedQuantity } from "./acquisition-aggregation.js";
 import { normalizeAcquisitionDraft } from "./acquisition-draft.js";
 import { createAcquisitionPriceSnapshot, evaluateAcquisitionCompletion, evaluateAcquisitionLedger, } from "./acquisition-ledger.js";
 import { assertPreparedClassGrantPlanMatches } from "./class-grant-reconciliation.js";
 const preparedIdentityPlans = new WeakSet();
-export function mintAcquisitionIdentitySeed(randomUuid = defaultRandomUuid) {
+export function mintAcquisitionIdentitySeed(randomUuid = secureRandomUuid) {
     const suffixes = [randomUuid(), randomUuid(), randomUuid()];
     if (new Set(suffixes.map((value) => String(value).trim().toLowerCase())).size !== 3) {
         throw new Error("Acquisition identity generation returned duplicate identities.");
@@ -13,7 +14,7 @@ export function mintAcquisitionIdentitySeed(randomUuid = defaultRandomUuid) {
     const manifestId = prefixedOpaqueId("wf-manifest", suffixes[2]);
     return { draftId, batchId, manifestId };
 }
-export function mintAcquisitionLineId(randomUuid = defaultRandomUuid) {
+export function mintAcquisitionLineId(randomUuid = secureRandomUuid) {
     return prefixedOpaqueId("wf-line", randomUuid());
 }
 export async function derivePlannedContainerId(args) {
@@ -289,8 +290,7 @@ function deepFreezeData(value) {
 }
 async function digest(prefix, value) {
     const bytes = new TextEncoder().encode(canonicalJson(value));
-    const hash = await crypto.subtle.digest("SHA-256", bytes);
-    const hex = [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    const hex = await sha256Hex(bytes);
     return `${prefix}-sha256-${hex}`;
 }
 function canonicalJson(value) {
@@ -320,11 +320,6 @@ function prefixedOpaqueId(prefix, value) {
         throw new TypeError("Acquisition identity generation returned an invalid opaque value.");
     }
     return `${prefix}-${normalized}`;
-}
-function defaultRandomUuid() {
-    if (typeof crypto.randomUUID !== "function")
-        throw new Error("Secure acquisition identity generation is unavailable.");
-    return crypto.randomUUID();
 }
 function safeAdd(left, right) {
     const result = left + right;

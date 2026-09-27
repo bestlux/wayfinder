@@ -47,9 +47,9 @@ The companion static class audit checks the maintained smoke matrix against the 
 npm run audit:classes
 ```
 
-## 2026-09-27 Issue #40 HTTP equipment candidate
+## 2026-09-27 Release 0.9.1 HTTP equipment hotfix
 
-Issue #40 reports `Secure acquisition identity generation is unavailable.` during a blank level-1 Dwarf Fighter's equipment initialization on Wayfinder 0.9.0 / Foundry 14.365 / PF2E 8.5.1. The issue had no comments when refreshed. The reporter's browser and connection scheme remain unknown.
+Issue #40 reported `Secure acquisition identity generation is unavailable.` during a blank level-1 Dwarf Fighter's equipment initialization on Wayfinder 0.9.0 / Foundry 14.365 / PF2E 8.5.1. The reporter's browser and connection scheme remain unknown.
 
 An actual Chromium non-secure HTTP origin reproduced the exact error from the unchanged 0.9.0 scripts: `crypto.getRandomValues` was available, while `crypto.randomUUID` and `crypto.subtle` were absent. Direct deterministic identity preparation also failed at `subtle.digest`. The permanent browser regression failed with the reported identity error before rebuilding the fix and passes with the candidate, comparing complete prepared acquisition plans and JSON save/reopen between actual HTTP and HTTPS capability profiles.
 
@@ -57,9 +57,15 @@ The fix centralizes equipment UUID generation, uses 122 cryptographically random
 
 In the existing testing world on Foundry 14.367 / PF2E 8.5.0, the pre-fix non-GM Dwarf Fighter scenario stalled at equipment initialization over the machine's ordinary HTTP LAN origin (`.wayfinder-smoke/issue40-before-http-live`). The patched HTTP run passed all ten acquisition scenarios (`.wayfinder-smoke/issue40-after-http`): purchases, retain-all, item/currency/final-write recovery, lost acknowledgement, native Dwarf Clan Dagger and Sarangay Head Gem, GM review, post-reload durability, and guarded fixture cleanup. This first patched probe still used the 0.9.0 manifest before the 0.9.1 candidate version bump.
 
-The physical-grant 8.4.1 notice is independent version advice, not the failing crypto path. Its coverage pin and unsupported-route blockers remain unchanged. The reporter's exact Foundry 14.365 / PF2E 8.5.1 combination has not been run locally. Version 0.9.1 is a local release candidate; publication is pending authorization.
+The physical-grant 8.4.1 notice is independent version advice, not the failing crypto path. Its coverage pin and unsupported-route blockers remain unchanged. The reporter's exact Foundry 14.365 / PF2E 8.5.1 combination has not been run locally.
 
 The candidate passed `npm run check`: 200 suites / 2,257 tests, formatting, lint, generated-script synchronization, build, generated policy reports, and both TypeScript projects. The release-only physical-grant source gate passed against the clean pinned PF2E 8.4.1 checkout. `npm run audit:classes` still reports the pre-existing Necromancer/Runesmith coverage gaps (27 of 29 base classes covered); this equipment fix does not expand class support.
+
+The exact candidate `8e086572f4bdc80338fe4117b94243e336715b35` passed the full WF-080-51 coordinator in `.wayfinder-smoke/wf51-091-issue40-candidate`: all 11 children, 55 core executions / 54 unique scenarios, acquisition and equipment suites, both locales, recovery, and all 15 aggregate rows on Foundry 14.367 / PF2E 8.5.0 / Wayfinder 0.9.1. Independent review reported no outstanding P0-P2 findings and verified the pinned SHA-256 implementation, license, generated output, and packaging.
+
+The exact committed 0.9.1 candidate also passed the non-GM Dwarf Clan Dagger recovery and common-purchase retry cases over ordinary HTTP, including post-reload durability and guarded fixture cleanup (`.wayfinder-smoke/issue40-091-http-confirmation`). The first broad HTTP qualification attempt passed 39 baseline cases but failed two rejection checks because the development harness itself calls `crypto.subtle.digest`; that failed result was not used for qualified packaging. The successful full qualification used the browser's secure localhost context, with the separate HTTP probes above covering the compatibility fix directly.
+
+Tag `v0.9.1` and [release workflow `36341073948`](https://github.com/bestlux/wayfinder/actions/runs/36341073948) published that exact candidate. All three jobs passed, including Foundry registration. The unauthenticated public ZIP matches `dist/qualified-0.9.1-issue40` at SHA-256 `6e9e5e8807cafd2d0e940b9144889fa922855415968a19530986bd34f996d9b7`, with 292 entries and the crypto adapter, vendored SHA-256 module, and license included. The versioned, latest, and embedded manifests agree on 0.9.1, the version-specific download, Foundry verified 14.367, and PF2E verified 8.5.0. An independent fresh read of the public Foundry page confirmed 0.9.1 and its version-specific manifest. [Issue #40's resolution comment](https://github.com/bestlux/wayfinder/issues/40#issuecomment-5858638774) and closure followed publication verification. Master advances only with this documentation record after the immutable release tag.
 
 ## 2026-09-25 Release 0.9.0 Bloodrager and Vindicator
 

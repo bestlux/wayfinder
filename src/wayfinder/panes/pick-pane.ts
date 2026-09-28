@@ -14,6 +14,7 @@ export function buildPickItemPane(args: {
   selectedValue: string;
   selectedLabel: string | null;
   filterGroups: PickStepPane["filterGroups"];
+  traitFilter?: PickStepPane["traitFilter"];
   visibleOptions: OptionRecord[];
   infoState: PickStepPane["infoState"];
   suppressionNotice: PickStepPane["suppressionNotice"];
@@ -29,6 +30,7 @@ export function buildPickItemPane(args: {
     selectedValue,
     selectedLabel,
     filterGroups,
+    traitFilter,
     visibleOptions,
     infoState,
     suppressionNotice,
@@ -55,6 +57,7 @@ export function buildPickItemPane(args: {
     infoState,
     suppressionNotice,
     filterGroups,
+    traitFilter,
     options: visibleOptions.map((option) => ({
       ...option,
       selected: option.value === selectedValue,

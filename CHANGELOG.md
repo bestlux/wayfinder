@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.0 - 2026-09-28
+
+- Added searchable trait filters to class, general, and skill feat choices. Include all selected traits, exclude any selected trait, and combine them with the existing name, level, rarity, and source filters.
+- Added a Hide dedications shortcut to reduce class-feat clutter while keeping eligible archetype follow-up feats available. Active filters remain removable even when no feats match, and Clear filters restores the eligible choices without changing your draft.
+- Trait browsing uses player-facing PF2E traits with localized labels and support for custom traits. Searching the trait list preserves keyboard focus and does not rebuild the character on every keystroke. Archetype-family and skill-name filters remain separate future work.
+
 ## 0.9.1 - 2026-09-27
 
 - Fixed Starting Equipment failing to initialize when Foundry is accessed over ordinary HTTP. Acquisition and equipment-policy IDs now use cryptographically strong random bytes when the browser's UUID API is unavailable.

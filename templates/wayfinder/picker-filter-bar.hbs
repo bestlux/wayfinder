@@ -1,4 +1,4 @@
-{{#if activePane.filterGroups.length}}
+{{#if (or activePane.filterGroups.length activePane.traitFilter)}}
   <div class="picker-filter-bar">
     {{#each activePane.filterGroups}}
       <section class="picker-filter-menu{{#if isOpen}} is-open{{/if}}" data-wayfinder-filter-menu data-step-id="{{../activePane.stepId}}" data-filter-kind="{{key}}">
@@ -58,6 +58,34 @@
         {{/if}}
       </section>
     {{/each}}
+
+    {{#if activePane.traitFilter}}
+      <section class="picker-filter-menu picker-trait-menu{{#if activePane.traitFilter.isOpen}} is-open{{/if}}" data-wayfinder-filter-menu data-step-id="{{activePane.stepId}}" data-filter-kind="traits">
+        <button type="button" class="picker-filter-trigger{{#if activePane.traitFilter.selectedCount}} is-active{{/if}}" data-wayfinder-action="toggle-picker-filter-menu" data-wayfinder-focus-id="picker-traits-trigger" data-step-id="{{activePane.stepId}}" data-filter-kind="traits" aria-expanded="{{#if activePane.traitFilter.isOpen}}true{{else}}false{{/if}}" aria-controls="{{activePane.stepId}}-trait-panel">
+          <span class="picker-filter-trigger-copy"><span class="picker-filter-label">{{localize "wayfinder-pf2e.FeatTraits.Label"}}</span><span class="picker-filter-summary" title="{{activePane.traitFilter.summary}}">{{#if activePane.traitFilter.selectedCount}}{{activePane.traitFilter.summary}}{{else}}{{localize "wayfinder-pf2e.FeatTraits.All"}}{{/if}}</span></span>
+          <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+        </button>
+        {{#if activePane.traitFilter.isOpen}}
+          <div class="picker-filter-panel picker-trait-panel" id="{{activePane.stepId}}-trait-panel" data-picker-trait-panel>
+            <p class="picker-trait-help">{{localize "wayfinder-pf2e.FeatTraits.Help"}}</p>
+            <label class="search-shell compact"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><input type="search" data-picker-trait-search data-step-id="{{activePane.stepId}}" aria-label="{{localize "wayfinder-pf2e.FeatTraits.Search"}}" placeholder="{{localize "wayfinder-pf2e.FeatTraits.Search"}}" /></label>
+            <p class="picker-trait-help" role="status" aria-live="polite" aria-atomic="true"><span data-picker-trait-count>{{activePane.traitFilter.options.length}}</span> {{localize "wayfinder-pf2e.FeatTraits.Shown"}}</p>
+            <div class="picker-filter-options" data-wayfinder-scroll-id="{{activePane.stepId}}:filter:traits">
+              {{#each activePane.traitFilter.options}}
+                <div class="picker-trait-option" data-picker-trait-option data-search="{{label}} {{value}}" data-active="{{#if active}}true{{else}}false{{/if}}" role="group" aria-label="{{label}}">
+                  <span class="picker-trait-label">{{label}} <span class="picker-filter-count" title="{{localize "wayfinder-pf2e.FeatTraits.CountHint"}}">{{count}}</span></span>
+                  <button type="button" aria-label="{{localize "wayfinder-pf2e.FeatTraits.Include"}} {{label}}" aria-pressed="{{#if included}}true{{else}}false{{/if}}" data-wayfinder-action="toggle-picker-trait" data-wayfinder-focus-id="picker-trait-include:{{value}}" data-step-id="{{../activePane.stepId}}" data-value="{{value}}" data-mode="include">{{localize "wayfinder-pf2e.FeatTraits.Include"}}</button>
+                  <button type="button" aria-label="{{localize "wayfinder-pf2e.FeatTraits.Exclude"}} {{label}}" aria-pressed="{{#if excluded}}true{{else}}false{{/if}}" data-wayfinder-action="toggle-picker-trait" data-wayfinder-focus-id="picker-trait-exclude:{{value}}" data-step-id="{{../activePane.stepId}}" data-value="{{value}}" data-mode="exclude">{{localize "wayfinder-pf2e.FeatTraits.Exclude"}}</button>
+                </div>
+              {{/each}}
+            </div>
+          </div>
+        {{/if}}
+      </section>
+      {{#if activePane.traitFilter.canHideDedications}}
+        <button type="button" class="secondary compact picker-dedication-shortcut" aria-pressed="{{#if activePane.traitFilter.hideDedications}}true{{else}}false{{/if}}" data-wayfinder-action="toggle-picker-trait" data-wayfinder-focus-id="picker-traits-dedication" data-step-id="{{activePane.stepId}}" data-value="dedication" data-mode="exclude">{{localize "wayfinder-pf2e.FeatTraits.HideDedications"}}</button>
+      {{/if}}
+    {{/if}}
 
     {{#if activePane.activeFilterCount}}
       <button type="button" class="secondary compact picker-filter-clear" data-wayfinder-action="clear-picker-filters" data-step-id="{{activePane.stepId}}">

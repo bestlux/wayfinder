@@ -1,5 +1,16 @@
 {
   "wayfinder-pf2e": {
+    "FeatTraits": {
+      "Label": "特征",
+      "All": "全部",
+      "Help": "必须包含所有已选特征。隐藏包含任一排除特征的专长。",
+      "Search": "搜索特征…",
+      "Shown": "个特征显示中（已启用的筛选始终显示）",
+      "Include": "包含",
+      "Exclude": "排除",
+      "HideDedications": "隐藏献身专长",
+      "CountHint": "符合其他筛选条件且具有此特征的专长数"
+    },
     "Controls": {
       "Open": "打开寻路仪"
     },

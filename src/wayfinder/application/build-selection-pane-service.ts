@@ -243,6 +243,7 @@ export async function buildSelectionPane(
     selectedValue,
     selectedLabel: selectedSelection(step, deps.draft)?.name ?? null,
     filterGroups: projection.filterGroups,
+    traitFilter: projection.traitFilter,
     visibleOptions: projection.visibleOptions,
     infoState: projection.infoState,
     suppressionNotice: projection.suppressionNotice,

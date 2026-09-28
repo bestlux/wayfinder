@@ -1,4 +1,5 @@
 import { formatSlug } from "../formatting.js";
+import { normalizeFeatTraitFilters } from "./feat-trait-filters.js";
 const UNKNOWN_RARITY = "__unknown_rarity__";
 const UNKNOWN_SOURCE = "__unknown_source__";
 export function emptyPickerFilterState() {
@@ -12,13 +13,15 @@ export function activePickerFilterCount(state) {
     if (!state) {
         return 0;
     }
-    return state.rarity.length + state.source.length;
+    const traits = normalizeFeatTraitFilters(state.traits);
+    return state.rarity.length + state.source.length + traits.include.length + traits.exclude.length;
 }
 export function normalizePickerFilterState(state) {
     return {
         levelRange: normalizeLevelRange(state?.levelRange),
         rarity: normalizeFilterValues(state?.rarity),
         source: normalizeFilterValues(state?.source),
+        ...(state?.traits ? { traits: normalizeFeatTraitFilters(state.traits) } : {}),
     };
 }
 export function togglePickerFilterValue(state, kind, rawValue) {

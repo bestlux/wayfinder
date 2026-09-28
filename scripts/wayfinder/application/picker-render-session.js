@@ -1,13 +1,19 @@
 import { cloneData } from "../../shared/cloning.js";
+import { buildFeatTraitFilterPane, matchesFeatTraitFilters, normalizeFeatTraitFilters, supportsFeatTraitFilters, } from "../panes/feat-trait-filters.js";
 import { activePickerFilterCount, buildPickerFilterGroups, buildPickerLevelRangeGroup, matchesPickerFilters, matchesPickerLegalLevelBounds, matchesPickerLevelRange, normalizePickerFilterState, spellRankLabel, } from "../panes/picker-filters.js";
 export function derivePickerRenderProjection(inputs, state) {
     const filterState = normalizePickerFilterState(state.filterState);
+    const hasTraits = supportsFeatTraitFilters(inputs.step);
+    if (!hasTraits)
+        delete filterState.traits;
+    const traitState = normalizeFeatTraitFilters(filterState.traits);
     const selectedValues = new Set(inputs.selectedValues);
     const boundedOptions = inputs.options.filter((option) => matchesPickerLegalLevelBounds(option, inputs.step, selectedValues));
     const searchedOptions = boundedOptions.filter((option) => inputs.matchesSearch(option, state.search));
     const levelRangeGroup = buildPickerLevelRangeGroup(inputs.options, inputs.step, filterState.levelRange);
     const rangeFilteredOptions = searchedOptions.filter((option) => matchesPickerLevelRange(option, levelRangeGroup, selectedValues, inputs.step));
-    const categoricalGroups = buildPickerFilterGroups(rangeFilteredOptions, filterState, inputs.filterKinds)
+    const traitFilteredOptions = rangeFilteredOptions.filter((option) => matchesFeatTraitFilters(option, traitState));
+    const categoricalGroups = buildPickerFilterGroups(traitFilteredOptions, filterState, inputs.filterKinds)
         .filter((group) => group.options.length > 1 || group.selectedCount > 0)
         .map((group) => ({
         ...group,
@@ -17,7 +23,11 @@ export function derivePickerRenderProjection(inputs, state) {
         ...(levelRangeGroup ? [{ ...levelRangeGroup, isOpen: state.openFilterKind === levelRangeGroup.key }] : []),
         ...categoricalGroups,
     ];
-    const filteredOptions = rangeFilteredOptions.filter((option) => matchesPickerFilters(option, filterState, undefined, inputs.filterKinds));
+    const categoricalOptions = rangeFilteredOptions.filter((option) => matchesPickerFilters(option, filterState, undefined, inputs.filterKinds));
+    const filteredOptions = categoricalOptions.filter((option) => matchesFeatTraitFilters(option, traitState));
+    const traitFilter = hasTraits
+        ? buildFeatTraitFilterPane(categoricalOptions, traitState, state.openFilterKind === "traits", boundedOptions)
+        : undefined;
     const activeFilterCount = activePickerFilterCount(filterState) + (levelRangeGroup?.active ? 1 : 0);
     let infoState = inputs.getPickerInfoState(inputs.step, inputs.optionContext, boundedOptions.length, filteredOptions.length, state.search, activeFilterCount > 0);
     const suppressionNotice = buildSuppressionNotice(inputs.suppressedOptions);
@@ -53,6 +63,7 @@ export function derivePickerRenderProjection(inputs, state) {
         visibleOptions: infoState?.tone === "blocked" ? [] : filteredOptions,
         infoState,
         suppressionNotice,
+        traitFilter,
     };
 }
 export function createPickerRenderSession(inputs, basePane, previewValue) {
@@ -143,6 +154,7 @@ export function derivePickerRenderSession(session, state) {
         search: projection.search,
         activeFilterCount: projection.activeFilterCount,
         filterGroups: projection.filterGroups,
+        traitFilter: projection.traitFilter,
         infoState: projection.infoState,
         suppressionNotice: projection.suppressionNotice,
         resultCount: projection.visibleOptions.length,

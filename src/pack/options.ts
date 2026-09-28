@@ -5,7 +5,14 @@ import type { OptionContext, OptionRecord, PendingStep, SelectionRef, Suppressed
 import { resolveStaticGrantChoiceSources } from "../wayfinder/static-grant-choice-sources.js";
 import { fetchSelectionDocument, getGamePack, getPackIndex, type PackIndexEntry } from "./access.js";
 import { buildStaticGrantChoiceDisclosure, classifyEmbeddedChoices } from "./embedded-choice-policy.js";
-import { extractEntrySlug, extractEntryTraits, numericOrNull, resolveFeatType, stringOrNull } from "./entry.js";
+import {
+  extractEntrySlug,
+  extractEntryTraits,
+  normalizeTraitList,
+  numericOrNull,
+  resolveFeatType,
+  stringOrNull,
+} from "./entry.js";
 import {
   classifyFilterDecision,
   classifyHeritageContext,
@@ -111,6 +118,7 @@ export async function getOptionQueryForStep(
           level,
           slug,
           traits,
+          ...(entry.type === "feat" ? { featTraits: normalizeTraitList(entry.system?.traits?.value) } : {}),
           rarity: stringOrNull(entry?.system?.traits?.rarity),
           source:
             stringOrNull(entry?.system?.publication?.title) ??

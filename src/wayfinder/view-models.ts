@@ -7,6 +7,7 @@ import type {
   PickerSuppressionNotice,
   SingletonChoiceMeta,
 } from "../types.js";
+import type { FeatTraitFilterPane } from "./panes/feat-trait-filters.js";
 
 export interface StepNavRow {
   id: string;
@@ -111,6 +112,7 @@ export interface PickStepPane {
   infoState: PickerInfoState | null;
   suppressionNotice: PickerSuppressionNotice | null;
   filterGroups: PickerFilterGroupPane[];
+  traitFilter?: FeatTraitFilterPane;
   options: Array<OptionRecord & { selected: boolean; previewing: boolean; sourceLabel: string }>;
   preview: PreviewPane | null;
 }

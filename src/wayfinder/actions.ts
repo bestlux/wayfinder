@@ -9,6 +9,7 @@ export type WayfinderAction =
   | { type: "select-option"; stepId: string; value: string }
   | { type: "toggle-picker-filter-menu"; stepId: string; filterKind: PickerFilterMenuKind }
   | { type: "toggle-picker-filter"; stepId: string; filterKind: PickerFilterKind; value: string }
+  | { type: "toggle-picker-trait"; stepId: string; value: string; mode: "include" | "exclude" }
   | { type: "set-picker-level-range"; stepId: string; minimum: number; maximum: number }
   | { type: "clear-picker-filters"; stepId: string }
   | { type: "toggle-ancestry-mode"; stepId: string | null }
@@ -243,6 +244,12 @@ export function parseWayfinderAction(element: HTMLElement | null): WayfinderActi
             filterKind: element.dataset.filterKind as PickerFilterKind,
             value: element.dataset.value,
           }
+        : null;
+    case "toggle-picker-trait":
+      return element.dataset.stepId &&
+        element.dataset.value &&
+        (element.dataset.mode === "include" || element.dataset.mode === "exclude")
+        ? { type: action, stepId: element.dataset.stepId, value: element.dataset.value, mode: element.dataset.mode }
         : null;
     case "set-picker-level-range": {
       const minimum = Number(element.dataset.minimum);

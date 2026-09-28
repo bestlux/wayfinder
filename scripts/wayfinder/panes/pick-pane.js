@@ -3,7 +3,7 @@ import { enrichHtml } from "../../shared/foundry-compat.js";
 import { buildPreviewDetails, formatSlug } from "../formatting.js";
 export const DEDICATION_SUPPORT_DISCLOSURE = "How much of a dedication Wayfinder can handle varies. It applies what it understands, but benefits written out in prose may need setting up by hand on the PF2E sheet. Worth reading this feat before you apply, and again after.";
 export function buildPickItemPane(args) {
-    const { step, search, activeFilterCount, selectedValue, selectedLabel, filterGroups, visibleOptions, infoState, suppressionNotice, contextNote, preview, modeLabel, previewValue, } = args;
+    const { step, search, activeFilterCount, selectedValue, selectedLabel, filterGroups, traitFilter, visibleOptions, infoState, suppressionNotice, contextNote, preview, modeLabel, previewValue, } = args;
     return {
         kind: "pick-item",
         templateKind: "pick-item",
@@ -22,6 +22,7 @@ export function buildPickItemPane(args) {
         infoState,
         suppressionNotice,
         filterGroups,
+        traitFilter,
         options: visibleOptions.map((option) => ({
             ...option,
             selected: option.value === selectedValue,

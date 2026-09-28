@@ -152,6 +152,7 @@ import {
 } from "./application/option-context-service.js";
 import { derivePickerRenderSession, type PickerRenderSession } from "./application/picker-render-session.js";
 import { type PickerSearchRequest, PickerSearchScheduler } from "./application/picker-search-scheduler.js";
+import { PickerTraitSearch } from "./application/picker-trait-search.js";
 import {
   emptyRailLevelDisclosureState,
   type RailLevelDisclosureState,
@@ -227,8 +228,14 @@ import {
 import { hasDuplicateDraftSelection } from "./draft-decisions.js";
 import { buildAcquisitionReceiptViewModel } from "./panes/acquisition-receipt.js";
 import { buildBoostPane } from "./panes/boost-pane.js";
+import { toggleFeatTraitFilter } from "./panes/feat-trait-filters.js";
 import { buildPreview, matchesSearch } from "./panes/pick-pane.js";
-import { emptyPickerFilterState, normalizePickerFilterState, togglePickerFilterValue } from "./panes/picker-filters.js";
+import {
+  activePickerFilterCount,
+  emptyPickerFilterState,
+  normalizePickerFilterState,
+  togglePickerFilterValue,
+} from "./panes/picker-filters.js";
 import { buildStartingEquipmentPane, startingEquipmentCatalogueRowSource } from "./panes/starting-equipment-pane.js";
 import { evaluateWayfinderStep, resolveActiveStep } from "./plan-service.js";
 import { isWizardArcaneSchoolSlotId } from "./slot-ids.js";
@@ -403,6 +410,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   #activeStepId: string | null = null;
   #searchByStepId = new Map<string, string>();
   #pickerFiltersByStepId = new Map<string, PickerFilterState>();
+  #pickerTraitSearch = new PickerTraitSearch();
   #openPickerFilterMenu: { stepId: string; filterKind: PickerFilterMenuKind } | null = null;
   #previewValueByStepId = new Map<string, string>();
   #scrollById = new Map<string, number>();
@@ -956,6 +964,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       return;
     }
     markWayfinderKeyboardFocus(root);
+    this.#pickerTraitSearch.bind(root);
 
     if (context.wayfinderRenderScope === "picker-search") {
       const results = root.querySelector<HTMLElement>(`[data-application-part="${PICKER_RESULTS_PART}"]`);
@@ -1075,9 +1084,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       scrollActiveStepIntoView(root);
       this.#pendingActiveStepVisibility = false;
     }
-    const control = pendingControlFocusId
-      ? root.querySelector<HTMLElement>(`[data-wayfinder-focus-id="${CSS.escape(pendingControlFocusId)}"]`)
-      : null;
+    const control =
+      this.#pickerTraitSearch.focusTarget(root, pendingControlFocusId) ??
+      (pendingControlFocusId
+        ? root.querySelector<HTMLElement>(`[data-wayfinder-focus-id="${CSS.escape(pendingControlFocusId)}"]`)
+        : null);
     const stepHeading = root.querySelector<HTMLElement>("[data-wayfinder-step-heading]");
     if (pendingControlFocusId && control) {
       control.focus();
@@ -1194,6 +1205,9 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     event.preventDefault();
     event.stopPropagation();
     this.#rememberInteractiveState();
+    if (target?.dataset.wayfinderFocusId?.startsWith("picker-trait")) {
+      this.#pendingControlFocusId = target.dataset.wayfinderFocusId;
+    }
     if (!isStartingEquipmentViewOnlyAction(action)) {
       this.#statusErrorMessage = null;
     }
@@ -1201,6 +1215,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     if (
       action.type !== "toggle-picker-filter" &&
       action.type !== "toggle-picker-filter-menu" &&
+      action.type !== "toggle-picker-trait" &&
       action.type !== "set-picker-level-range"
     ) {
       this.#openPickerFilterMenu = null;
@@ -1325,6 +1340,15 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       case "toggle-picker-filter":
         this.#togglePickerFilter(action.stepId, action.filterKind, action.value);
         break;
+      case "toggle-picker-trait": {
+        const current = normalizePickerFilterState(this.#pickerFiltersByStepId.get(action.stepId));
+        this.#pickerFiltersByStepId.set(action.stepId, {
+          ...current,
+          traits: toggleFeatTraitFilter(current.traits, action.value, action.mode),
+        });
+        this.render(false);
+        break;
+      }
       case "set-picker-level-range":
         this.#setPickerLevelRange(action.stepId, action.minimum, action.maximum);
         break;
@@ -3349,6 +3373,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       this.#activeStepId = null;
       this.#searchByStepId.clear();
       this.#pickerFiltersByStepId.clear();
+      this.#pickerTraitSearch.clear();
       this.#openPickerFilterMenu = null;
       this.#previewValueByStepId.clear();
       this.#recentlyInvalidatedStepIds.clear();
@@ -3976,6 +4001,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     this.#draftPersistence.reset(result.nextDraft);
     this.#searchByStepId.clear();
     this.#pickerFiltersByStepId.clear();
+    this.#pickerTraitSearch.clear();
     this.#openPickerFilterMenu = null;
     this.#previewValueByStepId.clear();
     this.#recentlyInvalidatedStepIds.clear();
@@ -4000,7 +4026,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       filterKind,
       value
     );
-    if (!next.levelRange && next.rarity.length === 0 && next.source.length === 0) {
+    if (!next.levelRange && activePickerFilterCount(next) === 0) {
       this.#pickerFiltersByStepId.delete(stepId);
     } else {
       this.#pickerFiltersByStepId.set(stepId, next);
@@ -4020,6 +4046,10 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
 
   #clearPickerFilters(stepId: string): void {
     this.#statusNote = null;
+    if (this.#pickerFiltersByStepId.get(stepId)?.traits) {
+      this.#pendingControlFocusId = "picker-traits-trigger";
+    }
+    this.#pickerTraitSearch.clear(stepId);
     if (this.#pickerFiltersByStepId.delete(stepId)) {
       this.render(false);
     }

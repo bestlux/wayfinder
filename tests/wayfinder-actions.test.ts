@@ -7,6 +7,26 @@ import {
 } from "../src/wayfinder/actions";
 
 describe("Wayfinder actions", () => {
+  it("parses trait filters as view-only actions and rejects invalid modes", () => {
+    const element = {
+      dataset: {
+        wayfinderAction: "toggle-picker-trait",
+        stepId: "class-feat-level-2",
+        value: "dedication",
+        mode: "exclude",
+      },
+    } as unknown as HTMLElement;
+    const action = parseWayfinderAction(element);
+    expect(action).toEqual({
+      type: "toggle-picker-trait",
+      stepId: "class-feat-level-2",
+      value: "dedication",
+      mode: "exclude",
+    });
+    expect(isDraftMutationAction(action!)).toBe(false);
+    element.dataset.mode = "unknown";
+    expect(parseWayfinderAction(element)).toBeNull();
+  });
   it("parses rail level disclosure toggles as ephemeral view actions", () => {
     const collapse = {
       dataset: { wayfinderAction: "toggle-rail-level", level: "5", levelOpen: "true" },

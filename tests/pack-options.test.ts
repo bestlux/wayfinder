@@ -54,6 +54,17 @@ describe("pack options dependency filtering", () => {
     } as any;
   });
 
+  it("keeps indexed player-facing feat traits separate from internal policy tags", async () => {
+    const entry = featEntry("trait-probe", "Trait Probe", "general", ["general", "hb_starlit"]);
+    entry.system.traits.otherTags = ["technical-tag"];
+    setPack("pf2e.feats-srd", [entry]);
+    const options = await getOptionsForStep(
+      makeStep("general-feat", { itemType: "feat", featTypes: ["general"], maxLevel: 1 })
+    );
+    expect(options[0]?.featTraits).toEqual(["general", "hb_starlit"]);
+    expect(options[0]?.traits).toContain("technical-tag");
+  });
+
   it("discovers every installed pack matching a module-prefix allowlist wildcard", async () => {
     testGlobals.game.settings.get = () => "battlezoo-dragons.*";
     setPack("battlezoo-dragons.dragon-ancestries", [ancestryEntry("dragon", "Dragon")]);

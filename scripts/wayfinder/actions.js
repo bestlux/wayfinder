@@ -124,6 +124,12 @@ export function parseWayfinderAction(element) {
                     value: element.dataset.value,
                 }
                 : null;
+        case "toggle-picker-trait":
+            return element.dataset.stepId &&
+                element.dataset.value &&
+                (element.dataset.mode === "include" || element.dataset.mode === "exclude")
+                ? { type: action, stepId: element.dataset.stepId, value: element.dataset.value, mode: element.dataset.mode }
+                : null;
         case "set-picker-level-range": {
             const minimum = Number(element.dataset.minimum);
             const maximum = Number(element.dataset.maximum);

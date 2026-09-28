@@ -1,6 +1,6 @@
 # Beta Readiness Foundry Smoke
 
-Last updated: 2026-09-27.
+Last updated: 2026-09-28.
 
 This is the launch-readiness live smoke layer for Wayfinder. It complements unit tests by exercising the built module inside a real Foundry world against live PF2E compendia.
 
@@ -46,6 +46,16 @@ The companion static class audit checks the maintained smoke matrix against the 
 ```powershell
 npm run audit:classes
 ```
+
+## 2026-09-28 Issue 41 feat trait browsing
+
+The 0.10.0 candidate adds searchable Include/Exclude trait controls to class, general, and skill feat pickers, plus a Hide dedications shortcut. It filters the existing admitted option snapshot and preserves the draft and eligibility policy. Player-facing traits remain separate from PF2E internal `otherTags`; custom traits retain readable labels.
+
+Focused Foundry 14.367 / PF2E 8.5.0 / Wayfinder 0.10.0 evidence is in `.wayfinder-smoke/issue41-focused-final`. A disposable level-5 Fighter draft exercised the level-2 class and skill slots and level-3 general slot. The class picker contained 166 choices: including Dedication returned 144 and excluding it retained 22. General and skill panes also matched independently computed expected option sets for inclusion and exclusion. The probe verified active zero-result recovery, the dedicated shortcut, main-search intersection, Include/Exclude state, Escape, button focus after rendering, and focus recovery when removing an active trait hidden by the vocabulary query. Screenshots at 1180 and 760 pixels confirmed that the trait controls remain inside the option-browser column. The existing narrow preview layout is outside this change's scope.
+
+All focused checks passed with zero actor updates, unchanged persisted actor/draft data, no browser page errors, and exact restoration of the original actor IDs after guarded cleanup. Trait-name typing filters the existing DOM without preparing the actor or fetching documents. This is functional evidence, not a statistically qualified performance benchmark.
+
+Independent review found and fixed CSS cascade conflicts and a hidden-row keyboard focus loss. A fresh review confirmed both corrections and found no remaining P0-P2 issue. Automated regressions cover trait normalization and contradictions, AND inclusion/any exclusion, custom traits versus internal tags, facet composition and counts, supported picker lanes, retained prepared selections and suppressed options, view-only action parsing, and the production browser search/focus helper. The static class audit retains the previously documented Necromancer/Runesmith gaps; the physical-grant source gate remains the unchanged exact PF2E 8.4.1 registry pin.
 
 ## 2026-09-27 Release 0.9.1 HTTP equipment hotfix
 

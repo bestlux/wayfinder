@@ -4,7 +4,7 @@ import { allowsActorOwnedGrantAdoption } from "../shared/grant-creation-policy.j
 import { resolveStaticGrantChoiceSources } from "../wayfinder/static-grant-choice-sources.js";
 import { fetchSelectionDocument, getGamePack, getPackIndex } from "./access.js";
 import { buildStaticGrantChoiceDisclosure, classifyEmbeddedChoices } from "./embedded-choice-policy.js";
-import { extractEntrySlug, extractEntryTraits, numericOrNull, resolveFeatType, stringOrNull } from "./entry.js";
+import { extractEntrySlug, extractEntryTraits, normalizeTraitList, numericOrNull, resolveFeatType, stringOrNull, } from "./entry.js";
 import { classifyFilterDecision, classifyHeritageContext, getPackageAncestryCatalog, getTraitCatalog, resolvePackIds, } from "./filter-policy.js";
 const EMPTY_OPTION_CONTEXT = {
     ancestrySlug: null,
@@ -81,6 +81,7 @@ export async function getOptionQueryForStep(step, context = EMPTY_OPTION_CONTEXT
                     level,
                     slug,
                     traits,
+                    ...(entry.type === "feat" ? { featTraits: normalizeTraitList(entry.system?.traits?.value) } : {}),
                     rarity: stringOrNull(entry?.system?.traits?.rarity),
                     source: stringOrNull(entry?.system?.publication?.title) ??
                         stringOrNull(pack.metadata?.label) ??

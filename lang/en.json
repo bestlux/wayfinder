@@ -1,5 +1,16 @@
 {
   "wayfinder-pf2e": {
+    "FeatTraits": {
+      "Label": "Traits",
+      "All": "All",
+      "Help": "Require all included traits. Hide feats with any excluded trait.",
+      "Search": "Search traits…",
+      "Shown": "traits shown (active filters stay visible)",
+      "Include": "Include",
+      "Exclude": "Exclude",
+      "HideDedications": "Hide dedications",
+      "CountHint": "Feats with this trait matching the other filters"
+    },
     "Controls": {
       "Open": "Open Wayfinder"
     },

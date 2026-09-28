@@ -6,6 +6,7 @@ import type {
   PickerLevelRangeState,
 } from "../../types.js";
 import { formatSlug } from "../formatting.js";
+import { normalizeFeatTraitFilters } from "./feat-trait-filters.js";
 
 interface PickerFilterOptionState {
   value: string;
@@ -61,7 +62,8 @@ export function activePickerFilterCount(state: PickerFilterState | null | undefi
     return 0;
   }
 
-  return state.rarity.length + state.source.length;
+  const traits = normalizeFeatTraitFilters(state.traits);
+  return state.rarity.length + state.source.length + traits.include.length + traits.exclude.length;
 }
 
 export function normalizePickerFilterState(state: Partial<PickerFilterState> | null | undefined): PickerFilterState {
@@ -69,6 +71,7 @@ export function normalizePickerFilterState(state: Partial<PickerFilterState> | n
     levelRange: normalizeLevelRange(state?.levelRange),
     rarity: normalizeFilterValues(state?.rarity),
     source: normalizeFilterValues(state?.source),
+    ...(state?.traits ? { traits: normalizeFeatTraitFilters(state.traits) } : {}),
   };
 }
 

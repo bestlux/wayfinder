@@ -233,6 +233,8 @@ export interface OptionRecord {
   rarity: string | null;
   source: string | null;
   label: string;
+  /** Player-facing feat traits, without PF2E's internal otherTags. */
+  featTraits?: string[];
   disclosure?: string | null;
 }
 
@@ -300,7 +302,12 @@ export interface SuppressedPickerOption {
 }
 
 export type PickerFilterKind = "rarity" | "source";
-export type PickerFilterMenuKind = "level" | PickerFilterKind;
+export type PickerFilterMenuKind = "level" | "traits" | PickerFilterKind;
+
+export interface PickerTraitFilterState {
+  include: string[];
+  exclude: string[];
+}
 
 export interface PickerLevelRangeState {
   minimum: number;
@@ -311,4 +318,5 @@ export interface PickerFilterState {
   levelRange: PickerLevelRangeState | null;
   rarity: string[];
   source: string[];
+  traits?: PickerTraitFilterState;
 }

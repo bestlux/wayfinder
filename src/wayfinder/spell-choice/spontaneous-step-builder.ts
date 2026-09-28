@@ -19,6 +19,7 @@ interface BuildSpontaneousRepertoireStepsParams {
   rankIncreaseCount: number;
   rankMaintenanceCount: number;
   maximumSpellRank?: number;
+  dependsOn?: "class" | "class-branch";
   grantedSpells?: Partial<Record<number, SorcerousGiftSpellAccess>>;
   grantedSpellSource?: SourceRef | null;
   readExistingSpellChoiceSelections: ReadExistingSpellChoiceSelections;
@@ -50,7 +51,7 @@ export function buildSpontaneousRepertoireSpellChoiceSteps(
       description: `Choose the ${params.cantripCount} ${params.tradition} cantrips in your starting repertoire.`,
       source,
       classSlug: params.classSlug,
-      dependsOn: "class",
+      dependsOn: params.dependsOn ?? "class",
       count: params.cantripCount,
       minRank: 0,
       maxRank: 0,
@@ -70,7 +71,7 @@ export function buildSpontaneousRepertoireSpellChoiceSteps(
       description: `Choose the ${params.initialRankOneCount} 1st-rank ${params.tradition} spells in your starting repertoire.`,
       source,
       classSlug: params.classSlug,
-      dependsOn: "class",
+      dependsOn: params.dependsOn ?? "class",
       count: params.initialRankOneCount,
       minRank: 1,
       maxRank: 1,
@@ -101,7 +102,7 @@ export function buildSpontaneousRepertoireSpellChoiceSteps(
         description: `Choose ${count} rank ${rank} ${params.tradition} spell${count === 1 ? "" : "s"} for your repertoire.`,
         source,
         classSlug: params.classSlug,
-        dependsOn: "class",
+        dependsOn: params.dependsOn ?? "class",
         count,
         minRank: rank,
         maxRank: rank,

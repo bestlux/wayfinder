@@ -15,6 +15,7 @@ import { cloneData } from "../shared/cloning.js";
 import { extractDocumentSlug } from "../shared/slug.js";
 import { sourceIdOf } from "../shared/source-id.js";
 import { findSpellcastingEntryForChoice } from "../shared/spellcasting.js";
+import { summonerSpellcastingCompatibilityIssues, withSummonerSpellcastingCompatibilityReadiness, } from "../shared/summoner-spellcasting-compatibility.js";
 import { bindWayfinderInteractions, isDraftMutationAction, parseWayfinderAction, scrollActiveStepIntoView, } from "./actions.js";
 import { localizeAcquisitionMessage, } from "./application/acquisition-localization.js";
 import { acquisitionSmokeApplyFailureHandledFor, acquisitionSmokeApplyFailureRenderedFor, acquisitionSmokeCheckpointHookFor, } from "./application/acquisition-smoke-driver.js";
@@ -403,7 +404,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             }
         }
         const { effectiveBuildState } = foundation;
-        const readiness = withPhysicalGrantCoverageReadiness(await evaluateWayfinderDraftReadiness(plan.steps, (step) => {
+        const spellcastingReadiness = withPhysicalGrantCoverageReadiness(await evaluateWayfinderDraftReadiness(plan.steps, (step) => {
             if (step.kind === "starting-equipment") {
                 return this.#evaluateStep(step, effectiveBuildState, draft, plan.steps, snapshot.skillRanks, foundation.skillProgression);
             }
@@ -412,6 +413,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 ? Promise.resolve(cached)
                 : this.#evaluateStep(step, effectiveBuildState, draft, plan.steps, snapshot.skillRanks, foundation.skillProgression);
         }), draft, plan.steps);
+        const readiness = withSummonerSpellcastingCompatibilityReadiness(spellcastingReadiness, listActorItems(this.actor), plan.steps);
         const evaluationsByStepId = new Map(plan.steps.map((step, index) => [step.id, readiness.evaluations[index]]));
         const activeStep = await this.#resolveActiveStep(plan.steps, evaluationsByStepId);
         const activeEvaluation = activeStep ? evaluationsByStepId.get(activeStep.id) : null;
@@ -2743,7 +2745,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 appliedSpellRarityAttestations,
                 steps,
                 evaluateStep: (step) => this.#evaluateStep(step, effectiveBuildState, draft, steps, snapshot.skillRanks, skillProgression),
-                additionalBlockers: [...spellRarityBlockers, ...physicalGrantBlockers],
+                additionalBlockers: [
+                    ...spellRarityBlockers,
+                    ...physicalGrantBlockers,
+                    ...summonerSpellcastingCompatibilityIssues(listActorItems(this.actor), steps),
+                ],
                 acquisitionExecutionAvailable: acquisitionSession !== null,
                 assertAcquisitionApplyAuthority: () => {
                     if (!draft.acquisition)

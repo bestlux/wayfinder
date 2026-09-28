@@ -3,6 +3,8 @@ import { MODULE_ID } from "../constants.js";
 import { documentIsRisingBloodMagic, RISING_BLOOD_MAGIC_UUID } from "../shared/bloodrager-spellcasting.js";
 import { slugifyName } from "../shared/slug.js";
 import { findSpellcastingEntryForChoice, magusMaxSpellRank, wizardMaxSpellRank } from "../shared/spellcasting.js";
+import { summonerSpellcastingCompatibilityIssues } from "../shared/summoner-spellcasting-compatibility.js";
+import { WayfinderDraftNotReadyError } from "../wayfinder/domain/step-evaluation.js";
 import { SLOT_IDS } from "../wayfinder/slot-ids.js";
 const WAYFINDER_ENTRY_ICON = "modules/wayfinder-pf2e/assets/wayfinder-entry.svg";
 const GENERATED_SPELLCASTING_ENTRY_VERSION = 1;
@@ -10,6 +12,10 @@ export async function ensureSpellcastingEntry(actor, step, draft) {
     const spellChoice = step.spellChoice;
     if (!spellChoice) {
         return null;
+    }
+    const compatibilityIssues = summonerSpellcastingCompatibilityIssues(listActorItems(actor), [step]);
+    if (compatibilityIssues.length > 0) {
+        throw new WayfinderDraftNotReadyError(compatibilityIssues);
     }
     const desiredSource = createSpellcastingEntrySource(spellChoice, actor, draft);
     const existing = findSpellcastingEntryForChoice(actor, spellChoice);

@@ -42,9 +42,11 @@ describe("Wayfinder acquisition app integration", () => {
       "#createAcquisitionExecutionSession(characterDraft: DraftState)"
     );
 
-    expect(render).toContain("const readiness = withPhysicalGrantCoverageReadiness(");
+    expect(render).toContain("withPhysicalGrantCoverageReadiness(");
+    expect(render).toContain("const readiness = withSummonerSpellcastingCompatibilityReadiness(");
     expect(apply).toContain("const physicalGrantBlockers = physicalGrantCoverageIssues(draft, steps);");
-    expect(apply).toContain("additionalBlockers: [...spellRarityBlockers, ...physicalGrantBlockers]");
+    expect(apply).toMatch(/additionalBlockers:\s*\[\s*\.\.\.spellRarityBlockers,\s*\.\.\.physicalGrantBlockers,/);
+    expect(apply).toContain("...summonerSpellcastingCompatibilityIssues(listActorItems(this.actor), steps)");
   });
 });
 

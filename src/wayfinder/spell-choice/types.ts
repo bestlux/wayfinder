@@ -1,5 +1,6 @@
 import type { ActorItemFlags, ActorItemLike, ActorLike } from "../../shared/actor-model.js";
 import type { DraftState, SelectionRef, SpellChoiceMeta } from "../../types.js";
+import type { SpellTradition } from "./tradition-utils.js";
 
 export interface SourceRef {
   sourcePackId: string | null;
@@ -62,6 +63,7 @@ export interface BuildSpellChoiceStepsParams {
   effectiveDeityDocument: unknown | null;
   effectiveSchoolDocument: unknown | null;
   effectiveClassFeatureDocuments?: unknown[];
+  summonerTradition?: SpellTradition | null;
   targetLevel: number;
   extractSlug: (document: SpellChoiceDocumentLike | null) => string | null;
   readExistingSpellChoiceSelections: ReadExistingSpellChoiceSelections;

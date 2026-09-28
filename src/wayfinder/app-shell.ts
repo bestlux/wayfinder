@@ -26,6 +26,10 @@ import { cloneData } from "../shared/cloning.js";
 import { extractDocumentSlug } from "../shared/slug.js";
 import { sourceIdOf } from "../shared/source-id.js";
 import { findSpellcastingEntryForChoice } from "../shared/spellcasting.js";
+import {
+  summonerSpellcastingCompatibilityIssues,
+  withSummonerSpellcastingCompatibilityReadiness,
+} from "../shared/summoner-spellcasting-compatibility.js";
 import type {
   AbilityKey,
   DraftState,
@@ -765,7 +769,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       }
     }
     const { effectiveBuildState } = foundation;
-    const readiness = withPhysicalGrantCoverageReadiness(
+    const spellcastingReadiness = withPhysicalGrantCoverageReadiness(
       await evaluateWayfinderDraftReadiness(plan.steps, (step) => {
         if (step.kind === "starting-equipment") {
           return this.#evaluateStep(
@@ -790,6 +794,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             );
       }),
       draft,
+      plan.steps
+    );
+    const readiness = withSummonerSpellcastingCompatibilityReadiness(
+      spellcastingReadiness,
+      listActorItems(this.actor),
       plan.steps
     );
     const evaluationsByStepId = new Map(
@@ -3494,7 +3503,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         steps,
         evaluateStep: (step) =>
           this.#evaluateStep(step, effectiveBuildState, draft, steps, snapshot.skillRanks, skillProgression),
-        additionalBlockers: [...spellRarityBlockers, ...physicalGrantBlockers],
+        additionalBlockers: [
+          ...spellRarityBlockers,
+          ...physicalGrantBlockers,
+          ...summonerSpellcastingCompatibilityIssues(listActorItems(this.actor), steps),
+        ],
         acquisitionExecutionAvailable: acquisitionSession !== null,
         assertAcquisitionApplyAuthority: () => {
           if (!draft.acquisition) return;

@@ -23,6 +23,7 @@ import { projectRegisteredDynamicChoices } from "../singleton-choice/dynamic-cho
 import { buildSingletonChoiceSteps } from "../singleton-choice-service.js";
 import { SLOT_PREFIXES } from "../slot-ids.js";
 import { buildFeatSpellChoiceSteps } from "../spell-choice/feat-step-builder.js";
+import { resolveSummonerSpellTradition } from "../spell-choice/summoner-tradition.js";
 import { asSpellChoiceClassDocument } from "../spell-choice/types.js";
 import { buildSpellChoiceSteps, readExistingSpellChoiceSelections } from "../spell-choice-service.js";
 import { resolveStaticGrantChoiceSources } from "../static-grant-choice-sources.js";
@@ -251,6 +252,15 @@ export async function buildWayfinderAppPlan(args, deps = DEFAULT_DEPS) {
                     effectiveDeityDocument,
                     effectiveSchoolDocument,
                     effectiveClassFeatureDocuments: await resolveSpellChoiceClassFeatureDocuments(classArchetypeDraft, args, deps),
+                    ...(deps.extractDocumentSlug(effectiveClassDocument) === "summoner"
+                        ? {
+                            summonerTradition: resolveSummonerSpellTradition({
+                                draft: classArchetypeDraft,
+                                sources: await resolveSelectedClassFeatureChoiceSources(classArchetypeDraft, args, deps),
+                                extractSlug: deps.extractDocumentSlug,
+                            }),
+                        }
+                        : {}),
                     targetLevel,
                     extractSlug: deps.extractDocumentSlug,
                     readExistingSpellChoiceSelections: readExistingSelections,

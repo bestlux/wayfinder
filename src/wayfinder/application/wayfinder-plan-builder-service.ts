@@ -67,6 +67,7 @@ import { buildSingletonChoiceSteps, type SingletonChoiceSourceContext } from "..
 import type { SkillTrainingSourceContext } from "../skill-training/source-discovery.js";
 import { SLOT_PREFIXES } from "../slot-ids.js";
 import { buildFeatSpellChoiceSteps } from "../spell-choice/feat-step-builder.js";
+import { resolveSummonerSpellTradition } from "../spell-choice/summoner-tradition.js";
 import { asSpellChoiceClassDocument } from "../spell-choice/types.js";
 import { buildSpellChoiceSteps, readExistingSpellChoiceSelections } from "../spell-choice-service.js";
 import { resolveStaticGrantChoiceSources } from "../static-grant-choice-sources.js";
@@ -368,6 +369,15 @@ export async function buildWayfinderAppPlan(
             args,
             deps
           ),
+          ...(deps.extractDocumentSlug(effectiveClassDocument) === "summoner"
+            ? {
+                summonerTradition: resolveSummonerSpellTradition({
+                  draft: classArchetypeDraft,
+                  sources: await resolveSelectedClassFeatureChoiceSources(classArchetypeDraft, args, deps),
+                  extractSlug: deps.extractDocumentSlug,
+                }),
+              }
+            : {}),
           targetLevel,
           extractSlug: deps.extractDocumentSlug,
           readExistingSpellChoiceSelections: readExistingSelections,

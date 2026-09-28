@@ -2853,6 +2853,7 @@ async function fillStep(actor, draft, step, planSteps, smokeCase, modules, notes
         return;
       }
       const options = await modules.getOptionsForStep(effectiveStep, optionContext);
+      assertExpectedPickerOptions(options, effectiveStep, smokeCase, optionContext, draft);
       if (
         attestationConfig?.expectedRestrictedSpellUuid &&
         !options.some(
@@ -3072,6 +3073,12 @@ function assertExpectedPickerOptions(options, step, smokeCase, optionContext, dr
 
   if (step.kind !== "spell-choice") {
     return;
+  }
+
+  if (expectation.tradition !== undefined && step.spellChoice.destination.tradition !== expectation.tradition) {
+    throw new Error(
+      `${step.slotId} spell tradition is ${step.spellChoice.destination.tradition}, expected ${expectation.tradition}.`,
+    );
   }
 
   const optionRanks = options
@@ -4035,8 +4042,10 @@ function validateActorExpectations(actorEvidence, smokeCase, failures) {
     const item = actorEvidence.items.find((candidate) => candidate.name === itemName);
     for (const [flag, expectedValue] of Object.entries(expectedSelections)) {
       const actualValue = item?.ruleSelections?.[flag];
-      if (actualValue !== expectedValue) {
-        failures.push(`${itemName} rule selection ${flag} is ${actualValue ?? "missing"}, expected ${expectedValue}`);
+      if (!ruleSelectionValuesEqual(actualValue, expectedValue)) {
+        failures.push(
+          `${itemName} rule selection ${flag} is ${JSON.stringify(actualValue) ?? "missing"}, expected ${JSON.stringify(expectedValue)}`,
+        );
       }
     }
   }
@@ -4125,6 +4134,19 @@ function validateActorExpectations(actorEvidence, smokeCase, failures) {
       }
     }
   }
+}
+
+function ruleSelectionValuesEqual(actual, expected) {
+  if (actual === expected) return true;
+  if (actual === null || expected === null || typeof actual !== "object" || typeof expected !== "object") return false;
+  if (Array.isArray(actual) !== Array.isArray(expected)) return false;
+  if (Array.isArray(actual) && actual.length !== expected.length) return false;
+  const actualKeys = Object.keys(actual);
+  const expectedKeys = Object.keys(expected);
+  return (
+    actualKeys.length === expectedKeys.length &&
+    expectedKeys.every((key) => Object.hasOwn(actual, key) && ruleSelectionValuesEqual(actual[key], expected[key]))
+  );
 }
 
 async function seedActorItems(actor, smokeCase, failures) {

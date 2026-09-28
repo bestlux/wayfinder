@@ -156,6 +156,84 @@ function classCase({
   };
 }
 
+const summonerTraditionCases = [
+  {
+    tradition: "arcane", skill: "arcana",
+    cantrip: "Electric Arc", rankOne: "Force Barrage", rankTwo: "Acid Grip",
+    forbiddenCantrip: "Divine Lance", forbiddenRankOne: "Heal", forbiddenRankTwo: "Spiritual Armament",
+  },
+  {
+    tradition: "divine", skill: "religion",
+    cantrip: "Divine Lance", rankOne: "Heal", rankTwo: "Spiritual Armament",
+    forbiddenCantrip: "Electric Arc", forbiddenRankOne: "Force Barrage", forbiddenRankTwo: "Acid Grip",
+  },
+  {
+    tradition: "occult", skill: "occultism",
+    cantrip: "Void Warp", rankOne: "Soothe", rankTwo: "Spiritual Armament",
+    forbiddenCantrip: "Electric Arc", forbiddenRankOne: "Heal", forbiddenRankTwo: "Acid Grip",
+  },
+  {
+    tradition: "primal", skill: "nature",
+    cantrip: "Healing Plaster", rankOne: "Heal", rankTwo: "Animal Form",
+    forbiddenCantrip: "Divine Lance", forbiddenRankOne: "Force Barrage", forbiddenRankTwo: "Spiritual Armament",
+  },
+].map(({ tradition, skill, cantrip, rankOne, rankTwo, forbiddenCantrip, forbiddenRankOne, forbiddenRankTwo }) => {
+  const label = tradition.charAt(0).toUpperCase() + tradition.slice(1);
+  const choiceSlotId = "class-choice-dragon-eidolon-eidolonTradition-level-1";
+  const cantripSlotId = "spell-choice-summoner-cantrips-level-1";
+  const rankOneSlotId = "spell-choice-summoner-repertoire-rank-1-level-1";
+  const rankTwoSlotId = "spell-choice-summoner-repertoire-rank-2-level-3";
+  const destinationKey = `summoner-${tradition}-spontaneous`;
+  return {
+    ...classCase({
+      className: "Summoner",
+      classSlug: "summoner",
+      keyAbility: "cha",
+      expectedStepIds: [
+        "class-branch-eidolon-level-1",
+        "class-branch-evolution-feat-level-1",
+        choiceSlotId,
+        cantripSlotId,
+        rankOneSlotId,
+        "spell-choice-summoner-repertoire-rank-1-level-2",
+        rankTwoSlotId,
+        "spell-choice-summoner-repertoire-rank-2-level-4",
+      ],
+      preferredSelections: {
+        "class-branch-eidolon-level-1": ["Dragon Eidolon"],
+        "class-branch-evolution-feat-level-1": ["Advanced Weaponry"],
+        [choiceSlotId]: [label],
+        [cantripSlotId]: [cantrip],
+        [rankOneSlotId]: [rankOne],
+        [rankTwoSlotId]: [rankTwo],
+        "class-feat": ["Reinforce Eidolon", "Lifelink Surge", "Skilled Partner"],
+      },
+      preferredSkills: [skill, "diplomacy", "society", "medicine", "acrobatics"],
+    }),
+    id: `summoner-dragon-${tradition}-l1-l4-apply-rerun`,
+    label: `Summoner with ${label} Dragon Eidolon level 1 through 4 apply/rerun`,
+    targetLevel: 4,
+    expectedPickerOptions: {
+      [cantripSlotId]: { tradition, present: [cantrip], absent: [forbiddenCantrip], minRank: 0, maxRank: 0 },
+      [rankOneSlotId]: { tradition, present: [rankOne], absent: [forbiddenRankOne], minRank: 1, maxRank: 1 },
+      "spell-choice-summoner-repertoire-rank-1-level-2": { tradition },
+      [rankTwoSlotId]: { tradition, present: [rankTwo], absent: [forbiddenRankTwo], minRank: 2, maxRank: 2 },
+      "spell-choice-summoner-repertoire-rank-2-level-4": { tradition },
+    },
+    expectedItemRuleSelections: {
+      [`Dragon Eidolon (${label})`]: { eidolonTradition: { skill, tradition } },
+    },
+    expectedSpellcastingEntries: {
+      [destinationKey]: { tradition, prepared: "spontaneous", ability: "cha" },
+    },
+    expectedItemDestinations: {
+      [cantrip]: destinationKey,
+      [rankOne]: destinationKey,
+      [rankTwo]: destinationKey,
+    },
+  };
+});
+
 function registeredPhysicalGrantRejection(...bindings) {
   const activeRoutes = bindings.map(({ routeId, sourceSlotId }) => {
     const route = physicalGrantRouteById(routeId);
@@ -1242,6 +1320,7 @@ export const smokeCases = [
     },
     preferredSkills: ["arcana", "nature", "occultism", "religion", "diplomacy", "society"],
   }),
+  ...summonerTraditionCases,
   classCase({
     className: "Swashbuckler",
     classSlug: "swashbuckler",

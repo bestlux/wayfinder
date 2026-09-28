@@ -74,13 +74,25 @@ export const sorcererContributor = branchTraditionSpontaneousContributor({
   ability: "cha",
 });
 
-export const summonerContributor = branchTraditionSpontaneousContributor({
+export const summonerContributor: ClassContributor = {
   slug: "summoner",
-  spellcastingFeatureName: "Summoner Spellcasting",
-  branchTag: "summoner-eidolon",
-  fallbackTradition: "arcane",
-  ability: "cha",
-});
+  async buildSpellChoiceSteps(args) {
+    if (!args.summonerTradition) return [];
+    return buildSpontaneousRepertoireSpellChoiceSteps({
+      ...args,
+      classSlug: "summoner",
+      spellcastingFeatureName: "Summoner Spellcasting",
+      tradition: args.summonerTradition,
+      ability: "cha",
+      cantripCount: 5,
+      initialRankOneCount: 2,
+      rankIncreaseCount: 2,
+      rankMaintenanceCount: 1,
+      maximumSpellRank: 9,
+      dependsOn: "class-branch",
+    });
+  },
+};
 
 export const witchContributor: ClassContributor = {
   slug: "witch",

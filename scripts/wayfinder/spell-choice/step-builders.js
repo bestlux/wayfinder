@@ -14,6 +14,7 @@ export async function buildSpellChoiceStepsForContributor(params, contributor) {
         effectiveClassFeatureDocuments: (params.effectiveClassFeatureDocuments ?? [])
             .map((document) => asSpellChoiceSchoolDocument(document))
             .filter((document) => document !== null),
+        ...(params.summonerTradition !== undefined ? { summonerTradition: params.summonerTradition } : {}),
         extractSlug: params.extractSlug,
         readExistingSpellChoiceSelections: params.readExistingSpellChoiceSelections,
     })) ?? []);

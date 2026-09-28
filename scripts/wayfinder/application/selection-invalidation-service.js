@@ -1,5 +1,6 @@
 import { clearSelectionState, invalidateSelectionState, invalidateSelectionsByPrefix } from "../invalidation.js";
 import { getSlotIdKind, SLOT_IDS, SLOT_PREFIXES } from "../slot-ids.js";
+import { isEidolonTraditionChoiceSlotId, SUMMONER_SPELL_CHOICE_PREFIX } from "../spell-choice/summoner-tradition.js";
 export function createSelectionInvalidationService(state, deps) {
     const resetHooks = {
         resetAncestryBoostDraft: deps.resetAncestryBoostDraft,
@@ -22,7 +23,10 @@ export function createSelectionInvalidationService(state, deps) {
             if (cleared === 0) {
                 return 0;
             }
-            if (slotId === SLOT_IDS.ancestry) {
+            if (isEidolonTraditionChoiceSlotId(slotId)) {
+                cleared += invalidateByPrefix(SUMMONER_SPELL_CHOICE_PREFIX).length;
+            }
+            else if (slotId === SLOT_IDS.ancestry) {
                 cleared += invalidateSingletonChoicesBySourceSync("ancestry").length;
                 cleared += invalidateSingletonChoicesBySourceSync("heritage").length;
                 cleared += invalidateGrantSelectionsBySourceSync("ancestry").length;

@@ -18,6 +18,7 @@ import { cloneData } from "../shared/cloning.js";
 import { usesNativeGrantItemCreation } from "../shared/grant-creation-policy.js";
 import { itemMatchesSourceId, sourceIdOf } from "../shared/source-id.js";
 import { findSpellcastingEntryForChoice } from "../shared/spellcasting.js";
+import { summonerSpellcastingCompatibilityIssues } from "../shared/summoner-spellcasting-compatibility.js";
 import type { DraftState, ModuleState, PendingStep, SelectionRef } from "../types.js";
 import { captureObservedClassGrantItems } from "../wayfinder/application/class-grant-projection-service.js";
 import {
@@ -361,6 +362,10 @@ export async function prepareDraftApplication(
 
   const draft = cloneData(draftInput);
   const steps = cloneData(stepsInput);
+  const summonerSpellcastingIssues = summonerSpellcastingCompatibilityIssues(listActorItems(actor), steps);
+  if (summonerSpellcastingIssues.length > 0) {
+    throw new WayfinderDraftNotReadyError(summonerSpellcastingIssues);
+  }
   synchronizeRetainedClassArchetypeChoice(draft, steps, listActorItems(actor));
   assertAcquisitionAuthority(actor, draft, deps.assertAcquisitionApplyAuthority);
   const spellRarityProblems = hasDraftRecoveryState(draft)

@@ -1,4 +1,5 @@
 import type { DraftState, PendingStep } from "../../types.js";
+import type { SpellTradition } from "../spell-choice/tradition-utils.js";
 import type {
   ReadExistingSpellChoiceSelections,
   SpellChoiceClassDocument,
@@ -19,6 +20,7 @@ export interface BuildClassSpellChoiceStepsArgs extends BuildClassContributionDe
   effectiveDeityDocument: SpellChoiceDeityDocument | null;
   effectiveSchoolDocument: SpellChoiceSchoolDocument | null;
   effectiveClassFeatureDocuments?: SpellChoiceSchoolDocument[];
+  summonerTradition?: SpellTradition | null;
   readExistingSpellChoiceSelections: ReadExistingSpellChoiceSelections;
 }
 

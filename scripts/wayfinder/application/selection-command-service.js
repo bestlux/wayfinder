@@ -2,6 +2,7 @@ import { classArchetypeProfile } from "../class-archetype/registry.js";
 import { readDraftStepSelection, writeDraftStepSelection } from "../draft-decisions.js";
 import { sameMembers } from "../formatting.js";
 import { SLOT_IDS, SLOT_PREFIXES } from "../slot-ids.js";
+import { isEidolonTraditionChoiceSlotId, isSummonerTraditionChoice, SUMMONER_SPELL_CHOICE_PREFIX, } from "../spell-choice/summoner-tradition.js";
 const SINGLETON_CHOICE_NOOP_RESULT = {
     kind: "noop",
     warning: null,
@@ -203,6 +204,15 @@ export async function chooseSelectionOption(state, step, rawValue, deps) {
         }
     }
     if (step.kind === "class-branch" && previousSelection?.uuid !== selection.uuid) {
+        if (step.branch?.optionTag === "summoner-eidolon") {
+            deps.invalidateSelectionsByPrefix(SUMMONER_SPELL_CHOICE_PREFIX);
+            // A return to an earlier eidolon must ask for its tradition again.
+            for (const slotId of Object.keys(state.draft.classChoices)) {
+                if (isEidolonTraditionChoiceSlotId(slotId)) {
+                    delete state.draft.classChoices[slotId];
+                }
+            }
+        }
         const invalidatedSpells = await deps.invalidateSpellChoicesByDependency("class-branch");
         const invalidatedGrantChoices = await deps.invalidateGrantSelectionsBySource("classfeature");
         const invalidatedFlagChoices = await deps.invalidateFlagChoicesBySource("classfeature");
@@ -308,7 +318,7 @@ export async function selectClassChoiceValue(state, step, value, deps) {
     if (previousValue !== null && previousValue !== value) {
         statusNote = await invalidateClassChoiceDependents(step ?? null, deps);
     }
-    else if (invalidatesDeityBranches && previousValue !== value) {
+    else if ((invalidatesDeityBranches || isSummonerTraditionChoice(step?.classChoice)) && previousValue !== value) {
         statusNote = await invalidateClassChoiceDependents(step ?? null, deps);
     }
     state.recentlyInvalidatedStepIds.delete(stepId);
@@ -348,6 +358,10 @@ export async function selectClassArchetypeValue(state, step, value, deps) {
     });
 }
 async function invalidateClassChoiceDependents(step, deps) {
+    if (isSummonerTraditionChoice(step?.classChoice)) {
+        const invalidated = deps.invalidateSelectionsByPrefix(SUMMONER_SPELL_CHOICE_PREFIX);
+        return invalidated.length > 0 ? "Eidolon tradition changed. Choose your summoner spells again." : null;
+    }
     const branchInvalidated = deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.classBranch);
     const deityBranchInvalidated = step?.classChoice?.flag === "sanctification" || step?.classChoice?.dependsOn === "deity"
         ? await deps.invalidateBranchSelectionsByDependency("deity")

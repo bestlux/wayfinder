@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.1 - 2026-09-28
+
+- Fixed Dragon Eidolon Summoners being restricted to arcane spells after choosing another tradition. Cantrips, repertoire spells, and their spellcasting entry now follow the selected arcane, divine, occult, or primal tradition, including saved drafts and existing characters.
+- Changing the eidolon's tradition keeps the eidolon selected and clears its drafted spells and access notes for reselection. An unresolved tradition no longer silently defaults to arcane.
+- Existing Wayfinder Summoner entries with a conflicting tradition now request GM review before Apply. Review the owned spells and correct the entry on the actor sheet; this release does not automatically move or delete previously acquired spells.
+
 ## 0.10.0 - 2026-09-28
 
 - Added searchable trait filters to class, general, and skill feat choices. Include all selected traits, exclude any selected trait, and combine them with the existing name, level, rarity, and source filters.

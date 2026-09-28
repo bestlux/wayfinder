@@ -47,6 +47,20 @@ The companion static class audit checks the maintained smoke matrix against the 
 npm run audit:classes
 ```
 
+## 2026-09-28 Issue 42 Summoner eidolon spell tradition
+
+The 0.10.1 candidate resolves Summoner spell tradition from the selected eidolon's PF2E rule data and the matching drafted or actor-owned choice. Dragon Eidolon's structured skill/tradition choices no longer fall through to an arcane prose default. Unresolved choices do not generate a guessed spell list. Changing or clearing a tradition keeps the eidolon and invalidates its drafted spells and access notes; replacing the eidolon also invalidates the old tradition choice.
+
+The focused matrix in `.wayfinder-smoke/issue42-focused-fixed` passed all four Dragon traditions on Foundry 14.367 / PF2E 8.5.0 / Wayfinder 0.10.1. Each level-1-to-4 build checked admitted and excluded cantrips and rank-1/rank-2 spells, persisted structured rule selections, the correctly keyed spellcasting entry, owned spell locations, successful Apply, and an empty rerun. The first focused attempt caught a wizard-curriculum picker blocker caused by the new branch dependency; explicit non-curriculum repertoire metadata and an actual picker-blocker regression corrected it before qualification.
+
+The actual Wayfinder UI probe in `.wayfinder-smoke/issue42-ui-results.json` changed arcane to divine, saved and reopened the app with Divine still selected, then changed to primal. It confirmed that the eidolon remained selected, old drafted spells were removed, and all five spell-choice steps followed the saved tradition. The rendered primal cantrip pane was visually inspected. Disposable fixture cleanup passed.
+
+A conflicting existing Wayfinder-managed Summoner entry now blocks readiness and Apply before actor mutation. The user-facing handoff requests GM review of the owned spells and correction of the entry on the actor sheet. A corrected entry with a stale destination key can be reused; this patch does not automatically move or delete previously acquired spells.
+
+The final implementation passed `npm run check`: 206 suites / 2,305 tests, formatting, lint, generated-script synchronization, build, generated policy reports, and both TypeScript projects. Independent reviews were clear, including a follow-up review of the curriculum correction. The physical-grant source gate passed against the unchanged clean PF2E 8.4.1 registry pin. The class audit retains the previously documented Necromancer/Runesmith coverage gaps.
+
+The reporter's exact Foundry 14.368 / PF2E 8.6.1 combination was not available locally and is not claimed as tested. Relevant Summoner, Dragon, and Angel source data was compared across PF2E 8.4.1, 8.5.0, and 8.5.1; runtime claims above apply specifically to 14.367 / 8.5.0.
+
 ## 2026-09-28 Issue 41 feat trait browsing
 
 The 0.10.0 candidate adds searchable Include/Exclude trait controls to class, general, and skill feat pickers, plus a Hide dedications shortcut. It filters the existing admitted option snapshot and preserves the draft and eligibility policy. Player-facing traits remain separate from PF2E internal `otherTags`; custom traits retain readable labels.

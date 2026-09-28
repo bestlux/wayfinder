@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createEmptyDraft, normalizeDraft } from "../src/draft-service";
 import { matchesFilters } from "../src/pack/filter-policy";
+import { getPickerBlockedState } from "../src/pack/picker-state";
 import type { OptionContext, SelectionRef } from "../src/types";
 import type { ClassFeatureSelectionSource } from "../src/wayfinder/class-choice/rule-discovery";
 import { resolveSummonerSpellTradition } from "../src/wayfinder/spell-choice/summoner-tradition";
@@ -57,8 +58,10 @@ describe("Summoner eidolon tradition", () => {
     for (const step of steps) {
       expect(step.spellChoice).toMatchObject({
         dependsOn: "class-branch",
+        requiresCurriculum: false,
         destination: { key: `summoner-${tradition}-spontaneous`, tradition },
       });
+      expect(getPickerBlockedState(step, { classSlug: "summoner" } as OptionContext)).toBeNull();
       for (const candidate of traditions) {
         const spell = {
           _id: candidate,

@@ -1,6 +1,6 @@
 # Beta Readiness Foundry Smoke
 
-Last updated: 2026-09-28.
+Last updated: 2026-10-05.
 
 This is the launch-readiness live smoke layer for Wayfinder. It complements unit tests by exercising the built module inside a real Foundry world against live PF2E compendia.
 
@@ -46,6 +46,18 @@ The companion static class audit checks the maintained smoke matrix against the 
 ```powershell
 npm run audit:classes
 ```
+
+## 2026-10-05 Issue 43 Spell navigation after autosave
+
+The actual 0.10.1 UI reproduced the reported Witch navigation jump: after leaving cantrips unfinished and choosing a ranked spell, autosave returned to cantrips and displayed a false remote-refresh status. Spell normalization dropped the selection's slug, making the saved draft differ from the local draft. The 0.10.2 sanitizer preserves that metadata; navigation, completion-based advancement, and Apply readiness policy are unchanged.
+
+The final focused probe in `.wayfinder-smoke/issue43-navigation-fixed-f4440858-1a06-4774-8b2f-ec579af112da` passed all 17 checks on Foundry 14.367 / PF2E 8.5.1 / Wayfinder 0.10.2. First and repeated ranked-spell picks, removal, rerender, and reopening retained the deliberately selected pane and saved choices without a false refresh. Completing ten cantrips advanced to an empty ranked-spell group, while required choices still blocked Apply. The fixture reset explicitly cleared the draft before this sequential check. Baseline evidence is in `.wayfinder-smoke/issue43-navigation-baseline-6d3206be-d5ad-4ca4-8224-e96cd713c01f`. Fixtures were removed, and before/after source hashes confirmed existing actors were unchanged. The reporter's Foundry 14.368 build was not available locally.
+
+The exact candidate `5f93a03c82ceddc4929ee10f8f30e76f6e37afd1` passed `npm run check`: 206 suites / 2,311 tests, formatting, lint, generated-script synchronization, build, policy reports, and both TypeScript projects. The physical-grant source gate passed against the unchanged clean PF2E 8.4.1 pin; the static class audit retains the documented Necromancer/Runesmith coverage gaps. Independent code review found no outstanding P0-P2 issue.
+
+Full WF-080-51 qualification in `.wayfinder-smoke/wf51-0102-issue43-candidate` passed all 11 children, 55 character executions / 54 unique scenarios, equipment acquisition, English/Chinese UI, player permissions, recovery, and all 15 aggregate rows on the exact candidate and runtime above. Cleanup restored settings, language, and actor boundaries. The independent package audit verified all 296 archive entries against immutable Git blobs and checked ZIP integrity, manifests, licenses, exclusions, policy/evidence hashes, served bytes, and child logs. The qualified package is under `dist/qualified-0.10.2-issue43`.
+
+Tag `v0.10.2` and [release workflow `37346148108`](https://github.com/bestlux/wayfinder/actions/runs/37346148108) published that candidate. Attempt 1 stopped on four 20-second timeouts in unchanged isolated browser suites. All eight tests in those files passed in a focused local rerun; attempt 2 passed the unchanged tag's full CI gate (2,296 passed, 15 skipped) and all three release jobs, including Foundry dry-run and actual registration. Fresh anonymous downloads verified identical versioned/latest/embedded manifests, release notes, and all public asset digests. The public ZIP matches the qualified ZIP at SHA-256 `034e6b195fe202453bd3f099fa396f0ed21c7f1d420b2748f972e76edeaa2896`. Foundry's public listing binds 0.10.2 to its version-specific manifest and verified Foundry 14.367. [Issue #43's resolution comment](https://github.com/bestlux/wayfinder/issues/43#issuecomment-5999425439) and closure followed public verification. Master advances only with this evidence record after the immutable release tag.
 
 ## 2026-09-28 Issue 42 Summoner eidolon spell tradition
 

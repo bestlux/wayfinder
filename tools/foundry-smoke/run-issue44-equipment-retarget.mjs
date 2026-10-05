@@ -71,6 +71,11 @@ async function main() {
   const installOptions = { afterSuitePaths: [browserProbePath] };
   try {
     if (options.installed) {
+      for (const page of [gmPage, playerPage]) {
+        const network = await page.context().newCDPSession(page);
+        await network.send("Network.enable");
+        await network.send("Network.setCacheDisabled", { cacheDisabled: true });
+      }
       observeInstalledFiles(gmPage, options.moduleRoot, servedFiles, routeFailures, servedReads);
       observeInstalledFiles(playerPage, options.moduleRoot, servedFiles, routeFailures, servedReads);
     } else {

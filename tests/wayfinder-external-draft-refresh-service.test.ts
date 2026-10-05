@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { createEmptyDraft } from "../src/draft-service";
+import { createEmptyDraft, normalizeDraft } from "../src/draft-service";
+import { buildSaveDraftUpdate } from "../src/wayfinder/application/draft-lifecycle-service";
 import {
   DraftPersistenceCoordinator,
   type DraftSaveState,
@@ -18,6 +19,44 @@ describe("Wayfinder external draft refresh", () => {
 
     expect(decideExternalDraftRefresh(input(localDraft, liveDraft))).toBe("acknowledge");
     expect(decideExternalDraftRefresh(input(createEmptyDraft(1), null))).toBe("acknowledge");
+  });
+
+  it.each([
+    { slug: "shield", slotId: "spell-choice-witch-cantrips-level-1" },
+    { slug: "fear", slotId: "spell-choice-witch-rank-1-level-1" },
+  ])("acknowledges its own saved $slug spell selection", async ({ slug, slotId }) => {
+    const localDraft = createEmptyDraft(1);
+    let liveDraft = createEmptyDraft(1);
+    const coordinator = new DraftPersistenceCoordinator({
+      saveDraft: async (draft) => {
+        const saved = buildSaveDraftUpdate(draft)["flags.wayfinder-pf2e.draft"];
+        liveDraft = normalizeDraft(JSON.parse(JSON.stringify(saved)), 1);
+      },
+    });
+    coordinator.initialize(localDraft);
+    localDraft.spellChoices[slotId] = [
+      {
+        slotId,
+        packId: "pf2e.spells-srd",
+        documentId: slug,
+        uuid: `Compendium.pf2e.spells-srd.Item.${slug}`,
+        itemType: "spell",
+        featType: null,
+        name: slug,
+        level: 1,
+        slug,
+      },
+    ];
+
+    try {
+      coordinator.schedule(localDraft);
+      await coordinator.flush();
+
+      expect(liveDraft.spellChoices[slotId]).toEqual(localDraft.spellChoices[slotId]);
+      expect(decideExternalDraftRefresh(input(localDraft, liveDraft, coordinator.state))).toBe("acknowledge");
+    } finally {
+      coordinator.dispose();
+    }
   });
 
   it("adopts a semantically different remote draft only when local persistence is clean", () => {

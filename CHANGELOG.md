@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.2 - 2026-10-05
+
+- Fixed spell selections sending you back to an earlier unfinished step after autosave. You can leave cantrips unfinished, choose ranked spells, and keep working in the tab you selected.
+- Spell selection metadata now survives saved-draft normalization, preventing Wayfinder from mistaking its own autosave for a draft refresh from another client. Completing a spell group still advances normally, and unfinished choices still block Apply.
+
 ## 0.10.1 - 2026-09-28
 
 - Fixed Dragon Eidolon Summoners being restricted to arcane spells after choosing another tradition. Cantrips, repertoire spells, and their spellcasting entry now follow the selected arcane, divine, occult, or primal tradition, including saved drafts and existing characters.

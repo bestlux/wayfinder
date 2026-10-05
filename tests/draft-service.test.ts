@@ -336,6 +336,21 @@ describe("draft-service", () => {
     expect(reopened.updatedAt).not.toBeNull();
   });
 
+  it.each([
+    { slug: " shield ", expected: "shield" },
+    { slug: "", expected: undefined },
+    { slug: null, expected: undefined },
+    { slug: undefined, expected: undefined },
+  ])("preserves valid spell slugs through save and reopen: $slug", ({ slug, expected }) => {
+    const draft = createEmptyDraft(1);
+    const slotId = "spell-choice-witch-cantrips-level-1";
+    draft.spellChoices[slotId] = [{ ...rawSelection(slotId, "pf2e.spells-srd", "shield", "Shield", null), slug }];
+
+    const reopened = normalizeDraft(JSON.parse(JSON.stringify(buildDraftPatch(draft))), 1);
+
+    expect(reopened.spellChoices[slotId]?.[0]?.slug).toBe(expected);
+  });
+
   it("preserves an overfilled training choice through save and reopen", () => {
     const slotId = "skill-training-wizard-level-1";
     const draft = createEmptyDraft(1);

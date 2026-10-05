@@ -387,6 +387,7 @@ function sanitizeSpellSelection(slotId, value) {
         featType: typeof selection.featType === "string" ? selection.featType : null,
         name,
         level: typeof selection.level === "number" ? clampLevel(selection.level) : null,
+        ...(typeof selection.slug === "string" && selection.slug.trim() ? { slug: selection.slug.trim() } : {}),
     };
 }
 function dedupeSelections(selections) {

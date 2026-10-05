@@ -507,6 +507,50 @@ describe("wayfinder draft adjustment service", () => {
       disposition: { kind: "unreviewed", reasons: ["target-level"] },
     });
   });
+
+  it("keeps the target and acquisition unchanged while Apply is recovering", () => {
+    const draft = createEmptyDraft(3);
+    draft.applyAttemptStepIds = ["starting-equipment-level-3"];
+    draft.acquisition = createAcquisitionDraft({
+      draftId: "draft-3",
+      batchId: "batch-3",
+      manifestId: "manifest-3",
+      targetLevel: 3,
+      recipe: { kind: "lump-sum" },
+    });
+    const before = structuredClone(draft);
+    expect(adjustDraftTargetLevel(draft, 1, 1)).toBe(false);
+    expect(draft).toEqual(before);
+  });
+
+  it("does not erase class-grant recovery evidence when retargeting is attempted", () => {
+    const draft = createEmptyDraft(3);
+    draft.acquisition = createAcquisitionDraft({
+      draftId: "draft-3",
+      batchId: "batch-3",
+      manifestId: "manifest-3",
+      targetLevel: 3,
+      recipe: { kind: "lump-sum" },
+    });
+    draft.acquisition = {
+      ...draft.acquisition,
+      classGrantReconciliations: [
+        {
+          version: 1,
+          draftId: "draft-3",
+          batchId: "batch-3",
+          phase: "before-acquisition",
+          entries: [],
+          ignoredItemIds: [],
+          unresolvedGrantIds: [],
+          ambiguousGrantIds: [],
+        },
+      ],
+    };
+    const before = structuredClone(draft);
+    expect(adjustDraftTargetLevel(draft, 1, -1)).toBe(false);
+    expect(draft).toEqual(before);
+  });
 });
 
 function adjustmentState(draft = createEmptyDraft(1), invalidatedStepIds: string[] = []): DraftAdjustmentState {

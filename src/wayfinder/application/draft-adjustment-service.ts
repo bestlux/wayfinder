@@ -4,6 +4,7 @@ import { reconcileAcquisitionTargetLevel } from "../domain/acquisition-draft.js"
 import type { SkillProgression } from "../domain/skill-progression.js";
 import { isActiveSkillTrainingChoice } from "../domain/skill-training-choice-availability.js";
 import { SLOT_IDS } from "../slot-ids.js";
+import { hasApplyRecoveryState } from "./draft-lifecycle-service.js";
 
 type BoostRecord = Record<string, { value: AbilityKey[]; selected: AbilityKey | null }>;
 
@@ -260,6 +261,9 @@ export function toggleVoluntaryChoice(
 export function adjustDraftTargetLevel(draft: DraftState, currentLevel: number, delta: number): boolean {
   const nextTargetLevel = Math.min(20, Math.max(currentLevel, draft.targetLevel + delta));
   if (nextTargetLevel === draft.targetLevel) {
+    return false;
+  }
+  if (hasApplyRecoveryState(draft) || (draft.acquisition?.classGrantReconciliations.length ?? 0) > 0) {
     return false;
   }
 

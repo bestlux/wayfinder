@@ -700,7 +700,7 @@ export function createEquipmentAcquisitionRuntime(options) {
             const funding = resolveRequestedFunding(policy, request.funding ?? { lane: "currency" }, resolved.candidate.level, itemPermanence);
             return {
                 schemaVersion: 1,
-                lineId: mintLineId(),
+                lineId: request.lineId ?? mintLineId(),
                 sourceUuid: resolved.candidate.sourceUuid,
                 documentFingerprint: resolved.documentFingerprint,
                 priceFingerprint: priced.priceFingerprint,

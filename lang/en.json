@@ -467,6 +467,8 @@
       "Status": {
         "AddedToCart": "Added to your cart.",
         "AlreadyOpen": "Your equipment step is already open.",
+        "TargetLevelChanged": "Equipment is ready for your new level. Review your items and coin again before applying.",
+        "TargetLevelChangedItems": "Equipment is ready for your new level. {count} previous item choices could not carry over. Review your cart and make any required item choices again before applying.",
         "AuthorityRevoked": "Equipment authority revoked. Apply is blocked until current approval is recorded.",
         "ConfiguredItemHandoff": "{itemName} will be handled on the PF2E inventory sheet.",
         "CustomLumpSumApproved": "Custom lump sum approved for this draft.",

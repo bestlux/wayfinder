@@ -200,6 +200,23 @@ describe("equipment acquisition runtime", () => {
     ).rejects.toThrow("Starting currency can buy only items up to level 4.");
   });
 
+  it("re-prepares an existing cart line without replacing its transaction ID", async () => {
+    const source = dagger();
+    const { runtime, request } = fixture({
+      getIndex: vi.fn(async () => [source]),
+      getDocument: vi.fn(async () => document(source)),
+    });
+    const line = await runtime.uiAdapter.prepareLine({
+      ...request,
+      sourceUuid: DAGGER_UUID,
+      lineId: "existing-cart-line",
+    });
+    expect(line.lineId).toBe("existing-cart-line");
+    expect(line.sourceUuid).toBe(DAGGER_UUID);
+    expect(line.policyDecision.eligible).toBe(true);
+    expect(line.price.linePriceCopper).toBeGreaterThan(0);
+  });
+
   it("prepares explicit permanent-item allowance assignments without consuming coin", async () => {
     const source = dagger({ level: 3, priceGp: 20 });
     const { runtime, request } = fixture(

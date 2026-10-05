@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.3 - 2026-10-05
+
+- Fixed Starting Equipment becoming stuck after adding or removing levels in a new-character draft. Equipment setup can now reopen at the new level, including drafts already saved in the stuck state and drafts returning to level 1.
+- Valid cart items keep their identities and quantities while prices, eligibility, funding, and the equipment review refresh for the new level. Choices that cannot carry over are reported for reselection. The remaining character draft stays intact, and unfinished Apply recovery must complete before changing levels or equipment policy.
+
 ## 0.10.2 - 2026-10-05
 
 - Fixed spell selections sending you back to an earlier unfinished step after autosave. You can leave cantrips unfinished, choose ranked spells, and keep working in the tab you selected.

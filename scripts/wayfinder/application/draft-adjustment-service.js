@@ -1,6 +1,7 @@
 import { reconcileAcquisitionTargetLevel } from "../domain/acquisition-draft.js";
 import { isActiveSkillTrainingChoice } from "../domain/skill-training-choice-availability.js";
 import { SLOT_IDS } from "../slot-ids.js";
+import { hasApplyRecoveryState } from "./draft-lifecycle-service.js";
 export function setManualStepComplete(state, stepId, complete) {
     state.draft.manual[stepId] = complete;
     return true;
@@ -192,6 +193,9 @@ export function toggleVoluntaryChoice(state, ancestry, stepId, attribute, choice
 export function adjustDraftTargetLevel(draft, currentLevel, delta) {
     const nextTargetLevel = Math.min(20, Math.max(currentLevel, draft.targetLevel + delta));
     if (nextTargetLevel === draft.targetLevel) {
+        return false;
+    }
+    if (hasApplyRecoveryState(draft) || (draft.acquisition?.classGrantReconciliations.length ?? 0) > 0) {
         return false;
     }
     draft.targetLevel = nextTargetLevel;

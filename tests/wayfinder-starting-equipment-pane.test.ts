@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createEmptyDraft } from "../src/draft-service";
 import { equipmentCatalogueRecordSourceFromRecords } from "../src/wayfinder/application/equipment-catalogue-record-source";
+import { reconcileAcquisitionTargetLevel } from "../src/wayfinder/domain/acquisition-draft";
 import { CLASS_GRANT_PROFILE_UUIDS, createPlannedClassGrant } from "../src/wayfinder/domain/class-grant-reconciliation";
 import {
   buildEquipmentPolicyJudgmentFactsFingerprint,
@@ -51,6 +52,35 @@ function catalogueRows(pane: ReturnType<typeof buildStartingEquipmentPaneLocaliz
  */
 
 describe("starting equipment pane", () => {
+  it("offers ordinary outfitter initialization when a saved equipment draft returns to level one", () => {
+    const draft = createEmptyDraft(1);
+    draft.acquisition = reconcileAcquisitionTargetLevel(
+      acquisitionFixture({ lines: [], disposition: "unreviewed" }).draft,
+      1
+    );
+    const pane = buildStartingEquipmentPane(
+      createStartingEquipmentStep(1),
+      draft,
+      { state: "incomplete", complete: false, status: "Review required", issue: null },
+      {
+        state: "error",
+        message: "Policy needs review",
+        query: "",
+        matchedRecordCount: 0,
+        recordSource: equipmentCatalogueRecordSourceFromRecords([]),
+        filters: [],
+        activeFilters: {},
+        previewSourceUuid: null,
+        titanMauler: { required: false, selectedSourceUuid: null },
+      },
+      { worldPolicy: DEFAULT_EQUIPMENT_WORLD_POLICY, judgments: [], isGm: true }
+    );
+    expect(pane.initialized).toBe(false);
+    expect(pane.setup.awaitingAuthority).toBe(false);
+    expect(pane.setup.canActivate).toBe(false);
+    expect(pane.setup.canRequest).toBe(false);
+    expect(pane.corrupt).toBe(false);
+  });
   it("renders level-5 allowance buckets separately from residual coin", () => {
     const draft = createEmptyDraft(5);
     const allowanceLine = acquisitionLine({

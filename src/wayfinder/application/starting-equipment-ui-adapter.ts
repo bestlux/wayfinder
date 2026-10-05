@@ -23,6 +23,8 @@ export interface StartingEquipmentUiAdapter {
   prepareLine(
     request: StartingEquipmentUiRequest & {
       readonly sourceUuid: string;
+      /** Revalidation keeps an existing cart line's transaction identity. */
+      readonly lineId?: string;
       readonly funding?: { readonly lane: "currency" } | { readonly lane: "allowance"; readonly allowanceId: string };
     }
   ): Promise<AcquisitionLineDraft>;

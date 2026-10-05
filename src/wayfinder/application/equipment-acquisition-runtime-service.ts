@@ -1005,7 +1005,7 @@ export function createEquipmentAcquisitionRuntime(
       );
       return {
         schemaVersion: 1,
-        lineId: mintLineId(),
+        lineId: request.lineId ?? mintLineId(),
         sourceUuid: resolved.candidate.sourceUuid,
         documentFingerprint: resolved.documentFingerprint,
         priceFingerprint: priced.priceFingerprint,

@@ -35,6 +35,12 @@ import type {
 import { createEquipmentPolicyRequest, equipmentPolicyJudgmentFactsEqual } from "../domain/equipment-policy.js";
 import { type PhysicalGrantCoverageBlocker, physicalGrantCoverageBlockers } from "../domain/physical-grant-coverage.js";
 import type { AcquisitionLocalizedMessage } from "./acquisition-localization.js";
+import {
+  assertAcquisitionPolicyEntryAllowed,
+  isAcquisitionTargetLevelReentry,
+  restoreAcquisitionCartIntent,
+  stageAcquisitionTargetLevelReentry,
+} from "./acquisition-reentry-service.js";
 import { prepareCurrentClassGrantPlan, projectCurrentClassGrants } from "./class-grant-projection-service.js";
 import type { EconomicActorLike } from "./economic-baseline-service.js";
 import { evaluateActorEconomicAdmission } from "./economic-baseline-service.js";
@@ -57,6 +63,7 @@ import {
   StartingEquipmentCommandBlockedError,
   StartingEquipmentPhysicalGrantCoverageError,
 } from "./starting-equipment-command-error.js";
+import { getStartingEquipmentUiAdapter, type StartingEquipmentUiAdapter } from "./starting-equipment-ui-adapter.js";
 
 export { StartingEquipmentPhysicalGrantCoverageError } from "./starting-equipment-command-error.js";
 
@@ -119,6 +126,7 @@ interface StartingEquipmentCommandDependencies {
   readonly projectClassGrants: typeof projectCurrentClassGrants;
   readonly prepareClassGrantPlan: typeof prepareCurrentClassGrantPlan;
   readonly prepareNativeGrantLines: (request: NativeClassGrantLineRequest) => Promise<readonly AcquisitionLineDraft[]>;
+  readonly prepareLine: StartingEquipmentUiAdapter["prepareLine"];
   readonly assertSourceHealth: (request: Omit<EquipmentApplySourceRequest, "entry">) => Promise<void>;
   readonly resolveCharacterAccessRef: (request: CurrentEquipmentAccessRequest) => Promise<string | null>;
   readonly resolveItemExceptionFacts: (
@@ -146,6 +154,7 @@ const DEFAULT_DEPS: StartingEquipmentCommandDependencies = {
   projectClassGrants: projectCurrentClassGrants,
   prepareClassGrantPlan: prepareCurrentClassGrantPlan,
   prepareNativeGrantLines: (request) => getFoundryEquipmentAcquisitionRuntime().prepareNativeClassGrantLines(request),
+  prepareLine: (request) => getStartingEquipmentUiAdapter().prepareLine(request),
   assertSourceHealth: (request) => getFoundryEquipmentAcquisitionRuntime().assertCurrentSourceHealth(request),
   resolveCharacterAccessRef: (request) =>
     getFoundryEquipmentAcquisitionRuntime().resolveCurrentCharacterAccessRef(request),
@@ -173,6 +182,12 @@ export async function executeStartingEquipmentCommand(
 
   switch (command.type) {
     case "initialize": {
+      if (before && before.targetLevel === 1 && isAcquisitionTargetLevelReentry(before)) {
+        const activated = await activateAcquisition(before, context, deps, null);
+        acquisition = activated.acquisition;
+        status = reentryStatus(activated.discardedCount);
+        break;
+      }
       const initialized = before ? null : await initializeAcquisition(context, deps, command.selectedRecipe);
       acquisition = before ?? initialized!.acquisition;
       status = before
@@ -190,6 +205,7 @@ export async function executeStartingEquipmentCommand(
       break;
     case "activate-policy": {
       const staged = requireAcquisition(context.draft);
+      assertAcquisitionPolicyEntryAllowed(context.draft);
       const claim = await createHigherLevelStartClaim(staged, command.startKind, command.reason, context, deps);
       if (staged.policySnapshot) {
         const policy = resolveExistingPolicy(staged, context, deps, { higherLevelStartClaim: claim });
@@ -201,9 +217,11 @@ export async function executeStartingEquipmentCommand(
       } else {
         const activated = await activateAcquisition(staged, context, deps, claim);
         acquisition = activated.acquisition;
-        status = activated.pendingTitanSelection
-          ? message("ReadyTitanSelection")
-          : message("HigherLevelWealthConfirmed");
+        status = activated.reactivated
+          ? reentryStatus(activated.discardedCount)
+          : activated.pendingTitanSelection
+            ? message("ReadyTitanSelection")
+            : message("HigherLevelWealthConfirmed");
       }
       break;
     }
@@ -274,6 +292,7 @@ export async function executeStartingEquipmentCommand(
       if (request.facts.kind !== "higher-level-start") {
         throw new TypeError("This equipment request requires its dedicated GM command.");
       }
+      assertAcquisitionPolicyEntryAllowed(context.draft);
       const judgment = await deps.saveJudgment({
         id: `approval:${request.requestId}`,
         facts: request.facts,
@@ -300,7 +319,7 @@ export async function executeStartingEquipmentCommand(
       } else {
         const activated = await activateAcquisition(current, context, deps, claim);
         acquisition = activated.acquisition;
-        status = message("HigherLevelStartApproved");
+        status = activated.reactivated ? reentryStatus(activated.discardedCount) : message("HigherLevelStartApproved");
       }
       break;
     }
@@ -594,6 +613,12 @@ function message(key: string, values?: AcquisitionLocalizedMessage["values"]): A
     : { key: `wayfinder-pf2e.StartingEquipment.Status.${key}` };
 }
 
+function reentryStatus(discardedCount: number): AcquisitionLocalizedMessage {
+  return discardedCount > 0
+    ? message("TargetLevelChangedItems", { count: discardedCount })
+    : message("TargetLevelChanged");
+}
+
 async function assertReviewSourceHealth(
   context: StartingEquipmentCommandContext,
   deps: StartingEquipmentCommandDependencies
@@ -682,11 +707,32 @@ async function initializeAcquisition(
 }
 
 async function activateAcquisition(
-  staged: AcquisitionDraftState,
+  original: AcquisitionDraftState,
   context: StartingEquipmentCommandContext,
   deps: StartingEquipmentCommandDependencies,
   higherLevelStartClaim: EquipmentHigherLevelStartClaim | null
-): Promise<{ readonly acquisition: AcquisitionDraftState; readonly pendingTitanSelection: boolean }> {
+): Promise<{
+  readonly acquisition: AcquisitionDraftState;
+  readonly pendingTitanSelection: boolean;
+  readonly reactivated: boolean;
+  readonly discardedCount: number;
+}> {
+  assertAcquisitionPolicyEntryAllowed(context.draft);
+  const reactivated = isAcquisitionTargetLevelReentry(original);
+  const worldPolicy = original.targetLevel > 1 ? deps.getWorldPolicy() : null;
+  const priorRecipe = original.recipe.kind === "permanent-items" ? "permanent-items" : "lump-sum";
+  const recipe = worldPolicy
+    ? worldPolicy.recipeChoiceAuthority === "gm-fixed" || !worldPolicy.enabledRecipes.includes(priorRecipe)
+      ? worldPolicy.defaultRecipe
+      : priorRecipe
+    : priorRecipe;
+  const staged = reactivated
+    ? stageAcquisitionTargetLevelReentry(
+        original,
+        recipe,
+        createRecipeSelectionProvenance(recipe, worldPolicy, context)
+      )
+    : original;
   if (staged.policySnapshot || staged.baseline || staged.lines.length > 0) {
     throw new TypeError("Starting-equipment policy is already active for this draft.");
   }
@@ -745,7 +791,42 @@ async function activateAcquisition(
     capturedAt: context.now(),
   });
   if (admission.kind === "blocked") throw new StartingEquipmentCommandBlockedError(admission.message);
-  return { acquisition: recordEconomicAdmission(acquisition, admission), pendingTitanSelection };
+  acquisition = recordEconomicAdmission(acquisition, admission);
+  if (!reactivated) return { acquisition, pendingTitanSelection, reactivated: false, discardedCount: 0 };
+  await deps.assertSourceHealth({
+    actor: context.actor,
+    characterDraft: { ...context.draft, acquisition },
+    acquisition,
+  });
+  const step = context.steps.find((candidate) => candidate.kind === "starting-equipment");
+  if (!step || step.kind !== "starting-equipment") throw new TypeError("Equipment re-entry requires its current step.");
+  const restored = await restoreAcquisitionCartIntent({
+    acquisition,
+    previousLines: original.lines,
+    prepareLine: (line) => {
+      const allowance =
+        line.funding.lane === "allowance" && acquisition.recipe.kind === "permanent-items"
+          ? [...acquisition.policySnapshot!.material.allowances].sort(
+              (left, right) => right.itemLevel - left.itemLevel
+            )[0]
+          : null;
+      // Validate against the broadest current allowance; automatic funding later uses the refreshed item level.
+      return deps.prepareLine({
+        actor: context.actor,
+        draft: { ...context.draft, acquisition },
+        step,
+        sourceUuid: line.sourceUuid,
+        lineId: line.lineId,
+        query: "",
+        filters: {},
+        offset: 0,
+        limit: 1,
+        previewSourceUuid: null,
+        funding: allowance ? { lane: "allowance", allowanceId: allowance.allowanceId } : { lane: "currency" },
+      });
+    },
+  });
+  return { ...restored, pendingTitanSelection, reactivated: true };
 }
 
 function selectStagedRecipe(
@@ -754,7 +835,9 @@ function selectStagedRecipe(
   context: StartingEquipmentCommandContext,
   deps: StartingEquipmentCommandDependencies
 ): AcquisitionDraftState {
-  if (acquisition.policySnapshot || acquisition.baseline || acquisition.lines.length > 0) {
+  const reactivated = isAcquisitionTargetLevelReentry(acquisition);
+  if (reactivated) assertAcquisitionPolicyEntryAllowed(context.draft);
+  if (acquisition.policySnapshot || (!reactivated && (acquisition.baseline || acquisition.lines.length > 0))) {
     throw new TypeError("Starting-equipment funding cannot change after shopping begins.");
   }
   const policy = deps.getWorldPolicy();
@@ -766,6 +849,7 @@ function selectStagedRecipe(
   }
   const recipeSelection = createRecipeSelectionProvenance(selectedRecipe, policy, context);
   if (
+    !reactivated &&
     acquisition.recipe.kind === selectedRecipe &&
     acquisition.recipeSelection?.selector.kind === "user" &&
     acquisition.recipeSelection.selector.userId === context.userId

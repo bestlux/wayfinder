@@ -478,6 +478,8 @@
       "Status": {
         "AddedToCart": "已添加到购物车。",
         "AlreadyOpen": "装备步骤已经开启。",
+        "TargetLevelChanged": "已按新等级重新准备装备。应用前，请重新确认物品和金币。",
+        "TargetLevelChangedItems": "已按新等级重新准备装备。有 {count} 项先前的物品选择无法保留。应用前，请检查购物车并重新完成必选物品。",
         "AuthorityRevoked": "装备权限已撤销。记录当前批准前无法应用。",
         "ConfiguredItemHandoff": "{itemName}将在PF2E库存页中处理。",
         "CustomLumpSumApproved": "已为此草稿批准自定义一次性金额。",

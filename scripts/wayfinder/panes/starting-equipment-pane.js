@@ -276,7 +276,8 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
     const currencyLines = acquisition?.lines.filter((line) => line.funding.lane !== "class-grant") ?? [];
     const handoff = acquisition?.disposition.kind === "handoff" ? acquisition.disposition : null;
     const worldPolicy = setupOptions?.worldPolicy ?? null;
-    const awaitingAuthority = !!acquisition && !policy;
+    const levelOneReentry = !!acquisition && !policy && step.level === 1;
+    const awaitingAuthority = !!acquisition && !policy && !levelOneReentry;
     const selectedRecipe = acquisition?.recipe.kind === "permanent-items" || acquisition?.recipe.kind === "lump-sum"
         ? acquisition.recipe.kind
         : null;
@@ -369,7 +370,7 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
         modeLabel: localize("wayfinder-pf2e.StartingEquipment.Mode"),
         title: localize("wayfinder-pf2e.StartingEquipment.Title"),
         description: localize("wayfinder-pf2e.StartingEquipment.Description"),
-        initialized: !!acquisition,
+        initialized: !!acquisition && !levelOneReentry,
         corrupt: draft.acquisitionCorrupt,
         setup: {
             awaitingAuthority: awaitingAuthority || startAuthorityInvalid,

@@ -246,9 +246,9 @@
         "Failed": "Wayfinder could not apply this starting-equipment draft. The draft was kept for review; details are in the console.",
         "LateError": "The actor reached the reviewed final state, but Foundry reported a late Apply error. Review the actor before closing.",
         "NotReady": "Starting equipment still needs review before Apply.",
-        "Partial": "Wayfinder partially applied this draft. Retry Apply without changing choices; details are in the console.",
-        "RecoveryConflict": "This actor has a partial-Apply recovery draft from another client. Wayfinder kept your local work unsaved; reopen before continuing.",
-        "RecoveryLocked": "Wayfinder partially applied this draft. Retry Apply without changing choices; manual actor recovery is required if the retry cannot finish."
+        "Partial": "Wayfinder could not finish this Apply attempt. The draft was kept for recovery. Retry Apply without changing choices; details are in the console.",
+        "RecoveryConflict": "This actor has an Apply recovery draft from another client. Wayfinder kept your local work unsaved; reopen before continuing.",
+        "RecoveryLocked": "This draft has an unfinished Apply attempt. Retry Apply without changing choices; manual actor recovery is required if the retry cannot finish."
       },
       "Authority": {
         "AwaitingGm": "A GM must confirm this higher-level start before shopping.",

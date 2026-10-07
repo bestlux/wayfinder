@@ -6,13 +6,15 @@ import type { DraftState, PendingStep, SelectionRef } from "../../types.js";
 import { classArchetypeInitialTrainingProjection } from "../class-archetype/training-policy.js";
 import { compileSkillProgression, type SkillProgression, type SkillSourceGrant } from "../domain/skill-progression.js";
 import { buildAdditionalTrainingSkillsBySlotId, projectDraftSkillRanks } from "../domain/skill-rank-projection.js";
-import { projectStaticSkillSourceGrants } from "../domain/static-skill-source-grants.js";
+import { canonicalizeSkillSourceGrants, projectStaticSkillSourceGrants } from "../domain/static-skill-source-grants.js";
 import { formatSlug } from "../formatting.js";
 import { buildSkillIncreasePane, buildSkillTrainingPane } from "../panes/skill-pane.js";
 import { discoverSingletonChoiceSpecs } from "../singleton-choice/rule-discovery.js";
 import type { SkillIncreaseStepPane, SkillTrainingStepPane } from "../view-models.js";
 import {
+  listActiveSingletonSkillSources,
   listPlannedStaticSkillSources,
+  projectedSkillSourceRollOptions,
   resolveClassArchetypeSkillProjectionProfile,
 } from "./planned-static-skill-source-service.js";
 
@@ -131,7 +133,8 @@ export async function compileSkillPaneProgression(
     deps.resolveDocument("background"),
     deps.resolveDocument("class"),
   ]);
-  const profile = resolveClassArchetypeSkillProjectionProfile(draft, deps.steps ?? [], deps.actorDocuments ?? []);
+  const actorDocuments = Array.from(deps.actorDocuments ?? []);
+  const profile = resolveClassArchetypeSkillProjectionProfile(draft, deps.steps ?? [], actorDocuments);
 
   const sourceDocuments: Array<{ itemType: SkillDocumentType; document: unknown | null }> = [
     { itemType: "background", document: backgroundDocument },
@@ -140,15 +143,29 @@ export async function compileSkillPaneProgression(
     { itemType: "class", document: classArchetypeInitialTrainingProjection(classDocument, profile) },
   ];
   const plannedStaticSources = listPlannedStaticSkillSources(draft, deps.steps ?? []);
-  const additionalStaticSources = plannedStaticSources.filter(
-    ({ selection }) => !isSkillDocumentType(selection.itemType)
+  const additionalStaticSources = Array.from(
+    new Map(
+      [
+        ...plannedStaticSources.map(({ selection }) => selection),
+        ...listActiveSingletonSkillSources(draft, deps.steps ?? []),
+      ]
+        .filter((selection) => !isSkillDocumentType(selection.itemType))
+        .map((selection) => [selection.uuid, selection])
+    ).values()
   );
   if (additionalStaticSources.length > 0 && !deps.resolveSelectionDocument) {
     throw new Error("Active non-foundation skill sources require an exact document resolver.");
   }
   const additionalStaticDocuments = await Promise.all(
-    additionalStaticSources.map(async ({ selection }) => {
-      const document = await deps.resolveSelectionDocument?.(selection);
+    additionalStaticSources.map(async (selection) => {
+      const activeReplacement =
+        Object.values(draft.selections).some(
+          (entry) => entry.uuid === selection.uuid && (deps.steps ?? []).some((step) => step.slotId === entry.slotId)
+        ) || plannedStaticSources.some((entry) => entry.selection.uuid === selection.uuid);
+      const retained = activeReplacement
+        ? null
+        : actorDocuments.find((document) => sourceIdOf(document) === selection.uuid);
+      const document = retained ?? (await deps.resolveSelectionDocument?.(selection));
       if (!document) {
         throw new Error(`${selection.name} cannot project skills because its exact source document is unavailable.`);
       }
@@ -165,11 +182,40 @@ export async function compileSkillPaneProgression(
       .map((selection) => [selection.itemType, selection.uuid])
   );
   const acceptedSkillSlugs = deps.validSkillSlugs ?? validSkillSlugs(deps.baseSkillRanks, null);
-  const sourceGrants: SkillSourceGrant[] = [
+  const activeRollOptions = projectedSkillSourceRollOptions({
+    draft,
+    steps: deps.steps ?? [],
+    actorDocuments,
+    skillRanks: deps.baseSkillRanks,
+    sources: [
+      ...sourceDocuments.flatMap(({ itemType, document }) => {
+        const uuid = resolveFoundationSourceId(activeFoundationSourceIds, itemType, document);
+        return uuid
+          ? [
+              {
+                document,
+                selection: {
+                  slotId: `${itemType}-level-1`,
+                  uuid,
+                  itemType,
+                  packId: "",
+                  documentId: "",
+                  featType: null,
+                  name: itemType,
+                  level: 1,
+                },
+              },
+            ]
+          : [];
+      }),
+      ...additionalStaticDocuments,
+    ],
+  });
+  const sourceGrants = canonicalizeSkillSourceGrants<SkillSourceGrant>([
     ...sourceDocuments.flatMap(({ itemType, document }) => {
       const sourceId = resolveFoundationSourceId(activeFoundationSourceIds, itemType, document);
       return sourceId
-        ? projectStaticSkillSourceGrants({ document, sourceId, validSkillSlugs: acceptedSkillSlugs })
+        ? projectStaticSkillSourceGrants({ document, sourceId, validSkillSlugs: acceptedSkillSlugs, activeRollOptions })
         : [];
     }),
     ...extractDraftedSingletonSkillChoices(
@@ -188,10 +234,27 @@ export async function compileSkillPaneProgression(
             document,
             sourceId: selection.uuid,
             validSkillSlugs: acceptedSkillSlugs,
+            activeRollOptions,
           })
         : []
     ),
-  ];
+    ...(deps.steps ?? []).flatMap((step): SkillSourceGrant[] => {
+      if (step.kind !== "singleton-choice") return [];
+      const choice = draft.singletonChoices[step.slotId];
+      if (!step.singletonChoice.options.some((option) => option.value === choice)) return [];
+      const source = additionalStaticDocuments.find(
+        ({ selection }) => selection.uuid === step.singletonChoice.sourceUuid
+      );
+      const grant = resolveSingletonChoiceSkillGrant({
+        rules: (source?.document as LooseSkillDocument | undefined)?.system?.rules,
+        flag: step.singletonChoice.flag,
+        selection: choice,
+      });
+      return grant && acceptedSkillSlugs.has(grant.skillSlug)
+        ? [{ slug: grant.skillSlug, rank: grant.rank, sourceId: step.singletonChoice.sourceUuid }]
+        : [];
+    }),
+  ]);
 
   return compileSkillProgression({
     baselineRanks: deps.baseSkillRanks,

@@ -51,7 +51,7 @@ const NATIVE_GRANT_PROFILES = Object.freeze({
   }),
 });
 const RECOVERY_STATUS =
-  "Wayfinder partially applied this draft. Retry Apply without changing choices; details are in the console.";
+  "Wayfinder could not finish this Apply attempt. The draft was kept for recovery. Retry Apply without changing choices; details are in the console.";
 const LATE_ACKNOWLEDGEMENT_STATUS =
   "The actor reached the reviewed final state, but Foundry reported a late Apply error. Review the actor before closing.";
 

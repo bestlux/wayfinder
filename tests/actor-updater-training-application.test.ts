@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { applySkillIncreaseDraft, applyTrainingDraft } from "../src/actor-updater/training-application";
+import { MODULE_ID } from "../src/constants";
 import { createEmptyDraft } from "../src/draft-service";
 import type { PendingStep } from "../src/types";
 
@@ -295,7 +296,106 @@ describe("actor-updater training application", () => {
       society: 0,
     });
   });
+
+  it("preserves earlier managed Lore when a later training plan omits its slot", async () => {
+    const earlierLore = managedLore("guild-lore", "Guild Lore", "skill-training-cleric-level-1", "fixed:0");
+    const deleteEmbeddedDocuments = vi.fn(async () => []);
+    const updateEmbeddedDocuments = vi.fn(async () => []);
+    const createEmbeddedDocuments = vi.fn(async () => []);
+    const actor = {
+      system: { skills: {} },
+      items: { contents: [earlierLore] },
+      deleteEmbeddedDocuments,
+      updateEmbeddedDocuments,
+      createEmbeddedDocuments,
+    };
+
+    await applyTrainingDraft(actor, createEmptyDraft(2), [
+      loreTrainingStep("skill-training-battle-harbinger-dedication-level-2", []),
+    ]);
+
+    expect(deleteEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(updateEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(createEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(earlierLore.system.proficient.value).toBe(1);
+    expect(earlierLore.flags[MODULE_ID].slotId).toBe("skill-training-cleric-level-1");
+  });
+
+  it("removes obsolete managed Lore within an active slot even when that slot has no desired Lore", async () => {
+    const slotId = "skill-training-cleric-level-1";
+    const deleteEmbeddedDocuments = vi.fn(async () => []);
+    const actor = {
+      system: { skills: {} },
+      items: { contents: [managedLore("guild-lore", "Guild Lore", slotId, "fixed:0")] },
+      deleteEmbeddedDocuments,
+    };
+
+    await applyTrainingDraft(actor, createEmptyDraft(1), [loreTrainingStep(slotId, [])]);
+
+    expect(deleteEmbeddedDocuments).toHaveBeenCalledWith("Item", ["guild-lore"]);
+  });
+
+  it("reconciles obsolete Lore in an active slot while preserving Lore from an inactive slot", async () => {
+    const activeSlotId = "skill-training-cleric-level-1";
+    const deleteEmbeddedDocuments = vi.fn(async () => []);
+    const createEmbeddedDocuments = vi.fn(async () => []);
+    const actor = {
+      system: { skills: {} },
+      items: {
+        contents: [
+          managedLore("old-active-lore", "Guild Lore", activeSlotId, "retired-choice"),
+          managedLore("earlier-lore", "Sailing Lore", "skill-training-earlier-level-1", "fixed:0"),
+        ],
+      },
+      deleteEmbeddedDocuments,
+      createEmbeddedDocuments,
+    };
+
+    await applyTrainingDraft(actor, createEmptyDraft(1), [loreTrainingStep(activeSlotId, ["Mining"])]);
+
+    expect(deleteEmbeddedDocuments).toHaveBeenCalledWith("Item", ["old-active-lore"]);
+    expect(createEmbeddedDocuments).toHaveBeenCalledWith("Item", [
+      expect.objectContaining({
+        name: "Mining Lore",
+        flags: {
+          [MODULE_ID]: { importedBy: MODULE_ID, slotId: activeSlotId, trainingKey: "fixed:0" },
+        },
+      }),
+    ]);
+  });
 });
+
+function managedLore(id: string, name: string, slotId: string, trainingKey: string) {
+  return {
+    id,
+    type: "lore",
+    name,
+    system: { proficient: { value: 1 } },
+    flags: { [MODULE_ID]: { importedBy: MODULE_ID, slotId, trainingKey } },
+  };
+}
+
+function loreTrainingStep(slotId: string, fixedLores: string[]): PendingStep {
+  return {
+    id: slotId,
+    level: slotId.endsWith("level-2") ? 2 : 1,
+    kind: "skill-training",
+    slotKind: "skill-training",
+    title: "Training",
+    description: "",
+    required: true,
+    slotId,
+    training: {
+      classSlug: "cleric",
+      className: "Cleric",
+      fixedSkills: [],
+      fixedLores,
+      choiceRules: [],
+      loreChoices: [],
+      additionalCount: 0,
+    },
+  };
+}
 
 function skillTrainingStep(slotId: string, classSlug: string, flag: string, additionalCount: number): PendingStep {
   return {

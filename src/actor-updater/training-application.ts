@@ -57,12 +57,14 @@ export async function applyTrainingDraft(
   }
   const updatesByItemId = new Map<string, Record<string, unknown>>();
   const desiredTrainingLores = new Map<string, { slotId: string; key: string; name: string }>();
+  const activeTrainingSlotIds = new Set<string>();
 
   for (const step of steps) {
     if (step.kind !== "skill-training") {
       continue;
     }
     const slotId = step.slotId;
+    activeTrainingSlotIds.add(slotId);
     const training = progression.reconciliation.skillTrainings[slotId];
 
     if (training) {
@@ -129,7 +131,7 @@ export async function applyTrainingDraft(
     await actor.update(actorUpdate);
   }
 
-  await reconcileTrainingLore(actor, actorItems, Array.from(desiredTrainingLores.values()));
+  await reconcileTrainingLore(actor, actorItems, Array.from(desiredTrainingLores.values()), activeTrainingSlotIds);
 
   return { ...progression.finalRanks };
 }
@@ -363,7 +365,8 @@ function queueTrainingRuleSelectionUpdate(
 async function reconcileTrainingLore(
   actor: ActorLike,
   actorItems: ActorItemLike[],
-  desiredEntries: Array<{ slotId: string; key: string; name: string }>
+  desiredEntries: Array<{ slotId: string; key: string; name: string }>,
+  activeTrainingSlotIds: ReadonlySet<string>
 ): Promise<void> {
   const desiredByName = new Map<string, { slotId: string; key: string; name: string }>();
   for (const entry of desiredEntries) {
@@ -387,7 +390,10 @@ async function reconcileTrainingLore(
   const deleteIds = keyedLoreItems
     .filter((item) => {
       const moduleFlags = item.flags?.[MODULE_ID] as { slotId?: unknown; trainingKey?: unknown } | undefined;
-      return !desiredBySlotKey.has(`${String(moduleFlags?.slotId ?? "")}:${String(moduleFlags?.trainingKey ?? "")}`);
+      return (
+        activeTrainingSlotIds.has(String(moduleFlags?.slotId ?? "")) &&
+        !desiredBySlotKey.has(`${String(moduleFlags?.slotId ?? "")}:${String(moduleFlags?.trainingKey ?? "")}`)
+      );
     })
     .map((item) => item.id)
     .filter((id): id is string => typeof id === "string");

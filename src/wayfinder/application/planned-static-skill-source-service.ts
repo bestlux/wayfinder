@@ -6,12 +6,65 @@ import {
   retainedClassArchetypeProfileForDocuments,
 } from "../class-archetype/registry.js";
 import { isVindicatorTracklessMeta, VINDICATOR_TRACKLESS_SLOT } from "../class-archetype/vindicator.js";
+import { buildProjectedChoiceRuleRollOptions } from "../projected-rule-options.js";
 
 const FOUNDATION_ITEM_TYPES = new Set(["ancestry", "heritage", "background", "class"]);
 
 export interface PlannedStaticSkillSource {
   readonly selection: SelectionRef;
   readonly requiredBeforeSkillPhase: boolean;
+}
+
+/** Only resolved choices on the active plan may contribute ordinary source grants. */
+export function listActiveSingletonSkillSources(
+  draft: DraftState,
+  steps: readonly PendingStep[]
+): readonly SelectionRef[] {
+  const sources = new Map<string, SelectionRef>();
+  const activeSlotIds = new Set(steps.map((step) => step.slotId));
+  for (const step of steps) {
+    if (step.kind !== "singleton-choice") continue;
+    const choice = step.singletonChoice;
+    const value = draft.singletonChoices[step.slotId];
+    if (!choice.options.some((option) => option.value === value)) continue;
+    const selected = Object.values(draft.selections).find(
+      (selection) => activeSlotIds.has(selection.slotId) && selection.uuid === choice.sourceUuid
+    );
+    sources.set(
+      choice.sourceUuid,
+      selected ?? {
+        slotId: step.slotId,
+        packId: choice.sourcePackId,
+        documentId: choice.sourceDocumentId,
+        uuid: choice.sourceUuid,
+        itemType: choice.sourceItemType,
+        featType: choice.sourceItemType === "feat" ? "classfeature" : null,
+        name: choice.sourceName,
+        level: step.level,
+      }
+    );
+  }
+  return Array.from(sources.values());
+}
+
+export function projectedSkillSourceRollOptions(args: {
+  draft: DraftState;
+  steps: readonly PendingStep[];
+  sources: readonly { selection: SelectionRef; document: unknown }[];
+  actorDocuments: Iterable<unknown>;
+  skillRanks?: Record<string, number>;
+}): ReadonlySet<string> {
+  return buildProjectedChoiceRuleRollOptions({
+    draft: args.draft,
+    steps: args.steps,
+    actorItems: Array.from(args.actorDocuments),
+    skillRanks: args.skillRanks,
+    sources: args.sources.map(({ selection, document }) => ({
+      sourceItemType: selection.itemType,
+      sourceSelection: selection,
+      sourceDocument: document,
+    })),
+  });
 }
 
 export function activePlannedClassArchetypeProfile(

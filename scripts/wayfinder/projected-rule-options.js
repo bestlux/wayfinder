@@ -1,4 +1,5 @@
-import { slugifyName } from "../shared/slug.js";
+import { extractDocumentSlug, slugifyName } from "../shared/slug.js";
+import { sourceIdOf } from "../shared/source-id.js";
 import { documentFeatureLevel, extractChoiceKey, getDocumentRules, matchesChoiceSetRulePredicate, } from "./rule-data.js";
 export function buildProjectedChoiceRuleRollOptions(args) {
     const active = new Set();
@@ -9,32 +10,40 @@ export function buildProjectedChoiceRuleRollOptions(args) {
     for (const option of collectSkillRankRollOptions(args.skillRanks)) {
         addOption(active, option);
     }
-    for (const option of collectActorRuleSelectionRollOptions(args.actorItems)) {
+    const draftedChoices = args.sources.flatMap((source) => {
+        if (!source.sourceDocument || !source.sourceSelection)
+            return [];
+        const sourceId = source.sourceSelection.uuid;
+        const sourceSlug = sourceSlugFor(source);
+        const sourceLevel = source.sourceLevel ?? documentFeatureLevel(source.sourceDocument);
+        return getDocumentRules(source.sourceDocument).flatMap((rule, ruleIndex) => {
+            const flag = extractChoiceKey(rule);
+            const rollOption = normalize(rule.rollOption);
+            if (rule.key !== "ChoiceSet" || !flag || !rollOption)
+                return [];
+            const values = draftedRuleSelectionValues(args.draft, source, sourceSlug, sourceLevel, flag, rollOption, ruleIndex, args.steps);
+            return values.length > 0 ? [{ sourceId, flag, rollOption, rule, values }] : [];
+        });
+    });
+    const overriddenSelections = new Map();
+    for (const choice of draftedChoices) {
+        const flags = overriddenSelections.get(choice.sourceId) ?? new Set();
+        flags.add(choice.flag);
+        overriddenSelections.set(choice.sourceId, flags);
+    }
+    for (const option of collectActorRuleSelectionRollOptions(args.actorItems, overriddenSelections)) {
         addOption(active, option);
     }
     let changed = true;
     while (changed) {
         changed = false;
-        for (const source of args.sources) {
-            if (!source.sourceDocument || !source.sourceSelection) {
+        for (const choice of draftedChoices) {
+            if (!matchesChoiceSetRulePredicate(choice.rule, active))
                 continue;
-            }
-            const sourceSlug = sourceSlugFor(source);
-            const sourceLevel = source.sourceLevel ?? documentFeatureLevel(source.sourceDocument);
-            for (const rule of getDocumentRules(source.sourceDocument)) {
-                if (rule.key !== "ChoiceSet" || !matchesChoiceSetRulePredicate(rule, active)) {
-                    continue;
-                }
-                const flag = extractChoiceKey(rule);
-                const rollOption = normalize(rule.rollOption);
-                if (!flag || !rollOption) {
-                    continue;
-                }
-                for (const value of draftedRuleSelectionValues(args.draft, source, sourceSlug, sourceLevel, flag)) {
-                    const sizeBefore = active.size;
-                    addOption(active, `${rollOption}:${value}`);
-                    changed ||= active.size > sizeBefore;
-                }
+            for (const value of choice.values) {
+                const sizeBefore = active.size;
+                addOption(active, `${choice.rollOption}:${value}`);
+                changed ||= active.size > sizeBefore;
             }
         }
     }
@@ -55,7 +64,7 @@ function addDraftSingletonRollOptions(active, draft) {
         }
     }
 }
-export function collectActorRuleSelectionRollOptions(actorItems) {
+export function collectActorRuleSelectionRollOptions(actorItems, overriddenSelections) {
     return actorItems.flatMap((item) => {
         const typedItem = item;
         const rulesSelections = {
@@ -67,6 +76,9 @@ export function collectActorRuleSelectionRollOptions(actorItems) {
                 return [];
             }
             const flag = extractChoiceKey(rule);
+            const sourceId = sourceIdOf(item);
+            if (flag && sourceId && overriddenSelections?.get(sourceId)?.has(flag))
+                return [];
             const rollOption = normalize(rule.rollOption);
             const selection = flag ? normalize(rulesSelections[flag]) : null;
             return rollOption && selection ? [`${rollOption}:${selection}`] : [];
@@ -82,13 +94,34 @@ export function collectSkillRankRollOptions(skillRanks) {
         return slug && Number.isFinite(rank) ? [`skill:${slug}:rank:${Math.max(0, Math.min(4, Math.floor(rank)))}`] : [];
     });
 }
-function draftedRuleSelectionValues(draft, source, sourceSlug, sourceLevel, flag) {
+function draftedRuleSelectionValues(draft, source, sourceSlug, sourceLevel, flag, rollOption, sourceRuleIndex, steps) {
     const values = new Set();
     const singletonSlotId = `singleton-choice-${source.sourceItemType}-${sourceSlug}-${flag}-level-${sourceLevel}`;
     const classChoiceSlotId = `class-choice-${sourceSlug}-${flag}-level-${sourceLevel}`;
-    addOption(values, draft.singletonChoices[singletonSlotId]);
+    if (steps === undefined) {
+        addOption(values, draft.singletonChoices[singletonSlotId]);
+    }
+    else {
+        for (const step of steps) {
+            if (step.kind !== "singleton-choice" ||
+                step.singletonChoice.sourceUuid !== source.sourceSelection?.uuid ||
+                step.singletonChoice.sourceRuleIndex !== sourceRuleIndex ||
+                step.singletonChoice.flag !== flag ||
+                normalize(step.singletonChoice.rollOption) !== rollOption) {
+                continue;
+            }
+            const selection = draft.singletonChoices[step.slotId];
+            if (step.singletonChoice.options.some((option) => option.value === selection)) {
+                addOption(values, selection);
+            }
+        }
+    }
     addOption(values, draft.classChoices[classChoiceSlotId]);
-    const trainingKey = `${source.sourceItemType}:${sourceSlug}:${flag}`;
+    // Training discovery uses the document id when raw data has no system slug.
+    const trainingSourceSlug = normalize(source.sourceDocument?.system?.slug) ??
+        source.sourceSelection?.documentId ??
+        sourceSlug;
+    const trainingKey = `${source.sourceItemType}:${trainingSourceSlug}:${flag}`;
     for (const training of Object.values(draft.skillTrainings)) {
         addOption(values, training.ruleChoices[trainingKey]);
     }
@@ -118,8 +151,7 @@ function addSelectionValues(values, selection) {
     addOption(values, slugifyName(selection.name));
 }
 function sourceSlugFor(source) {
-    const documentSlug = normalize(source.sourceDocument?.system?.slug);
-    return documentSlug ?? source.sourceSelection?.documentId ?? "source";
+    return extractDocumentSlug(source.sourceDocument) ?? source.sourceSelection?.documentId ?? "source";
 }
 function addOption(options, value) {
     const normalized = normalize(value);

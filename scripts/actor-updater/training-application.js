@@ -29,11 +29,13 @@ export async function applyTrainingDraft(actor, draft, steps, options = {}) {
     }
     const updatesByItemId = new Map();
     const desiredTrainingLores = new Map();
+    const activeTrainingSlotIds = new Set();
     for (const step of steps) {
         if (step.kind !== "skill-training") {
             continue;
         }
         const slotId = step.slotId;
+        activeTrainingSlotIds.add(slotId);
         const training = progression.reconciliation.skillTrainings[slotId];
         if (training) {
             for (const choiceRule of step.training.choiceRules) {
@@ -81,7 +83,7 @@ export async function applyTrainingDraft(actor, draft, steps, options = {}) {
         typeof actor.update === "function") {
         await actor.update(actorUpdate);
     }
-    await reconcileTrainingLore(actor, actorItems, Array.from(desiredTrainingLores.values()));
+    await reconcileTrainingLore(actor, actorItems, Array.from(desiredTrainingLores.values()), activeTrainingSlotIds);
     return { ...progression.finalRanks };
 }
 export function collectAppliedSkillSourceGrants(actor, draft, steps) {
@@ -240,7 +242,7 @@ function queueTrainingRuleSelectionUpdate(actorItems, updatesByItemId, persisten
     }
     queueRuleSelectionUpdate(updatesByItemId, item, persistence.sourceRuleIndex, flag, selection);
 }
-async function reconcileTrainingLore(actor, actorItems, desiredEntries) {
+async function reconcileTrainingLore(actor, actorItems, desiredEntries, activeTrainingSlotIds) {
     const desiredByName = new Map();
     for (const entry of desiredEntries) {
         const normalizedName = normalizeLoreName(entry.name);
@@ -258,7 +260,8 @@ async function reconcileTrainingLore(actor, actorItems, desiredEntries) {
     const deleteIds = keyedLoreItems
         .filter((item) => {
         const moduleFlags = item.flags?.[MODULE_ID];
-        return !desiredBySlotKey.has(`${String(moduleFlags?.slotId ?? "")}:${String(moduleFlags?.trainingKey ?? "")}`);
+        return (activeTrainingSlotIds.has(String(moduleFlags?.slotId ?? "")) &&
+            !desiredBySlotKey.has(`${String(moduleFlags?.slotId ?? "")}:${String(moduleFlags?.trainingKey ?? "")}`));
     })
         .map((item) => item.id)
         .filter((id) => typeof id === "string");

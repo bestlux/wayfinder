@@ -397,8 +397,8 @@ describe("WF-080-43 live experience qualifier", () => {
     expect((Object.values(chineseCase.stateAnchors) as string[]).every((value) => /[\u3400-\u9fff]/u.test(value))).toBe(
       true
     );
-    expect(englishCase.stateAnchors["forced-failure"]).toBe("Wayfinder partially applied this draft");
-    expect(chineseCase.stateAnchors["forced-failure"]).toBe("寻路仪已部分应用此起始装备草稿");
+    expect(englishCase.stateAnchors["forced-failure"]).toBe("Wayfinder could not finish this Apply attempt");
+    expect(chineseCase.stateAnchors["forced-failure"]).toBe("寻路仪未能完成此次应用。草稿已保留用于恢复");
     expect(englishCase.confirmationLabels).toEqual({ cancel: "Cancel", apply: "Apply" });
     expect(chineseCase.confirmationLabels).toEqual({ cancel: "取消", apply: "应用" });
   });

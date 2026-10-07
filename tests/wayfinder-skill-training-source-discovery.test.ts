@@ -3,6 +3,59 @@ import type { SelectionRef } from "../src/types";
 import { discoverSourceSkillTrainingMeta } from "../src/wayfinder/skill-training/source-discovery";
 
 describe("wayfinder skill training source discovery", () => {
+  it.each([
+    { mark: "burning-sun", skill: "diplomacy" },
+    { mark: "deaths-head", skill: "survival" },
+    { mark: "defiled-corpse", skill: "religion" },
+    { mark: "empty-hand", skill: "intimidation" },
+    { mark: null, skill: null },
+  ])("discovers only Hold Mark's selected $mark skill", ({ mark, skill }) => {
+    const marks = [
+      { mark: "burning-sun", skill: "diplomacy" },
+      { mark: "deaths-head", skill: "survival" },
+      { mark: "defiled-corpse", skill: "religion" },
+      { mark: "empty-hand", skill: "intimidation" },
+    ];
+    const training = discoverSourceSkillTrainingMeta({
+      sources: [
+        {
+          sourceItemType: "feat",
+          sourceSelection: selection("ancestry-feat-level-1", "aQNsD2t0Tb4vToA4", "Hold Mark"),
+          sourceDocument: {
+            name: "Hold Mark",
+            system: {
+              slug: "hold-mark",
+              rules: [
+                {
+                  key: "ChoiceSet",
+                  flag: "holdMark",
+                  rollOption: "hold-mark",
+                  choices: marks.map((entry) => ({ value: entry.mark, label: entry.mark })),
+                },
+                ...marks.map((entry) => ({
+                  key: "ActiveEffectLike",
+                  mode: "upgrade",
+                  path: `system.skills.${entry.skill}.rank`,
+                  predicate: [`hold-mark:${entry.mark}`],
+                  value: 1,
+                })),
+              ],
+            },
+          },
+        },
+      ],
+      localize: (value) => value,
+      activeRollOptions: new Set(mark ? [`hold-mark:${mark}`] : []),
+    });
+
+    expect(training).toEqual({
+      fixedSkills: skill ? [skill] : [],
+      fixedLores: [],
+      choiceRules: [],
+      loreChoices: [],
+    });
+  });
+
   it("discovers heritage skill ChoiceSets as persisted skill-training choices", () => {
     const globals = globalThis as typeof globalThis & {
       CONFIG?: {

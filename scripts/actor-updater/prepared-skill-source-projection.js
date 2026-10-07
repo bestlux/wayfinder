@@ -1,10 +1,19 @@
 import { resolveSingletonChoiceSkillGrant } from "../shared/singleton-choice-skill-grants.js";
-import { listPlannedStaticSkillSources, resolveClassArchetypeSkillProjectionProfile, } from "../wayfinder/application/planned-static-skill-source-service.js";
+import { sourceIdOf } from "../shared/source-id.js";
+import { listPlannedStaticSkillSources, projectedSkillSourceRollOptions, resolveClassArchetypeSkillProjectionProfile, } from "../wayfinder/application/planned-static-skill-source-service.js";
 import { classArchetypeInitialTrainingProjection } from "../wayfinder/class-archetype/training-policy.js";
-import { projectStaticSkillSourceGrants } from "../wayfinder/domain/static-skill-source-grants.js";
+import { canonicalizeSkillSourceGrants, projectStaticSkillSourceGrants, } from "../wayfinder/domain/static-skill-source-grants.js";
 const FOUNDATION_ITEM_TYPES = new Set(["ancestry", "heritage", "background", "class"]);
 export function projectPreparedSkillSources(args) {
-    const profile = resolveClassArchetypeSkillProjectionProfile(args.draft, args.steps, args.actorDocuments ?? []);
+    const actorDocuments = Array.from(args.actorDocuments ?? []);
+    const activeRollOptions = projectedSkillSourceRollOptions({
+        draft: args.draft,
+        steps: args.steps,
+        sources: args.sources.map(({ selection, source }) => ({ selection, document: source })),
+        actorDocuments,
+        skillRanks: args.baselineRanks,
+    });
+    const profile = resolveClassArchetypeSkillProjectionProfile(args.draft, args.steps, actorDocuments);
     const sourcesByUuid = new Map();
     for (const entry of args.sources) {
         if (!sourcesByUuid.has(entry.selection.uuid))
@@ -12,6 +21,7 @@ export function projectPreparedSkillSources(args) {
     }
     const sourceGrants = [];
     const requiredBeforeSkillGrants = [];
+    const skillPhaseGrants = [];
     const plannedStaticSources = listPlannedStaticSkillSources(args.draft, args.steps);
     const plannedStaticSourcesByUuid = new Map(plannedStaticSources.map((source) => [source.selection.uuid, source]));
     const selectedFoundationUuidByType = new Map(plannedStaticSources
@@ -30,6 +40,7 @@ export function projectPreparedSkillSources(args) {
                 : entry.source,
             sourceId: entry.selection.uuid,
             validSkillSlugs: args.validSkillSlugs,
+            activeRollOptions,
         });
         sourceGrants.push(...staticGrants);
         if (plannedSource?.requiredBeforeSkillPhase || retainedFoundation) {
@@ -40,12 +51,15 @@ export function projectPreparedSkillSources(args) {
         if (step.kind !== "singleton-choice")
             continue;
         const selection = args.draft.singletonChoices[step.slotId];
-        if (!selection)
+        if (!step.singletonChoice.options.some((option) => option.value === selection))
             continue;
         const source = sourcesByUuid.get(step.singletonChoice.sourceUuid);
         if (!source) {
             throw new Error(`${step.title} cannot be prepared because its exact source document was not inspected.`);
         }
+        const beforeSkills = FOUNDATION_ITEM_TYPES.has(source.selection.itemType) ||
+            plannedStaticSourcesByUuid.get(source.selection.uuid)?.requiredBeforeSkillPhase ||
+            actorDocuments.some((document) => sourceIdOf(document) === source.selection.uuid);
         const grant = resolveSingletonChoiceSkillGrant({
             rules: source.source.system?.rules,
             flag: step.singletonChoice.flag,
@@ -58,17 +72,17 @@ export function projectPreparedSkillSources(args) {
                 sourceId: step.singletonChoice.sourceUuid,
             };
             sourceGrants.push(projectedGrant);
-            requiredBeforeSkillGrants.push(projectedGrant);
+            (beforeSkills ? requiredBeforeSkillGrants : skillPhaseGrants).push(projectedGrant);
         }
         const staticGrants = projectStaticSkillSourceGrants({
             document: source.source,
             sourceId: step.singletonChoice.sourceUuid,
             validSkillSlugs: args.validSkillSlugs,
+            activeRollOptions,
         });
         sourceGrants.push(...staticGrants);
-        requiredBeforeSkillGrants.push(...staticGrants);
+        (beforeSkills ? requiredBeforeSkillGrants : skillPhaseGrants).push(...staticGrants);
     }
-    const skillPhaseGrants = [];
     for (const step of args.steps) {
         if (step.kind !== "skill-training")
             continue;
@@ -104,21 +118,9 @@ export function projectPreparedSkillSources(args) {
         }
     }
     return Object.freeze({
-        sourceGrants: freezeGrants(sourceGrants),
-        requiredBeforeSkillGrants: freezeGrants(requiredBeforeSkillGrants),
-        skillPhaseGrants: freezeGrants(skillPhaseGrants),
+        sourceGrants: canonicalizeSkillSourceGrants(sourceGrants),
+        requiredBeforeSkillGrants: canonicalizeSkillSourceGrants(requiredBeforeSkillGrants),
+        skillPhaseGrants: canonicalizeSkillSourceGrants(skillPhaseGrants),
     });
-}
-function freezeGrants(grants) {
-    const byIdentity = new Map();
-    for (const grant of grants) {
-        const key = `${grant.sourceId ?? ""}:${grant.slug}`;
-        const existing = byIdentity.get(key);
-        if (!existing || existing.rank < grant.rank)
-            byIdentity.set(key, grant);
-    }
-    return Object.freeze(Array.from(byIdentity.values())
-        .sort((left, right) => `${left.sourceId ?? ""}:${left.slug}:${left.rank}`.localeCompare(`${right.sourceId ?? ""}:${right.slug}:${right.rank}`))
-        .map((grant) => Object.freeze({ ...grant })));
 }
 //# sourceMappingURL=prepared-skill-source-projection.js.map

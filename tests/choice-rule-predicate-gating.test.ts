@@ -191,6 +191,203 @@ describe("ChoiceSet rule-level predicate gating", () => {
   });
 });
 
+describe("projected drafted ChoiceSet precedence", () => {
+  it("matches training discovery's document-id key on raw sources without a slug", () => {
+    const documentId = "lX5KDS2hU5LihZRs";
+    const selection = {
+      ...sourceSelection,
+      itemType: "background",
+      documentId,
+      name: "Martial Disciple",
+      uuid: `Compendium.pf2e.backgrounds.Item.${documentId}`,
+    };
+    const sourceDocument = {
+      name: "Martial Disciple",
+      system: {
+        rules: [
+          {
+            key: "ChoiceSet",
+            flag: "skill",
+            rollOption: "martial-disciple",
+            choices: [
+              { value: "acrobatics", label: "Acrobatics" },
+              { value: "athletics", label: "Athletics" },
+            ],
+          },
+          {
+            key: "ActiveEffectLike",
+            mode: "upgrade",
+            path: "system.skills.{item|flags.pf2e.rulesSelections.skill}.rank",
+            value: 1,
+          },
+        ],
+      },
+    };
+    const sources = [{ sourceItemType: "background" as const, sourceSelection: selection, sourceDocument }];
+    const meta = discoverSourceSkillTrainingMeta({ sources, localize: (value) => value });
+    const key = meta.choiceRules[0]?.key;
+    expect(key).toBe(`background:${documentId}:skill`);
+    const draft = createEmptyDraft(1);
+    draft.skillTrainings["skill-training-level-1"] = {
+      ruleChoices: { [key!]: "acrobatics" },
+      additional: [],
+      loreChoices: {},
+    };
+    expect(buildProjectedChoiceRuleRollOptions({ draft, sources, actorItems: [] })).toContain(
+      "martial-disciple:acrobatics"
+    );
+  });
+
+  it("uses active singleton metadata on a raw source without a slug and replaces its actor choice", () => {
+    const { draft, step, sources } = holdMarkProjection();
+
+    const options = buildProjectedChoiceRuleRollOptions({
+      draft,
+      steps: [step],
+      sources,
+      actorItems: [actorHoldMark()],
+    });
+
+    expect(options).toContain("hold-mark:deaths-head");
+    expect(options).not.toContain("hold-mark:burning-sun");
+  });
+
+  it("preserves an actor choice from a different source with the same flag and roll option", () => {
+    const { draft, step, sources } = holdMarkProjection();
+
+    const options = buildProjectedChoiceRuleRollOptions({
+      draft,
+      steps: [step],
+      sources,
+      actorItems: [actorHoldMark(), actorHoldMark("Compendium.pf2e.feats-srd.Item.other-mark")],
+    });
+
+    expect(options).toContain("hold-mark:deaths-head");
+    expect(options).toContain("hold-mark:burning-sun");
+  });
+
+  it("preserves a different ChoiceSet flag on the overridden source", () => {
+    const { draft, step, sources } = holdMarkProjection();
+    const actorItem = actorHoldMark();
+    actorItem.system.rules.push({
+      key: "ChoiceSet",
+      flag: "otherMark",
+      rollOption: "other-mark",
+      choices: [{ value: "burning-sun", label: "Burning Sun" }],
+    });
+    actorItem.flags.system.rulesSelections.otherMark = "burning-sun";
+
+    const options = buildProjectedChoiceRuleRollOptions({
+      draft,
+      steps: [step],
+      sources,
+      actorItems: [actorItem],
+    });
+
+    expect(options).toContain("hold-mark:deaths-head");
+    expect(options).not.toContain("hold-mark:burning-sun");
+    expect(options).toContain("other-mark:burning-sun");
+  });
+
+  it("uses the source name for drafted source-context choices when the raw source has no slug", () => {
+    const { draft, sources } = holdMarkProjection();
+    draft.singletonChoices = {};
+    draft.classChoices["class-choice-hold-mark-holdMark-level-1"] = "deaths-head";
+
+    const options = buildProjectedChoiceRuleRollOptions({
+      draft,
+      sources,
+      actorItems: [actorHoldMark()],
+    });
+
+    expect(options).toContain("hold-mark:deaths-head");
+    expect(options).not.toContain("hold-mark:burning-sun");
+  });
+
+  it.each([
+    "invalid",
+    "inactive",
+    "wrong-source",
+    "wrong-rule",
+  ] as const)("does not accept an %s singleton draft or suppress the retained actor choice", (scenario) => {
+    const { draft, step, sources } = holdMarkProjection();
+    if (scenario === "invalid") draft.singletonChoices[step.slotId] = "unsupported-mark";
+    if (scenario === "wrong-source") step.singletonChoice.sourceUuid = "Compendium.pf2e.feats-srd.Item.other-mark";
+    if (scenario === "wrong-rule") step.singletonChoice.sourceRuleIndex = 1;
+    // A matching legacy slot must not revive a choice absent from the active plan.
+    draft.singletonChoices["singleton-choice-feat-hold-mark-holdMark-level-1"] = "deaths-head";
+
+    const options = buildProjectedChoiceRuleRollOptions({
+      draft,
+      steps: scenario === "inactive" ? [] : [step],
+      sources,
+      actorItems: [actorHoldMark()],
+    });
+
+    expect(options).toContain("hold-mark:burning-sun");
+    expect(options).not.toContain("hold-mark:deaths-head");
+    expect(options).not.toContain("hold-mark:unsupported-mark");
+  });
+});
+
+const holdMarkSelection = {
+  ...sourceSelection,
+  slotId: "ancestry-feat-level-1",
+  documentId: "aQNsD2t0Tb4vToA4",
+  uuid: "Compendium.pf2e.feats-srd.Item.aQNsD2t0Tb4vToA4",
+  name: "Hold Mark",
+  level: 1,
+} as const;
+
+function holdMarkDocument() {
+  return {
+    name: "Hold Mark",
+    type: "feat",
+    system: {
+      level: { value: 1 },
+      rules: [
+        {
+          key: "ChoiceSet",
+          flag: "holdMark",
+          rollOption: "hold-mark",
+          choices: [
+            { value: "burning-sun", label: "Burning Sun" },
+            { value: "deaths-head", label: "Death's Head" },
+          ],
+        },
+      ],
+    },
+  };
+}
+
+function holdMarkProjection() {
+  const document = holdMarkDocument();
+  const [discoveredStep] = buildSingletonChoiceStepsFromRules({
+    sourceItemType: "feat",
+    effectiveSourceDocument: document,
+    sourceSelection: holdMarkSelection,
+    extractSlug: () => "hold-mark",
+    localize: (value) => value,
+  });
+  if (!discoveredStep) throw new Error("Expected the Hold Mark singleton choice.");
+  const step = { ...discoveredStep, slotId: "active-hold-mark-choice" };
+  const draft = createEmptyDraft(1);
+  draft.singletonChoices[step.slotId] = "deaths-head";
+  return {
+    draft,
+    step,
+    sources: [{ sourceItemType: "feat", sourceSelection: holdMarkSelection, sourceDocument: document }],
+  };
+}
+
+function actorHoldMark(sourceUuid: string = holdMarkSelection.uuid) {
+  return {
+    ...holdMarkDocument(),
+    _stats: { compendiumSource: sourceUuid },
+    flags: { system: { rulesSelections: { holdMark: "burning-sun" } as Record<string, string> } },
+  };
+}
+
 function choiceDocument(rules: Array<Record<string, unknown>>) {
   return {
     name: "Predicate Probe",

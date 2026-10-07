@@ -103,11 +103,11 @@ describe("starting-equipment localization", () => {
     }
   });
 
-  it("preserves the frozen Wave 2 recovery strings in the English locale", () => {
+  it("preserves actionable recovery strings in the English locale", () => {
     const startingEquipment = localeTree(english, "StartingEquipment");
     const apply = startingEquipment.Apply;
     expect(isRecord(apply) ? apply.Partial : null).toBe(
-      "Wayfinder partially applied this draft. Retry Apply without changing choices; details are in the console."
+      "Wayfinder could not finish this Apply attempt. The draft was kept for recovery. Retry Apply without changing choices; details are in the console."
     );
     expect(isRecord(apply) ? apply.LateError : null).toBe(
       "The actor reached the reviewed final state, but Foundry reported a late Apply error. Review the actor before closing."

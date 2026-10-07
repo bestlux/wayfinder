@@ -432,6 +432,7 @@ export async function prepareDraftApplication(
   const validSkillSlugs = buildValidSkillSlugs(actor, deps.validSkillSlugs);
   const skillSourceProjection = projectPreparedSkillSources({
     actorDocuments: listActorItems(actor),
+    baselineRanks: readPreparedSkillRanks(actor),
     draft,
     steps,
     sources: sources.skillSources,

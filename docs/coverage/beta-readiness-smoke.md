@@ -1,6 +1,6 @@
 # Beta Readiness Foundry Smoke
 
-Last updated: 2026-10-05.
+Last updated: 2026-10-07.
 
 This is the launch-readiness live smoke layer for Wayfinder. It complements unit tests by exercising the built module inside a real Foundry world against live PF2E compendia.
 
@@ -46,6 +46,18 @@ The companion static class audit checks the maintained smoke matrix against the 
 ```powershell
 npm run audit:classes
 ```
+
+## 2026-10-07 Issue 45 Conditional skill grants during Apply
+
+Hold Mark's selected emblem exposed two divergent projections: preview omitted the feat's source identity, while preparation counted all four predicate-bound skills. The isolated PF2E 8.5.1 source probe reproduced the reported preparation guard in 36 Cleric/Battle Creed/constructed Psychic cases; nine no-mark controls prepared successfully. The guard rejected before character-content writes, while preserving draft choices. Apply-attempt bookkeeping alone did not justify the old partial-application message.
+
+The 0.10.4 projection shares predicate evaluation and canonical source identities across training discovery, preview, and preparation. Active singleton sources are inspected exactly, retained documents remain authoritative, and new feat grants are permitted at their actual later phase. Source and current-rank drift still reject. A review found and corrected a raw-document training-key fallback regression, with an exact PF2E 8.5.1 Martial Disciple probe and a permanent fixture test.
+
+The focused installed matrix in `.wayfinder-smoke/issue45-final-matrix` passed 15 creation cases: standard Cleric, Battle Creed Cleric, and a constructed Psychic, each with a no-mark control and all four Hold Mark choices. Save Draft, fresh reload, real UI Apply, reopen, three injected final-update failures with reload/retry, and 12 retained-mark level-2 Applies passed on Foundry 14.367 / PF2E 8.5.1 / Wayfinder 0.10.4. Actual skills matched preview, each selected mark persisted exactly once, and the genuine stale-plan guard preserved the actor and draft. Artisan's separate native Specialty Crafting prompt was answered through PF2E's offered-choice application API, leaving normal item creation intact. All 253 observed installed assets matched local bytes; original actor hashes and temporary policy settings were restored after exact-fixture cleanup.
+
+Retained-character testing also found later training deleting earlier managed Guild Lore. Reconciliation now removes obsolete Lore only within active training slots. The final live level-up cases preserve earlier Lore, and targeted tests retain current-slot cleanup. Failed-attempt and recovery-lock copy now describes unfinished recovery without assuming that character changes occurred.
+
+The reporter's unspecified Psychic choices and Foundry 14.368 were not available locally; neither is represented as an exact reproduction.
 
 ## 2026-10-05 Issue 44 Equipment recovery after target-level changes
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.4 - 2026-10-07
+
+- Fixed character Apply rejecting drafts with Hold Mark or other active singleton-choice skill grants because the preview and Apply inspected different skill sources. Conditional grants now follow the selected choice; Hold Mark grants its selected skill rather than all four marks' skills.
+- Preview and Apply retain the same skill-source identities across saved drafts and recovery, while checking grants at their actual Apply phase. Failed attempts now describe the saved recovery draft without assuming that character changes were partially applied.
+- Fixed later skill-training steps deleting Lore granted by completed earlier steps during level-up.
+
 ## 0.10.3 - 2026-10-05
 
 - Fixed Starting Equipment becoming stuck after adding or removing levels in a new-character draft. Equipment setup can now reopen at the new level, including drafts already saved in the stuck state and drafts returning to level 1.

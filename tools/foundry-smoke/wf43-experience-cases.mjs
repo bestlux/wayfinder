@@ -38,14 +38,14 @@ const locale = (id, name, confirmationLabels, stateAnchors = {}) => {
 
 export const wf43ExperienceCases = Object.freeze([
   locale("en", "English", { cancel: "Cancel", apply: "Apply" }, {
-    "forced-failure": "Wayfinder partially applied this draft",
+    "forced-failure": "Wayfinder could not finish this Apply attempt",
   }),
   locale("cn", "Simplified Chinese", { cancel: "取消", apply: "应用" }, {
     policy: "开始选购",
     "browse-cart": "你的装备",
     review: "装备已确认",
     handoff: "请在角色卡上完成此步骤",
-    "forced-failure": "寻路仪已部分应用此起始装备草稿",
+    "forced-failure": "寻路仪未能完成此次应用。草稿已保留用于恢复",
     receipt: "最近一次应用",
   }),
 ]);

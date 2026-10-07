@@ -1,5 +1,6 @@
-import { slugifyName } from "../shared/slug.js";
-import type { DraftState, SelectionRef } from "../types.js";
+import { extractDocumentSlug, slugifyName } from "../shared/slug.js";
+import { sourceIdOf } from "../shared/source-id.js";
+import type { DraftState, PendingStep, SelectionRef } from "../types.js";
 import {
   documentFeatureLevel,
   extractChoiceKey,
@@ -18,6 +19,7 @@ export function buildProjectedChoiceRuleRollOptions(args: {
   draft: DraftState;
   actorItems: unknown[];
   sources: ChoiceRuleSourceContext[];
+  steps?: readonly PendingStep[];
   classSlug?: string | null;
   ancestrySlug?: string | null;
   deitySelected?: boolean;
@@ -32,36 +34,48 @@ export function buildProjectedChoiceRuleRollOptions(args: {
     addOption(active, option);
   }
 
-  for (const option of collectActorRuleSelectionRollOptions(args.actorItems)) {
+  const draftedChoices = args.sources.flatMap((source) => {
+    if (!source.sourceDocument || !source.sourceSelection) return [];
+    const sourceId = source.sourceSelection.uuid;
+    const sourceSlug = sourceSlugFor(source);
+    const sourceLevel = source.sourceLevel ?? documentFeatureLevel(source.sourceDocument);
+    return getDocumentRules(source.sourceDocument).flatMap((rule, ruleIndex) => {
+      const flag = extractChoiceKey(rule);
+      const rollOption = normalize(rule.rollOption);
+      if (rule.key !== "ChoiceSet" || !flag || !rollOption) return [];
+      const values = draftedRuleSelectionValues(
+        args.draft,
+        source,
+        sourceSlug,
+        sourceLevel,
+        flag,
+        rollOption,
+        ruleIndex,
+        args.steps
+      );
+      return values.length > 0 ? [{ sourceId, flag, rollOption, rule, values }] : [];
+    });
+  });
+  const overriddenSelections = new Map<string, Set<string>>();
+  for (const choice of draftedChoices) {
+    const flags = overriddenSelections.get(choice.sourceId) ?? new Set<string>();
+    flags.add(choice.flag);
+    overriddenSelections.set(choice.sourceId, flags);
+  }
+
+  for (const option of collectActorRuleSelectionRollOptions(args.actorItems, overriddenSelections)) {
     addOption(active, option);
   }
 
   let changed = true;
   while (changed) {
     changed = false;
-    for (const source of args.sources) {
-      if (!source.sourceDocument || !source.sourceSelection) {
-        continue;
-      }
-
-      const sourceSlug = sourceSlugFor(source);
-      const sourceLevel = source.sourceLevel ?? documentFeatureLevel(source.sourceDocument);
-      for (const rule of getDocumentRules(source.sourceDocument)) {
-        if (rule.key !== "ChoiceSet" || !matchesChoiceSetRulePredicate(rule, active)) {
-          continue;
-        }
-
-        const flag = extractChoiceKey(rule);
-        const rollOption = normalize(rule.rollOption);
-        if (!flag || !rollOption) {
-          continue;
-        }
-
-        for (const value of draftedRuleSelectionValues(args.draft, source, sourceSlug, sourceLevel, flag)) {
-          const sizeBefore = active.size;
-          addOption(active, `${rollOption}:${value}`);
-          changed ||= active.size > sizeBefore;
-        }
+    for (const choice of draftedChoices) {
+      if (!matchesChoiceSetRulePredicate(choice.rule, active)) continue;
+      for (const value of choice.values) {
+        const sizeBefore = active.size;
+        addOption(active, `${choice.rollOption}:${value}`);
+        changed ||= active.size > sizeBefore;
       }
     }
   }
@@ -83,7 +97,10 @@ function addDraftSingletonRollOptions(active: Set<string>, draft: DraftState): v
   }
 }
 
-export function collectActorRuleSelectionRollOptions(actorItems: unknown[]): string[] {
+export function collectActorRuleSelectionRollOptions(
+  actorItems: unknown[],
+  overriddenSelections?: ReadonlyMap<string, ReadonlySet<string>>
+): string[] {
   return actorItems.flatMap((item) => {
     const typedItem = item as {
       flags?: {
@@ -103,6 +120,8 @@ export function collectActorRuleSelectionRollOptions(actorItems: unknown[]): str
       }
 
       const flag = extractChoiceKey(rule);
+      const sourceId = sourceIdOf(item);
+      if (flag && sourceId && overriddenSelections?.get(sourceId)?.has(flag)) return [];
       const rollOption = normalize(rule.rollOption);
       const selection = flag ? normalize(rulesSelections[flag]) : null;
       return rollOption && selection ? [`${rollOption}:${selection}`] : [];
@@ -125,15 +144,41 @@ function draftedRuleSelectionValues(
   source: ChoiceRuleSourceContext,
   sourceSlug: string,
   sourceLevel: number,
-  flag: string
+  flag: string,
+  rollOption: string,
+  sourceRuleIndex: number,
+  steps?: readonly PendingStep[]
 ): string[] {
   const values = new Set<string>();
   const singletonSlotId = `singleton-choice-${source.sourceItemType}-${sourceSlug}-${flag}-level-${sourceLevel}`;
   const classChoiceSlotId = `class-choice-${sourceSlug}-${flag}-level-${sourceLevel}`;
-  addOption(values, draft.singletonChoices[singletonSlotId]);
+  if (steps === undefined) {
+    addOption(values, draft.singletonChoices[singletonSlotId]);
+  } else {
+    for (const step of steps) {
+      if (
+        step.kind !== "singleton-choice" ||
+        step.singletonChoice.sourceUuid !== source.sourceSelection?.uuid ||
+        step.singletonChoice.sourceRuleIndex !== sourceRuleIndex ||
+        step.singletonChoice.flag !== flag ||
+        normalize(step.singletonChoice.rollOption) !== rollOption
+      ) {
+        continue;
+      }
+      const selection = draft.singletonChoices[step.slotId];
+      if (step.singletonChoice.options.some((option) => option.value === selection)) {
+        addOption(values, selection);
+      }
+    }
+  }
   addOption(values, draft.classChoices[classChoiceSlotId]);
 
-  const trainingKey = `${source.sourceItemType}:${sourceSlug}:${flag}`;
+  // Training discovery uses the document id when raw data has no system slug.
+  const trainingSourceSlug =
+    normalize((source.sourceDocument as { system?: { slug?: unknown } } | null | undefined)?.system?.slug) ??
+    source.sourceSelection?.documentId ??
+    sourceSlug;
+  const trainingKey = `${source.sourceItemType}:${trainingSourceSlug}:${flag}`;
   for (const training of Object.values(draft.skillTrainings)) {
     addOption(values, training.ruleChoices[trainingKey]);
   }
@@ -171,10 +216,7 @@ function addSelectionValues(values: Set<string>, selection: SelectionRef | undef
 }
 
 function sourceSlugFor(source: ChoiceRuleSourceContext): string {
-  const documentSlug = normalize(
-    (source.sourceDocument as { system?: { slug?: unknown } } | null | undefined)?.system?.slug
-  );
-  return documentSlug ?? source.sourceSelection?.documentId ?? "source";
+  return extractDocumentSlug(source.sourceDocument) ?? source.sourceSelection?.documentId ?? "source";
 }
 
 function addOption(options: Set<string>, value: unknown): void {

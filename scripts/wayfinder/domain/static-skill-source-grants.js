@@ -1,3 +1,4 @@
+import { matchesChoiceSetRulePredicate } from "../rule-data.js";
 export function projectStaticSkillSourceGrants(args) {
     const document = args.document;
     const grants = [];
@@ -11,8 +12,13 @@ export function projectStaticSkillSourceGrants(args) {
         }
     }
     const rules = Array.isArray(document?.system?.rules) ? document.system.rules : [];
+    const activeRollOptions = args.activeRollOptions ?? new Set();
     for (const rule of rules) {
         if (!rule || typeof rule !== "object" || rule.key !== "ActiveEffectLike" || typeof rule.path !== "string") {
+            continue;
+        }
+        if ((rule.mode !== undefined && rule.mode !== "upgrade" && rule.mode !== "override") ||
+            !matchesChoiceSetRulePredicate(rule, activeRollOptions)) {
             continue;
         }
         const match = /^system\.skills\.([a-z][a-z0-9-]*)\.rank$/iu.exec(rule.path.trim());
@@ -26,14 +32,22 @@ export function projectStaticSkillSourceGrants(args) {
             });
         }
     }
-    const bySlug = new Map();
+    return canonicalizeSkillSourceGrants(grants);
+}
+export function canonicalizeSkillSourceGrants(grants) {
+    const byIdentity = new Map();
     for (const grant of grants) {
-        const existing = bySlug.get(grant.slug);
-        if (!existing || existing.rank < grant.rank)
-            bySlug.set(grant.slug, grant);
+        const slug = normalizeSkillSlug(grant.slug);
+        if (!slug || !Number.isFinite(grant.rank))
+            continue;
+        const normalizedGrant = { ...grant, slug, rank: Math.max(0, Math.min(4, Math.floor(grant.rank))) };
+        const identity = JSON.stringify([grant.sourceId ?? null, slug]);
+        const existing = byIdentity.get(identity);
+        if (!existing || existing.rank < normalizedGrant.rank)
+            byIdentity.set(identity, normalizedGrant);
     }
-    return Object.freeze(Array.from(bySlug.values())
-        .sort((left, right) => left.slug.localeCompare(right.slug))
+    return Object.freeze(Array.from(byIdentity.values())
+        .sort((left, right) => `${left.sourceId ?? ""}:${left.slug}:${left.rank}`.localeCompare(`${right.sourceId ?? ""}:${right.slug}:${right.rank}`))
         .map((grant) => Object.freeze(grant)));
 }
 function normalizeSkillSlug(value) {

@@ -1,9 +1,11 @@
 import { SKILL_LABELS } from "../../constants.js";
 import { getConfiguredSkills, getSkillAbility, resolveSkillLabel, } from "../class-choice/skill-config.js";
+import { projectStaticSkillSourceGrants } from "../domain/static-skill-source-grants.js";
 import { formatSlug } from "../formatting.js";
 import { toNonEmptyString } from "../rule-data.js";
 import { discoverSingletonChoiceSpecs } from "../singleton-choice/rule-discovery.js";
 const LORE_NAME_PATTERN = String.raw `[A-Z][A-Za-z'’.-]*(?:\s+(?:[A-Z][A-Za-z'’.-]*|of|the|and))*\s+Lore`;
+const FIXED_SKILL_SLUGS = new Set(Object.keys(SKILL_LABELS));
 export function discoverSourceSkillTrainingMeta(args) {
     const configuredSkills = getConfiguredSkills();
     const fixedSkills = [];
@@ -24,8 +26,12 @@ export function discoverSourceSkillTrainingMeta(args) {
         }
         const sourceName = toNonEmptyString(document.name) ?? source.sourceSelection?.name ?? formatSlug(source.sourceItemType);
         const sourceSlug = toNonEmptyString(document.system?.slug) ?? source.sourceSelection?.documentId ?? sourceName;
-        fixedSkills.push(...extractFixedTrainedSkills(document));
-        fixedSkills.push(...extractFixedRuleGrantedSkills(document));
+        fixedSkills.push(...projectStaticSkillSourceGrants({
+            document,
+            sourceId: source.sourceSelection?.uuid ?? `${source.sourceItemType}:${sourceSlug}`,
+            validSkillSlugs: FIXED_SKILL_SLUGS,
+            activeRollOptions: args.activeRollOptions,
+        }).map((grant) => grant.slug));
         fixedLores.push(...extractFixedLores(document));
         let hasRuleSkillChoice = false;
         for (const spec of discoverSingletonChoiceSpecs({
@@ -94,13 +100,6 @@ export function discoverSourceSkillTrainingMeta(args) {
         choiceRules: dedupeByKey(choiceRules),
         loreChoices: dedupeByKey(loreChoices),
     };
-}
-function extractFixedTrainedSkills(document) {
-    const entries = Array.isArray(document.system?.trainedSkills?.value) ? document.system.trainedSkills.value : [];
-    return entries
-        .filter((entry) => typeof entry === "string" && entry.trim().length > 0)
-        .map((entry) => entry.trim().toLowerCase())
-        .filter((entry) => entry in SKILL_LABELS);
 }
 function extractFixedLores(document) {
     const entries = Array.isArray(document.system?.trainedSkills?.lore) ? document.system.trainedSkills.lore : [];
@@ -564,24 +563,6 @@ function escapeRegExp(value) {
 }
 function isOpenBonusSkillChoice(choice) {
     return choice.prompt === "Choose a skill" && !choice.fallbackPrompt;
-}
-function extractFixedRuleGrantedSkills(document) {
-    const rules = Array.isArray(document.system?.rules) ? document.system.rules : [];
-    return rules
-        .filter((rule) => !!rule && typeof rule === "object")
-        .flatMap((rule) => {
-        if (rule.key !== "ActiveEffectLike") {
-            return [];
-        }
-        const path = toNonEmptyString(rule.path);
-        const match = path ? /^system\.skills\.([a-z][a-z0-9-]*)\.rank$/i.exec(path) : null;
-        const rank = Number(rule.value ?? 0);
-        if (!match || !Number.isFinite(rank) || rank < 1) {
-            return [];
-        }
-        const skillSlug = match[1].toLowerCase();
-        return skillSlug in SKILL_LABELS ? [skillSlug] : [];
-    });
 }
 function dedupeSlugs(values) {
     return Array.from(new Set(values.filter((value) => typeof value === "string" && value.length > 0)));

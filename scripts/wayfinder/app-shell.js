@@ -3007,7 +3007,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 : finalizedDespiteApplyError
                     ? "The actor reached the reviewed final state, but Foundry reported a late Apply error. Review the actor before closing."
                     : hasApplyRecoveryState(this.#requireDraft())
-                        ? "Wayfinder partially applied this draft. Retry Apply without changing choices; details are in the console."
+                        ? "Wayfinder could not finish this Apply attempt. The draft was kept for recovery. Retry Apply without changing choices; details are in the console."
                         : "Wayfinder could not apply this draft. The draft was kept for review; details are in the console.";
             this.#setStartingEquipmentFailure(failureMessage);
             ui.notifications.error(game.i18n.localize("wayfinder-pf2e.Notifications.ApplyFailed"));

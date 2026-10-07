@@ -230,6 +230,7 @@ export async function executeStartingEquipmentCommand(
       if (acquisition.targetLevel === 1) {
         throw new TypeError("A higher-level start request requires a higher-level equipment draft.");
       }
+      assertAcquisitionPolicyEntryAllowed(context.draft);
       const request = deps.createRequest({
         requestId: deps.mintRequestId(),
         facts: {

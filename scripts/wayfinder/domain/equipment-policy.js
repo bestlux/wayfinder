@@ -406,7 +406,7 @@ function resolveEffectiveEquipmentPolicy(input, authority) {
     });
     if (!official.ok || !official.value)
         throw new Error(official.diagnostics[0]?.message ?? "Starting wealth unavailable.");
-    const higherLevelStartEvidence = resolveStartEvidence(input, world, authority);
+    const higherLevelStartEvidence = resolveEquipmentHigherLevelStartEvidence(input, world, authority);
     const exceptionJudgments = resolveJudgments(input.exceptionJudgmentIds ?? [], "rarity-source-exception", input, authority);
     const extraJudgments = resolveJudgments(input.extraCurrentLevelAllowanceIds ?? [], "extra-current-level-allowance", input, authority, (judgment) => judgment.factsFingerprint ===
         buildEquipmentPolicyJudgmentFactsFingerprint({
@@ -498,7 +498,11 @@ function resolveEffectiveEquipmentPolicy(input, authority) {
     };
     return { ...material, fingerprint: fingerprint(material), explanations: buildExplanations(world, recipe) };
 }
-function resolveStartEvidence(input, world, authority) {
+export function resolveEquipmentHigherLevelStartEvidence(input, world, authority) {
+    if (!nonEmpty(input.actorId) || !nonEmpty(input.draftId))
+        throw new TypeError("Equipment policy subject is invalid.");
+    if (!validTargetLevel(input.targetLevel))
+        throw new RangeError("Equipment policy target level must be 1 through 20.");
     if (input.targetLevel === 1)
         return { kind: "not-required" };
     const claim = input.higherLevelStartClaim;

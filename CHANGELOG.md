@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.5 - 2026-10-07
+
+- Fixed saved Starting Equipment opening with disabled search and review controls when its higher-level wealth confirmation was no longer valid for the current account or world policy. Wayfinder now offers the required owner confirmation or GM approval step instead of leaving the outfitter stuck.
+- Confirming again preserves the character choices, cart, economic baseline, and equipment identities, then requires a fresh purchase or coin review. Pending Apply recovery blocks changes to equipment setup and new approval requests until recovery finishes.
+
 ## 0.10.4 - 2026-10-07
 
 - Fixed character Apply rejecting drafts with Hold Mark or other active singleton-choice skill grants because the preview and Apply inspected different skill sources. Conditional grants now follow the selected choice; Hold Mark grants its selected skill rather than all four marks' skills.

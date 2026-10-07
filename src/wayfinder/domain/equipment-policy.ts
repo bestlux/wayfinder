@@ -726,7 +726,7 @@ function resolveEffectiveEquipmentPolicy(
   if (!official.ok || !official.value)
     throw new Error(official.diagnostics[0]?.message ?? "Starting wealth unavailable.");
 
-  const higherLevelStartEvidence = resolveStartEvidence(input, world, authority);
+  const higherLevelStartEvidence = resolveEquipmentHigherLevelStartEvidence(input, world, authority);
   const exceptionJudgments = resolveJudgments(
     input.exceptionJudgmentIds ?? [],
     "rarity-source-exception",
@@ -838,11 +838,13 @@ function resolveEffectiveEquipmentPolicy(
   return { ...material, fingerprint: fingerprint(material), explanations: buildExplanations(world, recipe) };
 }
 
-function resolveStartEvidence(
-  input: EquipmentPolicyResolutionInput,
+export function resolveEquipmentHigherLevelStartEvidence(
+  input: Pick<EquipmentPolicyResolutionInput, "actorId" | "draftId" | "targetLevel" | "higherLevelStartClaim">,
   world: EquipmentWorldPolicyV1,
   authority: EquipmentPolicyAuthorityPort
 ): EquipmentHigherLevelStartEvidence {
+  if (!nonEmpty(input.actorId) || !nonEmpty(input.draftId)) throw new TypeError("Equipment policy subject is invalid.");
+  if (!validTargetLevel(input.targetLevel)) throw new RangeError("Equipment policy target level must be 1 through 20.");
   if (input.targetLevel === 1) return { kind: "not-required" };
   const claim = input.higherLevelStartClaim;
   if (world.higherLevelStartAuthority === "gm-confirmation") {

@@ -34,7 +34,7 @@ import { equipmentLineFocusId, restoreEquipmentFocusAfterRender, STARTING_EQUIPM
 import { ConfiguredItemHandoffRequiredError, commitTitanMaulerLineSynchronization, getFoundryEquipmentAcquisitionRuntime, } from "./application/equipment-acquisition-runtime-service.js";
 import { createEquipmentAcquisitionExecutionSession } from "./application/equipment-acquisition-session-service.js";
 import { profileEquipmentStage } from "./application/equipment-performance-profiler.js";
-import { assertEquipmentApplyAuthority } from "./application/equipment-policy-service.js";
+import { assertEquipmentApplyAuthority, requiresEquipmentStartConfirmation, } from "./application/equipment-policy-service.js";
 import { parseMaterializedEquipmentQuantity } from "./application/equipment-quantity-entry.js";
 import { createEquipmentSearchScheduler, scheduleEquipmentSearchInput, } from "./application/equipment-search-input-service.js";
 import { EquipmentStableCatalogueHost } from "./application/equipment-stable-catalogue-host.js";
@@ -321,16 +321,24 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                     equipmentRenderSession: null,
                 };
             }
-            const authorityStore = getEquipmentPolicyJudgmentStoreSetting();
             const catalogue = await this.#projectStartingEquipmentCatalogue(session.step, {
                 offset: equipmentRequest.offset,
                 limit: equipmentRequest.limit,
             }, this.#equipmentProjectionSignalByViewRevision.get(equipmentRequest.viewRevision));
+            const authorityStore = getEquipmentPolicyJudgmentStoreSetting();
+            const equipmentWorldPolicy = getEquipmentWorldPolicySetting();
             const pane = profileEquipmentStage("equipment-pane-assembly", () => buildStartingEquipmentPane(session.step, draft, session.evaluation, catalogue, localizeAcquisition, {
-                worldPolicy: getEquipmentWorldPolicySetting(),
+                worldPolicy: equipmentWorldPolicy,
                 judgments: authorityStore.judgments,
                 requestDecisions: authorityStore.requestDecisions,
                 isGm: game.user?.isGM === true,
+                currentUserId: String(game.user?.id ?? ""),
+                startAuthorityNeedsConfirmation: requiresEquipmentStartConfirmation({
+                    actor: this.actor,
+                    acquisition: draft.acquisition,
+                    worldPolicy: equipmentWorldPolicy,
+                    judgments: authorityStore.judgments,
+                }),
                 locale: String(game.i18n.lang ?? ""),
             }), () => ({
                 sourceIdentityCount: catalogue.recordSource.sourceUuids.length,
@@ -1426,13 +1434,21 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             });
         }
         if (step.kind === "starting-equipment") {
-            const authorityStore = getEquipmentPolicyJudgmentStoreSetting();
             const catalogue = await this.#projectStartingEquipmentCatalogue(step);
+            const authorityStore = getEquipmentPolicyJudgmentStoreSetting();
+            const equipmentWorldPolicy = getEquipmentWorldPolicySetting();
             return profileEquipmentStage("equipment-pane-assembly", () => buildStartingEquipmentPane(step, this.#requireDraft(), stepEvaluation, catalogue, localizeAcquisition, {
-                worldPolicy: getEquipmentWorldPolicySetting(),
+                worldPolicy: equipmentWorldPolicy,
                 judgments: authorityStore.judgments,
                 requestDecisions: authorityStore.requestDecisions,
                 isGm: game.user?.isGM === true,
+                currentUserId: String(game.user?.id ?? ""),
+                startAuthorityNeedsConfirmation: requiresEquipmentStartConfirmation({
+                    actor: this.actor,
+                    acquisition: this.#requireDraft().acquisition,
+                    worldPolicy: equipmentWorldPolicy,
+                    judgments: authorityStore.judgments,
+                }),
                 locale: String(game.i18n.lang ?? ""),
             }), () => ({
                 sourceIdentityCount: catalogue.recordSource.sourceUuids.length,

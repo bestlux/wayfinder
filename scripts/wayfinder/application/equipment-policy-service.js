@@ -1,7 +1,7 @@
 import { MODULE_ID, SETTINGS } from "../../constants.js";
 import { assertCanUseWayfinder } from "../../permissions.js";
 import { getEquipmentPolicyJudgmentStoreSetting, getEquipmentWorldPolicySetting } from "../../settings.js";
-import { buildEquipmentPolicyJudgmentFactsFingerprint, createEquipmentPolicyRequest, createEquipmentPolicyResolver, declineEquipmentPolicyRequest, equipmentPolicyJudgmentFactsEqual, equipmentPolicyRequestEvidence, normalizeEquipmentPolicyRequest, normalizeEquipmentWorldPolicy, } from "../domain/equipment-policy.js";
+import { buildEquipmentPolicyJudgmentFactsFingerprint, createEquipmentPolicyRequest, createEquipmentPolicyResolver, declineEquipmentPolicyRequest, equipmentPolicyJudgmentFactsEqual, equipmentPolicyRequestEvidence, normalizeEquipmentPolicyRequest, normalizeEquipmentWorldPolicy, resolveEquipmentHigherLevelStartEvidence, } from "../domain/equipment-policy.js";
 import { assertCurrentEquipmentAuthorityWriter, coordinateEquipmentAuthorityOperation, setEquipmentAuthorityHandler, } from "./equipment-authority-coordinator.js";
 import { discoverInstalledEquipmentPackDescriptors, normalizePf2eEquipmentSources, } from "./equipment-source-policy.js";
 import { requireCurrentGmPrincipal } from "./gm-command-authority.js";
@@ -43,14 +43,7 @@ export function resolveEquipmentPolicyForActor(input) {
         compendiumBrowserSources: game.settings.get("pf2e", "compendiumBrowserSources"),
     });
     const store = getEquipmentPolicyJudgmentStoreSetting();
-    const byId = new Map(store.judgments.map((judgment) => [judgment.id, judgment]));
-    const resolver = createEquipmentPolicyResolver({
-        resolveGmJudgment: (id) => {
-            const judgment = byId.get(id);
-            return judgment && judgment.revocation === null && isCurrentGmUser(judgment.authorUserId) ? judgment : null;
-        },
-        verifyOwnerStartAttestation: (attestation) => verifyCurrentOwnerAttestation(input.actor, attestation),
-    });
+    const resolver = createEquipmentPolicyResolver(currentEquipmentPolicyAuthority(input.actor, store.judgments));
     return resolver.resolve({
         actorId,
         draftId: input.draftId,
@@ -64,6 +57,45 @@ export function resolveEquipmentPolicyForActor(input) {
         extraCurrentLevelAllowanceIds: input.extraCurrentLevelAllowanceIds,
         exceptionJudgmentIds: input.exceptionJudgmentIds,
     });
+}
+/** Projects only start-confirmation validity, without loading or evaluating equipment sources. */
+export function requiresEquipmentStartConfirmation(input) {
+    const acquisition = input.acquisition;
+    const evidence = acquisition?.policySnapshot?.material.higherLevelStartEvidence;
+    if (!acquisition || !evidence || acquisition.targetLevel === 1)
+        return false;
+    const claim = evidence.kind === "gm-confirmation"
+        ? { kind: "gm-confirmation", judgmentId: evidence.judgment.id, startKind: evidence.startKind }
+        : evidence.kind === "actor-owner-attestation"
+            ? evidence
+            : null;
+    const subject = {
+        actorId: actorIdentity(input.actor),
+        draftId: acquisition.draftId,
+        targetLevel: acquisition.targetLevel,
+        higherLevelStartClaim: claim,
+    };
+    const worldPolicy = input.worldPolicy ?? getEquipmentWorldPolicySetting();
+    const authority = currentEquipmentPolicyAuthority(input.actor, input.judgments ?? getEquipmentPolicyJudgmentStoreSetting().judgments);
+    try {
+        resolveEquipmentHigherLevelStartEvidence(subject, worldPolicy, authority);
+        return false;
+    }
+    catch (error) {
+        if (error instanceof TypeError)
+            return true;
+        throw error;
+    }
+}
+function currentEquipmentPolicyAuthority(actor, judgments) {
+    const byId = new Map(judgments.map((judgment) => [judgment.id, judgment]));
+    return {
+        resolveGmJudgment: (id) => {
+            const judgment = byId.get(id);
+            return judgment && judgment.revocation === null && isCurrentGmUser(judgment.authorUserId) ? judgment : null;
+        },
+        verifyOwnerStartAttestation: (attestation) => verifyCurrentOwnerAttestation(actor, attestation),
+    };
 }
 function isCurrentGmUser(userId) {
     const users = game.users;

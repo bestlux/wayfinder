@@ -1,4 +1,5 @@
 import { localizeEquipmentSourceDiagnostic, } from "../application/acquisition-localization.js";
+import { hasApplyRecoveryState } from "../application/draft-lifecycle-service.js";
 import { equipmentAllowanceFocusId, equipmentFilterFocusId, equipmentItemFocusId, equipmentLineControlFocusId, equipmentLineFocusId, } from "../application/equipment-accessibility.js";
 import { resolveAcquisitionPrice } from "../domain/acquisition-ledger.js";
 import { itemLevelWithinCurrencyBoundary, resolveEquipmentItemLevelBoundary, } from "../domain/equipment-item-level-boundary.js";
@@ -303,6 +304,33 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
         ? (judgments.find((judgment) => judgment.id === reviewedStartJudgment.id && judgment.revocation === null) ?? null)
         : null;
     const startAuthorityInvalid = reviewedStartJudgment !== null && activeJudgment === null;
+    const currentUserId = setupOptions?.currentUserId?.trim();
+    const ownerConfirmationRequired = step.level > 1 &&
+        policy?.higherLevelStartEvidence.kind === "actor-owner-attestation" &&
+        setupOptions?.isGm === false &&
+        !!currentUserId &&
+        policy.higherLevelStartEvidence.authorUserId !== currentUserId;
+    const needsStartAuthority = awaitingAuthority || startAuthorityInvalid || setupOptions?.startAuthorityNeedsConfirmation === true;
+    const policyEntryLocked = hasApplyRecoveryState(draft) || (acquisition?.classGrantReconciliations.length ?? 0) > 0;
+    let authorityMessage = null;
+    if (needsStartAuthority) {
+        if (policyEntryLocked) {
+            authorityMessage = localize("wayfinder-pf2e.StartingEquipment.Authority.ApplyRecoveryPending");
+        }
+        else if (startAuthorityInvalid) {
+            authorityMessage = localize("wayfinder-pf2e.StartingEquipment.Authority.StaleApproval");
+        }
+        else if (worldPolicy?.higherLevelStartAuthority === "actor-owner-attestation") {
+            authorityMessage = localize(ownerConfirmationRequired
+                ? "wayfinder-pf2e.StartingEquipment.Authority.OwnerConfirmationRequired"
+                : "wayfinder-pf2e.StartingEquipment.Authority.OwnerAttestation");
+        }
+        else {
+            authorityMessage = localize(setupOptions?.isGm
+                ? "wayfinder-pf2e.StartingEquipment.Authority.GmConfirmation"
+                : "wayfinder-pf2e.StartingEquipment.Authority.AwaitingGm");
+        }
+    }
     const canSetCustomLumpSum = setupOptions?.isGm === true &&
         !!policy &&
         (policy.resolvedRecipe.kind === "lump-sum" || policy.resolvedRecipe.kind === "custom-lump-sum") &&
@@ -373,8 +401,8 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
         initialized: !!acquisition && !levelOneReentry,
         corrupt: draft.acquisitionCorrupt,
         setup: {
-            awaitingAuthority: awaitingAuthority || startAuthorityInvalid,
-            canChooseRecipe: awaitingAuthority && worldPolicy?.recipeChoiceAuthority === "actor-owner",
+            awaitingAuthority: needsStartAuthority,
+            canChooseRecipe: awaitingAuthority && !policyEntryLocked && worldPolicy?.recipeChoiceAuthority === "actor-owner",
             selectedRecipe,
             recipeOptions: (worldPolicy?.enabledRecipes ?? []).map((value) => ({
                 value,
@@ -383,18 +411,12 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
                     : "wayfinder-pf2e.StartingEquipment.Recipe.LumpSum"),
                 selected: value === selectedRecipe,
             })),
-            authorityMessage: startAuthorityInvalid
-                ? localize("wayfinder-pf2e.StartingEquipment.Authority.StaleApproval")
-                : awaitingAuthority
-                    ? worldPolicy?.higherLevelStartAuthority === "actor-owner-attestation"
-                        ? localize("wayfinder-pf2e.StartingEquipment.Authority.OwnerAttestation")
-                        : setupOptions?.isGm
-                            ? localize("wayfinder-pf2e.StartingEquipment.Authority.GmConfirmation")
-                            : localize("wayfinder-pf2e.StartingEquipment.Authority.AwaitingGm")
-                    : null,
-            canActivate: (awaitingAuthority || startAuthorityInvalid) &&
+            authorityMessage,
+            canActivate: needsStartAuthority &&
+                !policyEntryLocked &&
                 (worldPolicy?.higherLevelStartAuthority === "actor-owner-attestation" || setupOptions?.isGm === true),
-            canRequest: (awaitingAuthority || startAuthorityInvalid) &&
+            canRequest: needsStartAuthority &&
+                !policyEntryLocked &&
                 worldPolicy?.higherLevelStartAuthority === "gm-confirmation" &&
                 setupOptions?.isGm !== true &&
                 pendingRequests.length === 0,

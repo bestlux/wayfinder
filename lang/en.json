@@ -257,6 +257,8 @@
         "GmChoosesOwnerApplies": "Your GM chooses the funding, you apply it",
         "GmConfirmation": "Confirm whether this is a new-campaign or replacement-character start before shopping.",
         "OwnerAttestation": "As an owner, you can attest that this is a new or replacement higher-level character.",
+        "OwnerConfirmationRequired": "Another owner confirmed this character's starting wealth. Confirm it for your account before choosing equipment.",
+        "ApplyRecoveryPending": "An earlier Apply attempt is still pending. Ask a GM or the owner who started it to finish recovery before changing equipment setup.",
         "OwnerChoosesApplies": "You choose the funding and apply it",
         "OwnerChoosesGmApplies": "You choose the funding, your GM applies it",
         "StaleApproval": "The prior GM approval is no longer current. Request a new approval before Apply.",

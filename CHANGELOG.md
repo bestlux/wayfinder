@@ -5,7 +5,7 @@
 - Added weapon damage and raised-shield AC to Starting Equipment rows and their detail previews, so players can compare ordinary gear before opening each item.
 - Comparisons describe the catalogue item's default use, including supported striking runes. Extra effects and uncertain item profiles are qualified rather than presented as a complete character attack; shields show their AC bonus separately from hardness and Hit Points.
 - Added localized comparison text and accessible row announcements in English and Simplified Chinese, with readable narrow layouts and text zoom. Browsing remains index-backed, preserving the current purchase rules and document-loading behavior.
-- Fixed Apply rejecting standard ancestry boost updates with PF2E 8.6.1. Clearing inactive alternate or voluntary boosts now follows the native item field requirements.
+- Fixed PF2E 8.6.1 Apply failures for standard ancestry boosts and Commander's automatic Warfare Lore.
 
 ## 0.10.5 - 2026-10-07
 

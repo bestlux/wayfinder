@@ -433,6 +433,7 @@ export async function prepareDraftApplication(
   const skillSourceProjection = projectPreparedSkillSources({
     actorDocuments: listActorItems(actor),
     baselineRanks: readPreparedSkillRanks(actor),
+    currentActorLevel: actor.system?.details?.level?.value,
     draft,
     steps,
     sources: sources.skillSources,

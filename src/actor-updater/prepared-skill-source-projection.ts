@@ -13,6 +13,7 @@ import {
   canonicalizeSkillSourceGrants,
   projectStaticSkillSourceGrants,
 } from "../wayfinder/domain/static-skill-source-grants.js";
+import { projectCommanderNativeLoreExpectation } from "./commander-native-lore-profile.js";
 
 const FOUNDATION_ITEM_TYPES = new Set(["ancestry", "heritage", "background", "class"]);
 
@@ -34,6 +35,7 @@ export function projectPreparedSkillSources(args: {
   readonly validSkillSlugs: ReadonlySet<string>;
   readonly actorDocuments?: Iterable<unknown>;
   readonly baselineRanks?: Record<string, number>;
+  readonly currentActorLevel?: unknown;
 }): PreparedSkillSourceProjection {
   const actorDocuments = Array.from(args.actorDocuments ?? []);
   const activeRollOptions = projectedSkillSourceRollOptions({
@@ -80,6 +82,15 @@ export function projectPreparedSkillSources(args: {
     sourceGrants.push(...staticGrants);
     if (plannedSource?.requiredBeforeSkillPhase || retainedFoundation) {
       requiredBeforeSkillGrants.push(...staticGrants);
+      if (entry.selection.itemType === "class") {
+        requiredBeforeSkillGrants.push(
+          ...projectCommanderNativeLoreExpectation({
+            sourceId: entry.selection.uuid,
+            document: entry.source,
+            currentActorLevel: args.currentActorLevel,
+          })
+        );
+      }
     }
   }
 

@@ -57,6 +57,37 @@
   font: 600 0.66rem / 1.2 var(--sans-serif, sans-serif);
 }
 
+.browser-header-row:has(.picker-unavailable-choices) {
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.picker-unavailable-choices {
+  width: 100%;
+  min-width: 0;
+  color: #6f4f1a;
+  font: 500 0.72rem / 1.35 var(--sans-serif, sans-serif);
+}
+
+.picker-unavailable-choices summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.picker-unavailable-choices summary:focus-visible {
+  outline: 2px solid var(--wf-primary);
+  outline-offset: 2px;
+}
+
+.picker-unavailable-choices ul {
+  margin: 0.35rem 0;
+  padding-left: 1.1rem;
+}
+
+.picker-unavailable-choices p {
+  margin: 0.15rem 0 0.35rem;
+}
+
 .spell-selected-summary {
   display: flex;
   flex-direction: column;

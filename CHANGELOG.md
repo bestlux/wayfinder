@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.1 - 2026-10-14
+
+- Restore Thaumaturge creation with the Amulet, Bell, Chalice, Lantern, Mirror, Regalia, Tome, and Wand implements. First and second implements use reviewed native grants without spending starting coin or duplicating equipment during Apply recovery.
+- Name unavailable Weapon and Shield implements and explain their additional physical-item choices. Other unreviewed implements remain unavailable; support limitations are distinguished from PF2E version-review notices.
+- Handle PF2E 8.6.1's native Esoteric Lore during Apply while preserving older manual Lore behavior and existing Lore items.
+
 ## 0.11.0 - 2026-10-14
 
 - Added weapon damage and raised-shield AC to Starting Equipment rows and their detail previews, so players can compare ordinary gear before opening each item.

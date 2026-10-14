@@ -8,6 +8,7 @@ import { evaluateEquipmentItemAuthority, } from "../domain/equipment-policy.js";
 import { findUnsupportedPhysicalGrantRoutes, physicalGrantCoverageBlockers, } from "../domain/physical-grant-coverage.js";
 import { supportedPhysicalGrantRoute } from "../domain/physical-grant-route-registry.js";
 import { resolveEquipmentPolicyForActor } from "./equipment-policy-service.js";
+import { projectThaumaturgeImplementGrants } from "./thaumaturge-implement-grant-projection.js";
 const UUIDS = CLASS_GRANT_PROFILE_UUIDS;
 export async function prepareCurrentClassGrantPlan(actor, draft, activeSteps, options = {}) {
     const result = await projectCurrentClassGrants(actor, draft, activeSteps, options);
@@ -203,7 +204,8 @@ export async function projectPlannedClassGrants(args) {
         !originIsActive(classSelection, args.activeSteps, args.observedActorItems)) {
         return completeProjection(args, grants, blockers);
     }
-    const activeProfile = classSelection.uuid === UUIDS.alchemistClass ||
+    const activeProfile = classSelection.uuid === UUIDS.thaumaturgeClass ||
+        classSelection.uuid === UUIDS.alchemistClass ||
         (classSelection.uuid === UUIDS.investigatorClass &&
             Object.values(args.draft.branchSelections).some((selection) => selection.slotId === "class-branch-methodology-level-1" &&
                 selection.uuid === UUIDS.alchemicalSciences &&
@@ -227,6 +229,17 @@ export async function projectPlannedClassGrants(args) {
             grants.push(result.grant);
         if (result.blocker)
             blockers.push(result.blocker);
+    }
+    if (classSelection.uuid === UUIDS.thaumaturgeClass) {
+        const result = await projectThaumaturgeImplementGrants({
+            draft: args.draft,
+            classDocument,
+            activeSteps: args.activeSteps,
+            observedActorItems: args.observedActorItems,
+            fetchDocumentByUuid: args.fetchDocumentByUuid,
+        });
+        grants.push(...result.grants);
+        blockers.push(...result.blockers);
     }
     const branchSelections = Object.values(args.draft.branchSelections);
     const alchemicalSciences = branchSelections.find((selection) => selection.slotId === "class-branch-methodology-level-1" &&
@@ -450,6 +463,8 @@ function completeProjection(subject, grants, blockers) {
     };
 }
 function profileIdForSelection(classUuid, draft) {
+    if (classUuid === UUIDS.thaumaturgeClass)
+        return "thaumaturge-amulet-implement-first";
     if (classUuid === UUIDS.alchemistClass)
         return "alchemist-formula-book";
     if (classUuid === UUIDS.investigatorClass &&

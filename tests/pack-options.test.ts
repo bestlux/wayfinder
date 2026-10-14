@@ -6,6 +6,10 @@ import { getOptionQueryForStep, getOptionsForStep, resolveSelection } from "../s
 import { buildSteps } from "../src/progression";
 import type { ActorSnapshot, OptionContext, PendingStep, PickItemSlotKind, SelectionRef } from "../src/types";
 import { buildOptionContext } from "../src/wayfinder/application/option-context-service";
+import {
+  THAUMATURGE_FIXED_IMPLEMENTS,
+  THAUMATURGE_IMPLEMENT_ORIGINS,
+} from "../src/wayfinder/domain/physical-grant-route-registry.js";
 import { createPickItemStep } from "../src/wayfinder/domain/step-types";
 import { withRestrictedSpellRarityAccess } from "../src/wayfinder/spell-choice/rarity-access";
 import {
@@ -63,6 +67,69 @@ describe("pack options dependency filtering", () => {
     );
     expect(options[0]?.featTraits).toEqual(["general", "hb_starlit"]);
     expect(options[0]?.traits).toContain("technical-tag");
+  });
+
+  it.each(
+    THAUMATURGE_IMPLEMENT_ORIGINS
+  )("offers only reviewed fixed implements for $name Implement and retains unavailable names", async (origin) => {
+    const entries = [
+      ...THAUMATURGE_FIXED_IMPLEMENTS.map((implement) => ({
+        ...classFeatureEntry(implement.slug, implement.name, ["thaumaturge"], ["implement"]),
+        _id: implement.featureId,
+      })),
+      { ...classFeatureEntry("weapon", "Weapon", ["thaumaturge"], ["implement"]), _id: "YiDkrwaxiF7Gao7y" },
+      { ...classFeatureEntry("shield", "Shield", ["thaumaturge"], ["implement"]), _id: "84GDSAXaMKMTg2IT" },
+      { ...classFeatureEntry("censer", "Censer", ["thaumaturge"], ["implement"]), _id: "X1xuYSTJ7ojsoLxY" },
+    ];
+    setPack("pf2e.classfeatures", entries);
+    const step: PendingStep = {
+      id: origin.slotId,
+      slotId: origin.slotId,
+      level: origin.level,
+      kind: "class-branch",
+      slotKind: "class-branch",
+      title: origin.selectorName,
+      description: "Choose an implement.",
+      required: true,
+      filters: { itemType: "feat", featTypes: ["classfeature"], predicate: ["item:tag:implement"] },
+      branch: {
+        slotId: origin.slotId,
+        selectorPackId: "pf2e.classfeatures",
+        selectorDocumentId: origin.selectorUuid.split(".").at(-1)!,
+        selectorUuid: origin.selectorUuid,
+        selectorName: origin.selectorName,
+        selectorRuleIndex: 0,
+        flag: "implement",
+        optionTag: "implement",
+        classSlug: "thaumaturge",
+        dependsOn: "class",
+      },
+    };
+
+    const query = await getOptionQueryForStep(step, { ...EMPTY_CONTEXT, classSlug: "thaumaturge" });
+
+    expect(query.options.map((option) => option.name)).toEqual(
+      THAUMATURGE_FIXED_IMPLEMENTS.map((implement) => implement.name)
+    );
+    expect(query.suppressedOptions).toEqual([
+      { uuid: "Compendium.pf2e.classfeatures.Item.X1xuYSTJ7ojsoLxY", name: "Censer", reason: "unreviewed-implement" },
+      {
+        uuid: "Compendium.pf2e.classfeatures.Item.84GDSAXaMKMTg2IT",
+        name: "Shield",
+        reason: "unvalidated-granted-choice",
+      },
+      {
+        uuid: "Compendium.pf2e.classfeatures.Item.YiDkrwaxiF7Gao7y",
+        name: "Weapon",
+        reason: "unvalidated-granted-choice",
+      },
+    ]);
+
+    const unrelatedStep: PendingStep = {
+      ...step,
+      branch: { ...step.branch, selectorUuid: "Compendium.pf2e.classfeatures.Item.unrelated-selector" },
+    };
+    expect((await getOptionQueryForStep(unrelatedStep, EMPTY_CONTEXT)).options).toHaveLength(11);
   });
 
   it("discovers every installed pack matching a module-prefix allowlist wildcard", async () => {

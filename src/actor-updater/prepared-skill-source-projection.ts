@@ -14,6 +14,10 @@ import {
   projectStaticSkillSourceGrants,
 } from "../wayfinder/domain/static-skill-source-grants.js";
 import { projectCommanderNativeLoreExpectation } from "./commander-native-lore-profile.js";
+import {
+  projectThaumaturgeNativeLoreExpectation,
+  thaumaturgeNativeLoreSourceSelection,
+} from "./thaumaturge-native-lore-profile.js";
 
 const FOUNDATION_ITEM_TYPES = new Set(["ancestry", "heritage", "background", "class"]);
 
@@ -90,6 +94,20 @@ export function projectPreparedSkillSources(args: {
             currentActorLevel: args.currentActorLevel,
           })
         );
+        const nativeLore = thaumaturgeNativeLoreSourceSelection({
+          sourceId: entry.selection.uuid,
+          document: entry.source,
+        });
+        if (nativeLore) {
+          requiredBeforeSkillGrants.push(
+            ...projectThaumaturgeNativeLoreExpectation({
+              sourceId: entry.selection.uuid,
+              document: entry.source,
+              loreDocument: sourcesByUuid.get(nativeLore.uuid)?.source,
+              currentActorLevel: args.currentActorLevel,
+            })
+          );
+        }
       }
     }
   }

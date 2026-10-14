@@ -25,6 +25,7 @@ import {
   wf51ReleaseOverlayRows,
 } from "../tools/foundry-smoke/wf51-release-overlay-cases.mjs";
 import { qualifyWf51ReleaseOverlay } from "../tools/foundry-smoke/wf51-release-overlay-evidence.mjs";
+import { nativePhysicalGrantSmokeFixture } from "./fixtures/native-physical-grant-smoke-fixture";
 
 const coordinator = readFileSync(resolve("tools/foundry-smoke/run-wf51-release-coordinator.mjs"), "utf8");
 const focusedRunner = readFileSync(resolve("tools/foundry-smoke/run-wf51-release-overlay.mjs"), "utf8");
@@ -309,16 +310,20 @@ describe("WF-080-51 focused live release overlay", () => {
     );
   });
 
-  it("pins and qualifies the genuine 55/54 child matrix including native Formula Book materialization", () => {
+  it("pins and qualifies the genuine 55/54 child matrix including native Formula Book and both implements", () => {
     expect(validateWf51CoordinatorDefinitions()).toEqual([]);
     expect(expectedWf51MatrixExecutionIds()).toHaveLength(55);
     expect(new Set(expectedWf51MatrixExecutionIds())).toHaveProperty("size", 54);
     const children = matrixChildren();
     expect(qualifyFreshWf51Matrix(children)).toEqual([]);
     const thaumaturge = children[0].result.cases.find((entry: any) => entry.id === "thaumaturge-l1-l5-apply-rerun");
-    expect(thaumaturge.evidence.expectedRejection.registryBlockers.map((blocker: any) => blocker.routeId)).toEqual([
-      "thaumaturge-amulet-implement",
-      "thaumaturge-wand-implement",
+    expect(smokeCases.find((entry: any) => entry.id === thaumaturge.id)).toMatchObject({
+      caseKind: "character-build",
+      expectedOutcome: "applied",
+    });
+    expect(thaumaturge.evidence.acquisition.manifest.classGrants.map((entry: any) => entry.grant.profileId)).toEqual([
+      "thaumaturge-amulet-implement-first",
+      "thaumaturge-wand-implement-second",
     ]);
 
     children[0].result.cases[0].status = "fail";
@@ -369,14 +374,21 @@ describe("WF-080-51 focused live release overlay", () => {
       expect.arrayContaining([expect.stringMatching(/registered pre-review zero-write rejection/i)])
     );
 
-    const missingSecondaryThaumaturgeRoute = matrixChildren();
-    const incompleteThaumaturge = missingSecondaryThaumaturgeRoute[0].result.cases.find(
+    const missingSecondaryThaumaturgeGrant = matrixChildren();
+    const incompleteThaumaturge = missingSecondaryThaumaturgeGrant[0].result.cases.find(
       (entry: any) => entry.id === "thaumaturge-l1-l5-apply-rerun"
     );
-    incompleteThaumaturge.evidence.expectedRejection.registryBlockers.pop();
-    incompleteThaumaturge.evidence.expectedRejection.registryRoutes.pop();
-    expect(qualifyFreshWf51Matrix(missingSecondaryThaumaturgeRoute)).toEqual(
-      expect.arrayContaining([expect.stringMatching(/registered pre-review zero-write rejection/i)])
+    incompleteThaumaturge.evidence.acquisition.manifest.classGrants.pop();
+    expect(qualifyFreshWf51Matrix(missingSecondaryThaumaturgeGrant)).toEqual(
+      expect.arrayContaining([expect.stringMatching(/native|fixed|implement/i)])
+    );
+
+    const staleRejection = matrixChildren();
+    const staleThaumaturge = staleRejection[0].result.cases.find((entry: any) => entry.id === thaumaturge.id);
+    staleThaumaturge.actor.items = [];
+    staleThaumaturge.evidence.expectedRejection = { kind: "registered-physical-grant-rejection" };
+    expect(qualifyFreshWf51Matrix(staleRejection)).toEqual(
+      expect.arrayContaining([expect.stringMatching(/fixed grants|fixed implement/i)])
     );
 
     const missingRestoration = matrixChildren();
@@ -392,6 +404,32 @@ describe("WF-080-51 focused live release overlay", () => {
     expect(collectWf51ActorIds(matrixResults)).toHaveLength(55);
     expect(collectWf51ActorIds([...matrixResults, ...laterResults])).toHaveLength(57);
     expect(coordinator).toContain("actorIdsChecked: matrixActorIds.length");
+  });
+
+  it("does not bind historical Thaumaturge rejection evidence as a passing physical-grant overlay source", () => {
+    const result = passingResult();
+    const childSources = childEvidence().map((entry) => ({
+      ...entry,
+      candidateSha: result.candidate.gitSha,
+      servedScriptManifestSha256: result.candidate.servedScriptManifestSha256,
+    }));
+    const matrix = childSources.find((entry: any) => entry.route === "matrix");
+    const index = matrix.result.cases.findIndex((entry: any) => entry.id === "thaumaturge-l1-l5-apply-rerun");
+    matrix.result.cases[index] = expectedRejectionSourceCase(
+      "thaumaturge-l1-l5-apply-rerun",
+      "thaumaturge-amulet-implement"
+    );
+    result.overlay = buildWf51AggregateRecords({
+      candidate: result.candidate,
+      focusedCases: { evidenceId: "focused-1", cases: result.cases, cleanup: result.cleanup },
+      childSources,
+    });
+    const grants = result.overlay.find((entry: any) => entry.number === 14);
+    expect(grants.status).toBe("fail");
+    expect(grants.evidenceRefs.find((entry: any) => entry.caseId === "thaumaturge-l1-l5-apply-rerun").qualified).toBe(
+      false
+    );
+    expect(qualifyWf51ReleaseOverlay(result).ok).toBe(false);
   });
 
   it("requires a fresh ignored artifact directory", async () => {
@@ -811,7 +849,7 @@ function childEvidence(): any[] {
           },
         },
         expectedRejectionSourceCase("inventor-l1-l5-apply-rerun", "inventor-armor-innovation"),
-        expectedRejectionSourceCase("thaumaturge-l1-l5-apply-rerun", "thaumaturge-amulet-implement"),
+        matrixChildren()[0].result.cases.find((entry: any) => entry.id === "thaumaturge-l1-l5-apply-rerun"),
       ],
       cleanup: { verified: true, actorIdsChecked: 55, restorationFailures: [] },
     }),
@@ -949,8 +987,13 @@ function matrixChildren(): any[] {
         fingerprint: `fingerprint-${evidenceIndex}`,
         environment: { foundryVersion: "14.366", pf2eVersion: "8.4.1", moduleVersion: "0.7.5" },
       };
-      const itemEvidence =
-        id === "alchemist-l1-l5-apply-rerun"
+      const definition = smokeCases.find((entry: any) => entry.id === id);
+      const native = definition?.expectedNativePhysicalGrantRouteIds
+        ? nativePhysicalGrantSmokeFixture(definition.expectedNativePhysicalGrantRouteIds)
+        : null;
+      const itemEvidence = native
+        ? { items: native.items }
+        : id === "alchemist-l1-l5-apply-rerun"
           ? {
               items: [
                 {
@@ -961,7 +1004,7 @@ function matrixChildren(): any[] {
               ],
             }
           : { items: [] };
-      const expectedOutcome = smokeCases.find((entry: any) => entry.id === id)?.expectedOutcome;
+      const expectedOutcome = definition?.expectedOutcome;
       if (expectedOutcome?.kind === "registered-physical-grant-rejection") {
         const actor = {
           id: actorId,
@@ -1028,19 +1071,44 @@ function matrixChildren(): any[] {
           },
         };
       }
+      const currency = {
+        preCopper: 0,
+        budgetCopper: 5000,
+        targetCopper: 5000,
+        observedCopper: 5000,
+        spentCopper: 0,
+        remainingCopper: 5000,
+      };
+      const nativeManifest = native
+        ? {
+            ...manifest,
+            classGrants: native.classGrants,
+            entries: [],
+            logicalLines: [],
+            currency,
+          }
+        : manifest;
       return {
         ...sourceCase(id),
         actor: {
           id: actorId,
+          currencyCopper: currency.observedCopper,
           levelAfterApply: 5,
           moduleDraftAfterApply: null,
           moduleStateAfterApply: {
-            completedAcquisitionManifest: structuredClone(manifest),
+            completedAcquisitionManifest: structuredClone(nativeManifest),
             completedAcquisitionManifestCorrupt: false,
           },
           ...itemEvidence,
         },
         evidence: {
+          ...(native
+            ? {
+                preStepIds: native.classGrants.map((entry) => entry.grant.origin.sourceSlotId),
+                rerunStepIds: [],
+                applyReview: { confirmationMessage: "Apply Thaumaturge?", reviewLines: [] },
+              }
+            : {}),
           acquisition: {
             binding: null,
             policy: null,
@@ -1053,7 +1121,7 @@ function matrixChildren(): any[] {
               remainingCopper: 5000,
             },
             durability: null,
-            manifest: structuredClone(manifest),
+            manifest: structuredClone(nativeManifest),
             failureSnapshot: null,
             retry: incremental
               ? {

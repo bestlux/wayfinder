@@ -293,12 +293,21 @@ export interface PickerInfoState {
 export interface PickerSuppressionNotice {
   count: number;
   message: string;
+  unavailable?: {
+    summary: string;
+    expanded: boolean;
+    choices: Array<{ name: string; reason: string }>;
+  };
 }
 
 export interface SuppressedPickerOption {
   uuid: string;
   name: string;
-  reason: "unvalidated-granted-choice" | "unvalidated-eligibility" | "ambiguous-heritage-ownership";
+  reason:
+    | "unvalidated-granted-choice"
+    | "unvalidated-eligibility"
+    | "ambiguous-heritage-ownership"
+    | "unreviewed-implement";
 }
 
 export type PickerFilterKind = "rarity" | "source";

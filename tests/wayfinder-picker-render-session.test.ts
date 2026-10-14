@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { OptionContext, OptionRecord, PendingStep } from "../src/types.js";
 import {
@@ -6,6 +8,10 @@ import {
   derivePickerRenderSession,
   type PickerRenderInputs,
 } from "../src/wayfinder/application/picker-render-session.js";
+import {
+  THAUMATURGE_FIXED_IMPLEMENTS,
+  THAUMATURGE_IMPLEMENT_ORIGINS,
+} from "../src/wayfinder/domain/physical-grant-route-registry.js";
 import type { PickStepPane, SpellChoiceStepPane } from "../src/wayfinder/view-models.js";
 
 describe("picker render session", () => {
@@ -316,7 +322,141 @@ describe("picker render session", () => {
       "1 matching option is hidden because Wayfinder cannot yet validate whether it is eligible."
     );
   });
+
+  it.each(
+    THAUMATURGE_IMPLEMENT_ORIGINS
+  )("names unavailable implements without adding selectable values to the $name picker", (origin) => {
+    const inputs = implementInputs(origin);
+    const session = createPickerRenderSession(inputs, pickBasePane(inputs), inputs.options[0]!.value);
+    const pane = derivePickerRenderSession(session, { search: "", filterState: null, openFilterKind: null });
+
+    expect(pane.options).toHaveLength(8);
+    expect(pane.suppressionNotice).toMatchObject({
+      count: 3,
+      message: "Choose a supported implement to continue.",
+      unavailable: {
+        summary: "Unavailable in Wayfinder: Shield, Weapon, Censer",
+        expanded: false,
+        choices: [
+          { name: "Shield", reason: expect.stringContaining("nonmagical shield") },
+          { name: "Weapon", reason: expect.stringContaining("one-handed, nonmagical, nonconsumable weapon") },
+          { name: "Censer", reason: expect.stringContaining("has not yet reviewed") },
+        ],
+      },
+    });
+    for (const choice of pane.suppressionNotice!.unavailable!.choices) {
+      expect(choice).not.toHaveProperty("value");
+      expect(choice).not.toHaveProperty("uuid");
+    }
+  });
+
+  it.each([
+    "weapon",
+    "SHIELD",
+    "censer",
+  ])("expands the unavailable explanation during a %s search while preserving the selected implement", (search) => {
+    const inputs = implementInputs(THAUMATURGE_IMPLEMENT_ORIGINS[0]);
+    const basePane = pickBasePane(inputs);
+    const session = createPickerRenderSession(inputs, basePane, inputs.options[0]!.value);
+    const pane = derivePickerRenderSession(session, { search, filterState: null, openFilterKind: null });
+
+    expect(pane.options).toEqual([]);
+    expect(pane.suppressionNotice?.unavailable?.expanded).toBe(true);
+    expect(pane.infoState).toMatchObject({
+      title: "Unavailable in Wayfinder",
+      message: expect.stringContaining(search === "censer" ? "has not yet reviewed" : "safely track its grant"),
+    });
+    expect("selectedValue" in pane && pane.selectedValue).toBe(inputs.options[0]!.value);
+
+    const reopened = derivePickerRenderSession(session, { search: "", filterState: null, openFilterKind: null });
+    expect(reopened.options.find((choice) => choice.selected)?.value).toBe(inputs.options[0]!.value);
+  });
+
+  it("keeps exact implement explanations separate from similarly named unrelated options", () => {
+    const inputs = pickInputs();
+    inputs.suppressedOptions = [
+      { uuid: "Compendium.custom.classfeatures.Item.weapon", name: "Weapon", reason: "unvalidated-granted-choice" },
+    ];
+    const pane = derivePickerRenderProjection(inputs, { search: "weapon", filterState: null, openFilterKind: null });
+
+    expect(pane.suppressionNotice?.unavailable).toBeUndefined();
+    expect(pane.infoState?.message).toContain("cannot yet validate a choice it grants");
+  });
+
+  it.each(["en", "cn"])("localizes implement reasons and summary from the %s locale", (locale) => {
+    const strings = JSON.parse(readFileSync(resolve(`lang/${locale}.json`), "utf8"))["wayfinder-pf2e"]
+      .PickerUnavailable as Record<string, string>;
+    vi.stubGlobal("game", {
+      i18n: { localize: (key: string) => strings[key.split(".").at(-1)!] ?? key },
+    });
+    try {
+      const pane = derivePickerRenderProjection(implementInputs(THAUMATURGE_IMPLEMENT_ORIGINS[0]), {
+        search: "Weapon",
+        filterState: null,
+        openFilterKind: null,
+      });
+
+      expect(pane.suppressionNotice?.message).toBe(strings.ImplementHelp);
+      expect(pane.suppressionNotice?.unavailable?.summary).toBe(
+        strings.UnavailableSummary!.replace("{choices}", "Shield, Weapon, Censer")
+      );
+      expect(pane.suppressionNotice?.unavailable?.choices.map((choice) => choice.reason)).toEqual([
+        strings.ShieldReason,
+        strings.WeaponReason,
+        strings.UnreviewedImplementReason,
+      ]);
+      expect(pane.infoState?.title).toBe(strings.UnavailableTitle);
+      expect(pane.infoState?.eyebrow).toBe(strings.NotGuided);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
+
+function implementInputs(origin: (typeof THAUMATURGE_IMPLEMENT_ORIGINS)[number]): PickerRenderInputs {
+  const inputs = pickInputs();
+  inputs.step = {
+    id: origin.slotId,
+    slotId: origin.slotId,
+    level: origin.level,
+    title: origin.selectorName,
+    description: "Choose an implement.",
+    required: true,
+    kind: "class-branch",
+    slotKind: "class-branch",
+    filters: { itemType: "feat", predicate: ["item:tag:implement"] },
+    branch: {
+      slotId: origin.slotId,
+      selectorPackId: "pf2e.classfeatures",
+      selectorDocumentId: origin.selectorUuid.split(".").at(-1)!,
+      selectorUuid: origin.selectorUuid,
+      selectorName: origin.selectorName,
+      selectorRuleIndex: 0,
+      flag: "implement",
+      optionTag: "implement",
+      classSlug: "thaumaturge",
+      dependsOn: "class",
+    },
+  };
+  inputs.options = THAUMATURGE_FIXED_IMPLEMENTS.map((implement) =>
+    option(`pf2e.classfeatures:${implement.featureId}`, implement.name, "common", "Dark Archive", 1)
+  );
+  inputs.selectedValues = [inputs.options[0]!.value];
+  inputs.suppressedOptions = [
+    {
+      uuid: "Compendium.pf2e.classfeatures.Item.84GDSAXaMKMTg2IT",
+      name: "Shield",
+      reason: "unvalidated-granted-choice",
+    },
+    {
+      uuid: "Compendium.pf2e.classfeatures.Item.YiDkrwaxiF7Gao7y",
+      name: "Weapon",
+      reason: "unvalidated-granted-choice",
+    },
+    { uuid: "Compendium.pf2e.classfeatures.Item.X1xuYSTJ7ojsoLxY", name: "Censer", reason: "unreviewed-implement" },
+  ];
+  return inputs;
+}
 
 function pickInputs(): PickerRenderInputs {
   return {

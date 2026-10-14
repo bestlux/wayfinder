@@ -67,6 +67,8 @@ For the current repo-plus-compendium side-book audit, see [AP And Side-Book Leve
 
 ## Launch-Readiness Matrix
 
+Thaumaturge's reviewed fixed implements are Amulet, Bell, Chalice, Lantern, Mirror, Regalia, Tome, and Wand. Their standard first-implement origin has a native grant profile with exact source, quantity, and grant ancestry checks. Weapon and Shield need additional physical choices; other implements and dedication origins remain unreviewed. Named unavailable options explain this boundary in the picker. Level-5 second-implement support is recorded in the level-up matrix.
+
 | Track | Scenario | Setup | Action | Expected outcome | Evidence | Gate |
 | --- | --- | --- | --- | --- | --- | --- |
 | Default path | PC/PC2 ancestry, heritage, and class inventory | Blank actor, PC/PC2 packs represented in fixture data | Build plan and picker options | Baseline ancestries, heritages, classes, and effective build state resolve | `tests/wayfinder-level1-breadth.test.ts` | merge |

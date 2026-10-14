@@ -4,6 +4,7 @@ import { physicalGrantRouteById } from "../../scripts/wayfinder/domain/physical-
 import { acquisitionSmokeCases } from "./acquisition-cases.mjs";
 import { applySafetySmokeCases, gradualBoostsSmokeCases, smokeCases } from "./class-cases.mjs";
 import { campaignFeatSmokeCases } from "./campaign-feat-cases.mjs";
+import { nativePhysicalGrantEvidenceFindings } from "./evidence-contract.mjs";
 import { freeArchetypeSmokeCases } from "./free-archetype-cases.mjs";
 import { wave3EquipmentCases } from "./wave3-equipment-cases.mjs";
 import { wave4EquipmentCases } from "./wave4-equipment-cases.mjs";
@@ -215,6 +216,9 @@ function matrixManifestFailures(children) {
   for (const child of children) {
     for (const entry of child.result?.cases ?? []) {
       const definition = definitions.get(entry?.id);
+      failures.push(...nativePhysicalGrantEvidenceFindings(entry, definition).map(
+        (finding) => `matrix: ${entry?.id ?? "unknown"}: ${finding.message}`
+      ));
       if (definition?.expectedOutcome?.kind === "registered-physical-grant-rejection") {
         failures.push(...matrixExpectedRejectionFailures(entry, definition.expectedOutcome));
         continue;

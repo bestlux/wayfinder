@@ -150,6 +150,7 @@ import {
   createWayfinderApplyConfirmationFocusHandoff,
   markWayfinderKeyboardFocus,
 } from "./application/foundry-keyboard-focus-service.js";
+import { synchronizeNativeClassGrantAuthority } from "./application/native-class-grant-synchronization-service.js";
 import {
   buildContextNote,
   buildOptionContext,
@@ -778,6 +779,12 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         plan = foundation.plan;
         this.#cachedRenderPlan = plan;
       }
+    }
+    if (!this.#semanticCommands.busy && (await this.#synchronizeNativeClassGrantAuthority(plan.steps))) {
+      this.#draftDidChange();
+      foundation = await resolveFoundation();
+      plan = foundation.plan;
+      this.#cachedRenderPlan = plan;
     }
     const { effectiveBuildState } = foundation;
     const spellcastingReadiness = withPhysicalGrantCoverageReadiness(
@@ -2992,6 +2999,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       this.#statusNote = "Wayfinder marked drafted language choices for review after the projected build changed.";
     }
     this.#statusNote = (await this.#synchronizeTitanMaulerLine()) ?? this.#statusNote;
+    await this.#synchronizeNativeClassGrantAuthority(plan.steps);
   }
 
   #abilityLabel(attribute: AbilityKey): string {
@@ -3130,6 +3138,29 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     if (result.shouldRender) {
       this.render(false);
     }
+  }
+
+  async #synchronizeNativeClassGrantAuthority(steps: readonly PendingStep[]): Promise<boolean> {
+    const draft = this.#requireDraft();
+    const acquisition = draft.acquisition;
+    if (!acquisition || hasApplyRecoveryState(draft)) return false;
+    const fingerprint = draftFingerprint(draft);
+    const result = await synchronizeNativeClassGrantAuthority({ actor: this.actor, draft: cloneData(draft), steps });
+    if (
+      !result.changed ||
+      !result.acquisition ||
+      this.#requireDraft() !== draft ||
+      draft.acquisition !== acquisition ||
+      draftFingerprint(draft) !== fingerprint
+    )
+      return false;
+    draft.acquisition = result.acquisition;
+    this.#statusNote = localizeAcquisition(
+      result.reason === "verification-failed"
+        ? "wayfinder-pf2e.StartingEquipment.Status.NativeGrantVerificationFailed"
+        : "wayfinder-pf2e.StartingEquipment.Status.NativeGrantBuildChanged"
+    );
+    return true;
   }
 
   async #synchronizeTitanMaulerLine(): Promise<string | null> {
@@ -3466,6 +3497,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       ui.notifications.warn(localizeAcquisition("wayfinder-pf2e.StartingEquipment.Apply.RecoveryConflict"));
       return false;
     }
+    if (await this.#synchronizeNativeClassGrantAuthority((await this.#buildPlan()).steps)) this.#draftDidChange();
     const draft = cloneData(this.#requireDraft());
     const applyCandidate = { value: null as DraftState | null };
     let finalizedDespiteApplyError = false;

@@ -104,14 +104,53 @@ export const CLASS_GRANT_PROFILE_UUIDS = {
   sarangayAncestry: "Compendium.pf2e.ancestries.Item.7mpMGhVoaPANJnZ8",
   headGemFeature: "Compendium.pf2e.ancestryfeatures.Item.HYefFkddD9lOhFM8",
   headGemItem: "Compendium.pf2e.equipment-srd.Item.FA1mAc7rEyC9vzZa",
+  thaumaturgeClass: "Compendium.pf2e.classes.Item.Y5GsHqzCzJlKka6x",
+  firstImplementFeature: "Compendium.pf2e.classfeatures.Item.VSQJtzQE6ikKdsnP",
+  secondImplementFeature: "Compendium.pf2e.classfeatures.Item.Z8WpDAdAXyefLB7Q",
 } as const;
+
+export const THAUMATURGE_FIXED_IMPLEMENTS = [
+  { slug: "amulet", name: "Amulet", featureId: "PoclGJ7BCEyIuqJe", itemId: "GbR8rgZMCVBn3Evb" },
+  { slug: "bell", name: "Bell", featureId: "DK1LCE5pd0YCY11c", itemId: "f0A1zqCFiUJuXc9U" },
+  { slug: "chalice", name: "Chalice", featureId: "1vgFGSnn0DIBmK7j", itemId: "FodtZGtCsH9NDXlC" },
+  { slug: "lantern", name: "Lantern", featureId: "AltwHU7hCqTwpn48", itemId: "AtiSK2lwEi25f3PT" },
+  { slug: "mirror", name: "Mirror", featureId: "N6KvTbaRsphc0Ymb", itemId: "NpNDlH8YE2i67vQV" },
+  { slug: "regalia", name: "Regalia", featureId: "DhdLzrcMvB93Rjmt", itemId: "7FzmHy7PugYNGkoX" },
+  { slug: "tome", name: "Tome", featureId: "MyN1cQgE0HsLF20e", itemId: "V9mhR91d2qWa3dGh" },
+  { slug: "wand", name: "Wand", featureId: "pDxdE8S8QJV2PGiB", itemId: "ZjApNlusD5oZkPTJ" },
+] as const;
+
+export const THAUMATURGE_IMPLEMENT_ORIGINS = [
+  {
+    key: "first",
+    name: "First",
+    slotId: "class-branch-first-implement-and-esoterica-level-1",
+    level: 1,
+    selectorUuid: CLASS_GRANT_PROFILE_UUIDS.firstImplementFeature,
+    selectorName: "First Implement and Esoterica",
+  },
+  {
+    key: "second",
+    name: "Second",
+    slotId: "class-branch-second-implement-level-5",
+    level: 5,
+    selectorUuid: CLASS_GRANT_PROFILE_UUIDS.secondImplementFeature,
+    selectorName: "Second Implement",
+  },
+] as const;
+
+export type ThaumaturgeFixedImplement = (typeof THAUMATURGE_FIXED_IMPLEMENTS)[number];
+export type ThaumaturgeImplementOrigin = (typeof THAUMATURGE_IMPLEMENT_ORIGINS)[number];
+export type ThaumaturgeClassGrantProfileId =
+  `thaumaturge-${ThaumaturgeFixedImplement["slug"]}-implement-${ThaumaturgeImplementOrigin["key"]}`;
 
 export type ClassGrantProfileId =
   | "alchemist-formula-book"
   | "investigator-alchemical-sciences-formula-book"
   | "giant-instinct-titan-mauler"
   | "dwarf-clan-dagger"
-  | "sarangay-head-gem";
+  | "sarangay-head-gem"
+  | ThaumaturgeClassGrantProfileId;
 
 const background = (id: string): string => `Compendium.pf2e.backgrounds.Item.${id}`;
 const classFeature = (id: string): string => `Compendium.pf2e.classfeatures.Item.${id}`;
@@ -224,6 +263,25 @@ export const SUPPORTED_PHYSICAL_GRANT_ROUTES: readonly SupportedPhysicalGrantRou
       resaleRule: "normal",
       nativeGrantChainSourceUuids: [U.headGemFeature, U.sarangayAncestry],
     }),
+    ...THAUMATURGE_FIXED_IMPLEMENTS.flatMap((implement) =>
+      THAUMATURGE_IMPLEMENT_ORIGINS.map((origin) =>
+        supportedRoute({
+          routeId: `thaumaturge-${implement.slug}-implement-${origin.key}`,
+          label: `Thaumaturge ${implement.name} implement (${origin.name} Implement)`,
+          classification: "supported-native",
+          sourcePolicy: "remaster-optional",
+          grantId: `class-grant:thaumaturge-${implement.slug}-implement:${origin.slotId}`,
+          originSourceSlotId: origin.slotId,
+          originSourceUuid: classFeature(implement.featureId),
+          granterSourceUuid: classFeature(implement.featureId),
+          expectedSourceUuid: equipment(implement.itemId),
+          expectedItemType: "equipment",
+          eligibilityKind: "fixed-class-grant",
+          resaleRule: "normal",
+          nativeGrantChainSourceUuids: [classFeature(implement.featureId), origin.selectorUuid, U.thaumaturgeClass],
+        })
+      )
+    ),
   ]
     .map(freezeSupportedRoute)
     .sort((left, right) => left.routeId.localeCompare(right.routeId))
@@ -298,7 +356,8 @@ export const UNSUPPORTED_PHYSICAL_GRANT_ROUTES: readonly UnsupportedPhysicalGran
         sourceUuid: classFeature(featureId!),
         reasonCode: "unprofiled-native-grant",
         terminals: [equipment(terminalId!)],
-        detail: UNPROFILED_NATIVE_DETAIL,
+        detail:
+          "Only this implement's standard Thaumaturge First Implement (level 1) and Second Implement (level 5) origins have reviewed native equipment support. Third Implement and dedication origins are not supported.",
       })
     ),
     selectedRoute({
@@ -594,12 +653,12 @@ function freezeUnsupportedRoute(route: UnsupportedPhysicalGrantRoute): Unsupport
 }
 
 function assertPhysicalGrantRouteRegistry(routes: readonly PhysicalGrantRoute[]): void {
-  if (routes.length !== 51 || new Set(routes.map((route) => route.routeId)).size !== routes.length) {
-    throw new TypeError("PF2E 8.4.1 physical-grant coverage requires exactly 51 unique reviewed routes.");
+  if (routes.length !== 67 || new Set(routes.map((route) => route.routeId)).size !== routes.length) {
+    throw new TypeError("PF2E 8.4.1 physical-grant coverage requires exactly 67 unique reviewed routes.");
   }
   if (
-    SUPPORTED_PHYSICAL_GRANT_ROUTES.length !== 5 ||
-    new Set(SUPPORTED_PHYSICAL_GRANT_ROUTES.map((route) => route.profileId)).size !== 5 ||
+    SUPPORTED_PHYSICAL_GRANT_ROUTES.length !== 21 ||
+    new Set(SUPPORTED_PHYSICAL_GRANT_ROUTES.map((route) => route.profileId)).size !== 21 ||
     UNSUPPORTED_PHYSICAL_GRANT_ROUTES.length !== 46
   ) {
     throw new TypeError("PF2E 8.4.1 physical-grant coverage partition is incomplete.");

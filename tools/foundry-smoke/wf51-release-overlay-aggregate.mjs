@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 
 import { wf51ReleaseOverlayRows } from "./wf51-release-overlay-cases.mjs";
+import { smokeCases } from "./class-cases.mjs";
+import { nativePhysicalGrantEvidenceFindings } from "./evidence-contract.mjs";
 
 const CATEGORY_KEYS = Object.freeze({
   roles: new Set(["executorRole", "isGM", "role", "userId", "authorUserId", "configuredBy"]),
@@ -99,6 +101,8 @@ export function summarizeEvidence(values) {
 function bindEvidenceReference(reference, sources) {
   const source = sources.get(reference.route) ?? null;
   const matchedCase = source ? findCase(source.result, reference.caseId) : null;
+  const definition = reference.route === "matrix" ? smokeCases.find((entry) => entry.id === reference.caseId) : null;
+  const nativeGrantFindings = nativePhysicalGrantEvidenceFindings(matchedCase, definition ?? {});
   const caseEvidence = matchedCase
     ? { case: matchedCase, users: source?.result?.users ?? null, user: source?.result?.user ?? null }
     : null;
@@ -109,7 +113,7 @@ function bindEvidenceReference(reference, sources) {
     resultSha256: source?.resultSha256 ?? null,
     candidateSha: source?.candidateSha ?? null,
     servedScriptManifestSha256: source?.servedScriptManifestSha256 ?? null,
-    qualified: source?.qualified === true && matchedCase?.status === "pass",
+    qualified: source?.qualified === true && matchedCase?.status === "pass" && nativeGrantFindings.length === 0,
     caseEvidence,
     cleanup: source?.result?.cleanup ?? null,
   };

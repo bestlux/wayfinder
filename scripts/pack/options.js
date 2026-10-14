@@ -1,6 +1,7 @@
 import { OFFICIAL_PACKS } from "../constants.js";
 import { toCompendiumItemUuid } from "../shared/compendium.js";
 import { allowsActorOwnedGrantAdoption } from "../shared/grant-creation-policy.js";
+import { THAUMATURGE_FIXED_IMPLEMENTS, THAUMATURGE_IMPLEMENT_ORIGINS, } from "../wayfinder/domain/physical-grant-route-registry.js";
 import { resolveStaticGrantChoiceSources } from "../wayfinder/static-grant-choice-sources.js";
 import { fetchSelectionDocument, getGamePack, getPackIndex } from "./access.js";
 import { buildStaticGrantChoiceDisclosure, classifyEmbeddedChoices } from "./embedded-choice-policy.js";
@@ -55,15 +56,17 @@ export async function getOptionQueryForStep(step, context = EMPTY_OPTION_CONTEXT
                 continue;
             }
             const name = String(entry.name ?? "Unknown Option");
-            if (filterDecision.kind === "exclude" || heritageDecision.kind === "exclude") {
+            const unsupportedImplementReason = thaumaturgeImplementSuppressionReason(step, uuid);
+            if (filterDecision.kind === "exclude" || heritageDecision.kind === "exclude" || unsupportedImplementReason) {
                 suppressedOptions.push({
                     uuid,
                     name,
-                    reason: heritageDecision.kind === "exclude"
-                        ? "ambiguous-heritage-ownership"
-                        : filterDecision.kind === "exclude" && filterDecision.category === "fail-closed-policy"
-                            ? filterDecision.reason
-                            : "unvalidated-eligibility",
+                    reason: unsupportedImplementReason ??
+                        (heritageDecision.kind === "exclude"
+                            ? "ambiguous-heritage-ownership"
+                            : filterDecision.kind === "exclude" && filterDecision.category === "fail-closed-policy"
+                                ? filterDecision.reason
+                                : "unvalidated-eligibility"),
                 });
                 continue;
             }
@@ -100,6 +103,18 @@ export async function getOptionQueryForStep(step, context = EMPTY_OPTION_CONTEXT
         options: dedupeAndSort(enriched),
         suppressedOptions: dedupeSuppressedOptions(suppressedOptions),
     };
+}
+function thaumaturgeImplementSuppressionReason(step, uuid) {
+    if (step.kind !== "class-branch" ||
+        step.branch.classSlug !== "thaumaturge" ||
+        !THAUMATURGE_IMPLEMENT_ORIGINS.some((origin) => origin.slotId === step.slotId && origin.selectorUuid === step.branch.selectorUuid) ||
+        THAUMATURGE_FIXED_IMPLEMENTS.some((implement) => uuid === `Compendium.pf2e.classfeatures.Item.${implement.featureId}`)) {
+        return null;
+    }
+    return uuid === "Compendium.pf2e.classfeatures.Item.YiDkrwaxiF7Gao7y" ||
+        uuid === "Compendium.pf2e.classfeatures.Item.84GDSAXaMKMTg2IT"
+        ? "unvalidated-granted-choice"
+        : "unreviewed-implement";
 }
 async function resolveOptionDisclosure(entry, option, context, step) {
     const disclosures = [await resolveStaticGrantDisclosure(entry, option, context)];

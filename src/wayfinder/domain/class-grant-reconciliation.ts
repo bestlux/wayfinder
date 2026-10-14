@@ -4,6 +4,7 @@ import {
   type ClassGrantMaterializer,
   type ClassGrantProfileId,
   type ClassGrantResaleRule,
+  physicalGrantRouteById,
   supportedPhysicalGrantRoute,
 } from "./physical-grant-route-registry.js";
 import { SEMANTIC_WEALTH_POLICY } from "./semantic-wealth-policy.js";
@@ -653,13 +654,9 @@ function failure(code: Extract<TitanMaulerEvaluation, { ok: false }>["code"], me
 }
 
 function isProfileId(value: unknown): value is ClassGrantProfileId {
-  return (
-    value === "alchemist-formula-book" ||
-    value === "investigator-alchemical-sciences-formula-book" ||
-    value === "giant-instinct-titan-mauler" ||
-    value === "dwarf-clan-dagger" ||
-    value === "sarangay-head-gem"
-  );
+  if (typeof value !== "string") return false;
+  const route = physicalGrantRouteById(value);
+  return route !== null && route.classification !== "unsupported-handoff";
 }
 
 function safeNonNegativeInteger(value: unknown): value is number {

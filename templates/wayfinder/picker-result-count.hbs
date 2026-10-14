@@ -5,6 +5,18 @@
     <p class="picker-result-count" role="status" aria-live="polite" aria-atomic="true">{{activePane.resultCount}} matching choice{{#unless (eq activePane.resultCount 1)}}s{{/unless}}</p>
   {{/if}}
   {{#if activePane.suppressionNotice}}
-    <p class="picker-suppression-notice"><i class="fa-solid fa-eye-slash"></i> {{activePane.suppressionNotice.message}}</p>
+    {{#if activePane.suppressionNotice.unavailable}}
+      <details class="picker-unavailable-choices" {{#if activePane.suppressionNotice.unavailable.expanded}}open{{/if}}>
+        <summary>{{activePane.suppressionNotice.unavailable.summary}}</summary>
+        <ul>
+          {{#each activePane.suppressionNotice.unavailable.choices}}
+            <li><strong>{{name}}</strong><p>{{reason}}</p></li>
+          {{/each}}
+        </ul>
+        <p>{{activePane.suppressionNotice.message}}</p>
+      </details>
+    {{else}}
+      <p class="picker-suppression-notice"><i class="fa-solid fa-eye-slash"></i> {{activePane.suppressionNotice.message}}</p>
+    {{/if}}
   {{/if}}
 </div>

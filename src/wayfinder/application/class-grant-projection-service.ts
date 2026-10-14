@@ -30,6 +30,7 @@ import {
 } from "../domain/physical-grant-coverage.js";
 import { supportedPhysicalGrantRoute } from "../domain/physical-grant-route-registry.js";
 import { resolveEquipmentPolicyForActor } from "./equipment-policy-service.js";
+import { projectThaumaturgeImplementGrants } from "./thaumaturge-implement-grant-projection.js";
 
 const UUIDS = CLASS_GRANT_PROFILE_UUIDS;
 
@@ -292,6 +293,7 @@ export async function projectPlannedClassGrants(args: {
   }
 
   const activeProfile =
+    classSelection.uuid === UUIDS.thaumaturgeClass ||
     classSelection.uuid === UUIDS.alchemistClass ||
     (classSelection.uuid === UUIDS.investigatorClass &&
       Object.values(args.draft.branchSelections).some(
@@ -320,6 +322,18 @@ export async function projectPlannedClassGrants(args: {
     const result = await projectAlchemist(classDocument, args.fetchDocumentByUuid);
     if (result.grant) grants.push(result.grant);
     if (result.blocker) blockers.push(result.blocker);
+  }
+
+  if (classSelection.uuid === UUIDS.thaumaturgeClass) {
+    const result = await projectThaumaturgeImplementGrants({
+      draft: args.draft,
+      classDocument,
+      activeSteps: args.activeSteps,
+      observedActorItems: args.observedActorItems,
+      fetchDocumentByUuid: args.fetchDocumentByUuid,
+    });
+    grants.push(...result.grants);
+    blockers.push(...result.blockers);
   }
 
   const branchSelections = Object.values(args.draft.branchSelections);
@@ -610,6 +624,7 @@ function completeProjection(
 }
 
 function profileIdForSelection(classUuid: string, draft: DraftState): ClassGrantProfileId {
+  if (classUuid === UUIDS.thaumaturgeClass) return "thaumaturge-amulet-implement-first";
   if (classUuid === UUIDS.alchemistClass) return "alchemist-formula-book";
   if (
     classUuid === UUIDS.investigatorClass &&

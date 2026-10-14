@@ -4,11 +4,13 @@ import { physicalGrantRouteById } from "../src/wayfinder/domain/physical-grant-r
 import {
   assertIncrementalSmokeCasesSupported,
   buildActorSourceEvidence,
+  nativePhysicalGrantEvidenceFindings,
   qualifySmokeResult,
   SMOKE_EVIDENCE_SCHEMA_VERSION,
   validateAcquisitionEvidence,
 } from "../tools/foundry-smoke/evidence-contract.mjs";
 import { acquisitionFixture, completedAcquisitionFixture } from "./fixtures/acquisition-fixture";
+import { nativePhysicalGrantSmokeFixture } from "./fixtures/native-physical-grant-smoke-fixture";
 
 describe("Foundry smoke evidence contract", () => {
   it("rejects Apply safety cases in the unsupported incremental lane", () => {
@@ -297,6 +299,75 @@ describe("Foundry smoke evidence contract", () => {
     const rejected = qualifySmokeResult(mismatched);
     expect(rejected.qualification.passed).toBe(false);
     expect(findingCodes(rejected)).toContain("character-build-state-mismatch");
+  });
+
+  it("requires both fixed implements to materially complete as free native grants rather than expected rejections", () => {
+    const definition = {
+      id: "case",
+      caseKind: "character-build",
+      expectedOutcome: "applied",
+      targetLevel: 5,
+      expectedNativePhysicalGrantRouteIds: ["thaumaturge-amulet-implement-first", "thaumaturge-wand-implement-second"],
+    };
+    const native = nativePhysicalGrantSmokeFixture(definition.expectedNativePhysicalGrantRouteIds);
+    const input = resultFixture({ items: native.items }) as any;
+    const preStepIds = native.classGrants.map((entry) => entry.grant.origin.sourceSlotId);
+    const currency = {
+      preCopper: 0,
+      budgetCopper: 1500,
+      targetCopper: 1500,
+      observedCopper: 1500,
+      spentCopper: 0,
+      remainingCopper: 1500,
+    };
+    const manifest = {
+      id: "native-manifest",
+      actorId: input.cases[0].actor.id,
+      targetLevel: 5,
+      disposition: "retain-all",
+      entries: [],
+      logicalLines: [],
+      classGrants: native.classGrants,
+      currency,
+    };
+    input.cases[0].actor.moduleStateAfterApply.completedStepIds = preStepIds;
+    input.cases[0].actor.moduleStateAfterApply.completedAcquisitionManifest = structuredClone(manifest);
+    input.cases[0].evidence.preStepIds = preStepIds;
+    input.cases[0].evidence.acquisition = { ...emptyAcquisitionEvidence(), currency, manifest };
+
+    expect(qualifySmokeResult(input, [definition]).qualification.passed).toBe(true);
+    for (const mutate of [
+      (value: any) => value.cases[0].evidence.acquisition.manifest.classGrants.pop(),
+      (value: any) => (value.cases[0].evidence.acquisition.manifest.classGrants[1].status = "ambiguous"),
+      (value: any) => (value.cases[0].evidence.acquisition.manifest.classGrants[0].observedItemIds = []),
+      (value: any) =>
+        (value.cases[0].evidence.acquisition.manifest.classGrants[0].grant.origin.sourceSlotId = "different-slot"),
+      (value: any) => (value.cases[0].actor.items.find((item: any) => item.isPhysical).quantity = 2),
+      (value: any) => (value.cases[0].actor.items.find((item: any) => item.isPhysical).sourceId = "different-source"),
+      (value: any) => (value.cases[0].actor.items.find((item: any) => item.isPhysical).grantedById = null),
+      (value: any) =>
+        (value.cases[0].actor.items.find((item: any) => item.isPhysical).acquisition = { batchId: "manual" }),
+      (value: any) =>
+        value.cases[0].actor.items.push(
+          structuredClone(value.cases[0].actor.items.find((item: any) => item.isPhysical))
+        ),
+      (value: any) => (value.cases[0].evidence.acquisition.currency.spentCopper = 1),
+      (value: any) => (value.cases[0].actor.currencyCopper = 1499),
+      (value: any) => (value.cases[0].evidence.rerunStepIds = ["class-branch-second-implement-level-5"]),
+      (value: any) => (value.cases[0].evidence.expectedRejection = { kind: "registered-physical-grant-rejection" }),
+      (value: any) => (value.cases[0].evidence.acquisition.manifest.classGrants = {}),
+    ]) {
+      const drifted = structuredClone(input);
+      mutate(drifted);
+      expect(nativePhysicalGrantEvidenceFindings(drifted.cases[0], definition).length).toBeGreaterThan(0);
+      expect(qualifySmokeResult(drifted, [definition]).qualification.passed).toBe(false);
+    }
+    expect(
+      nativePhysicalGrantEvidenceFindings(input.cases[0], {
+        ...definition,
+        expectedNativePhysicalGrantRouteIds: ["inventor-armor-innovation"],
+      }).map((entry: any) => entry.code)
+    ).toContain("invalid-native-physical-grant-definition");
   });
 
   it("fails closed when any character-build acquisition envelope field is absent", () => {

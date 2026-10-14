@@ -52,6 +52,10 @@ This document tracks Wayfinder's current confidence for supported level-up flows
 
 ## Validation Matrix
 
+Thaumaturge's standard level-5 second implement supports the eight fixed implements reviewed for its first implement, using a separate selector origin and native grant chain. Direct level-5 creation and retained first-implement recovery must preserve distinct implement identities and starting coin. This scope does not include dedication origins, Weapon, Shield, unreviewed implements, level-7 adept choices, or the level-15 third implement.
+
+PF2E 8.6.1's automatic Esoteric Lore rank progression is recognized during Apply, but is not projected into future skill-increase choices. Qualification uses ordinary skill increases. Selecting Esoteric Lore there can block a new character's readiness or spend an unnecessary increase on an existing character; this preexisting planning limitation remains outside implement coverage.
+
 | Track | Scenario | Setup | Action | Expected outcome | Evidence | Gate |
 | --- | --- | --- | --- | --- | --- | --- |
 | Default path | Martial standard cadence to level 5 | Level-1 Fighter-like actor with class data `classFeatLevels` and `skillFeatLevels` | Target level 5 | Class feats at 2 and 4, skill feats at 2 and 4, general feat at 3, ancestry feat and boosts at 5, skill increases at 3 and 5 | `tests/wayfinder-levelup-depth.test.ts`, live Fighter apply/rerun smoke harness | release |

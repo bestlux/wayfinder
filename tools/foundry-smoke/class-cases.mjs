@@ -118,6 +118,7 @@ function classCase({
   className,
   classSlug,
   expectedOutcome = "applied",
+  expectedNativePhysicalGrantRouteIds,
   keyAbility,
   expectedAppliedSpellRarityAttestations = [],
   expectedStepIds = [],
@@ -143,6 +144,7 @@ function classCase({
     spellRarityAttestations,
     expectedAppliedSpellRarityAttestations,
     expectedOutcome,
+    ...(expectedNativePhysicalGrantRouteIds === undefined ? {} : { expectedNativePhysicalGrantRouteIds }),
     expectedStepIds,
     expectedSkillRanks,
     expectedSpellChoiceCounts,
@@ -1336,17 +1338,10 @@ export const smokeCases = [
   classCase({
     className: "Thaumaturge",
     classSlug: "thaumaturge",
-    caseKind: "expected-rejection",
-    expectedOutcome: registeredPhysicalGrantRejection(
-      {
-        routeId: "thaumaturge-amulet-implement",
-        sourceSlotId: "class-branch-first-implement-and-esoterica-level-1",
-      },
-      {
-        routeId: "thaumaturge-wand-implement",
-        sourceSlotId: "class-branch-second-implement-level-5",
-      }
-    ),
+    expectedNativePhysicalGrantRouteIds: [
+      "thaumaturge-amulet-implement-first",
+      "thaumaturge-wand-implement-second",
+    ],
     keyAbility: "cha",
     expectedStepIds: [
       "class-choice-initiate-benefit-wand-initiateBenefitWand-level-1",
@@ -1354,8 +1349,8 @@ export const smokeCases = [
       "class-branch-second-implement-level-5",
     ],
     preferredSelections: {
-      "class-branch-first-implement-and-esoterica-level-1": ["Amulet", "Weapon"],
-      "class-branch-second-implement-level-5": ["Wand", "Tome"],
+      "class-branch-first-implement-and-esoterica-level-1": ["Amulet"],
+      "class-branch-second-implement-level-5": ["Wand"],
       "class-feat": ["Diverse Lore", "Scroll Thaumaturgy"],
     },
     preferredSkills: ["esoteric-lore", "arcana", "occultism", "religion", "society", "diplomacy"],

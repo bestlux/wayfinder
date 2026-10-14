@@ -113,7 +113,7 @@ export function derivePickerRenderProjection(
     state.search,
     activeFilterCount > 0
   );
-  const suppressionNotice = buildSuppressionNotice(inputs.suppressedOptions);
+  const suppressionNotice = buildSuppressionNotice(inputs.suppressedOptions, state.search);
   const suppressedSearchMatches = inputs.suppressedOptions.filter((option) =>
     matchesSuppressedName(option, state.search)
   );
@@ -128,7 +128,9 @@ export function derivePickerRenderProjection(
       tone: "empty",
       eyebrow: "Not guided yet",
       title: "Nothing here Wayfinder can guide",
-      message: `${buildSuppressionMessage(inputs.suppressedOptions, false)} Make this choice on the PF2E sheet for now.`,
+      message: suppressionNotice?.unavailable
+        ? suppressionNotice.message
+        : `${buildSuppressionMessage(inputs.suppressedOptions, false)} Make this choice on the PF2E sheet for now.`,
     };
   } else if (
     filteredOptions.length === 0 &&
@@ -137,12 +139,20 @@ export function derivePickerRenderProjection(
     infoState?.tone !== "blocked"
   ) {
     const count = suppressedSearchMatches.length;
-    infoState = {
-      tone: "search",
-      eyebrow: "Not guided yet",
-      title: count === 1 ? "That choice is hidden" : "Those choices are hidden",
-      message: buildSuppressionMessage(suppressedSearchMatches, true),
-    };
+    const unavailable = buildUnavailableImplementNotice(suppressedSearchMatches, state.search);
+    infoState = unavailable
+      ? {
+          tone: "search",
+          eyebrow: pickerText("NotGuided", "Not guided yet"),
+          title: pickerText("UnavailableTitle", "Unavailable in Wayfinder"),
+          message: unavailable.choices.map((choice) => `${choice.name}: ${choice.reason}`).join(" "),
+        }
+      : {
+          tone: "search",
+          eyebrow: "Not guided yet",
+          title: count === 1 ? "That choice is hidden" : "Those choices are hidden",
+          message: buildSuppressionMessage(suppressedSearchMatches, true),
+        };
   }
 
   return {
@@ -178,34 +188,85 @@ export function createPickerRenderSession(
   };
 }
 
-function buildSuppressionNotice(options: SuppressedPickerOption[]): PickerSuppressionNotice | null {
+function buildSuppressionNotice(options: SuppressedPickerOption[], search: string): PickerSuppressionNotice | null {
   const count = options.length;
   if (count === 0) {
     return null;
   }
 
+  const unavailable = buildUnavailableImplementNotice(options, search);
   return {
     count,
-    message: buildSuppressionMessage(options, false),
+    message: unavailable
+      ? pickerText("ImplementHelp", "Choose a supported implement to continue.")
+      : buildSuppressionMessage(options, false),
+    ...(unavailable ? { unavailable } : {}),
   };
+}
+
+function buildUnavailableImplementNotice(
+  options: SuppressedPickerOption[],
+  search: string
+): PickerSuppressionNotice["unavailable"] | null {
+  const choices = options.map((option) => {
+    if (option.reason !== "unvalidated-granted-choice" && option.reason !== "unreviewed-implement") return null;
+    const reason =
+      option.reason === "unreviewed-implement"
+        ? pickerText(
+            "UnreviewedImplementReason",
+            "Wayfinder has not yet reviewed this implement's physical item grant. Choose a supported implement to continue."
+          )
+        : option.uuid === "Compendium.pf2e.classfeatures.Item.YiDkrwaxiF7Gao7y"
+          ? pickerText(
+              "WeaponReason",
+              "Requires choosing a one-handed, nonmagical, nonconsumable weapon. Wayfinder cannot yet choose that physical item and safely track its grant."
+            )
+          : option.uuid === "Compendium.pf2e.classfeatures.Item.84GDSAXaMKMTg2IT"
+            ? pickerText(
+                "ShieldReason",
+                "Requires choosing a nonmagical shield. Wayfinder cannot yet choose that physical item and safely track its grant."
+              )
+            : null;
+    return reason ? { name: option.name, reason } : null;
+  });
+  if (choices.length === 0 || choices.some((choice) => choice === null)) return null;
+  const unavailableChoices = choices.filter((choice) => choice !== null);
+  return {
+    summary: pickerText("UnavailableSummary", "Unavailable in Wayfinder: {choices}").replace(
+      "{choices}",
+      unavailableChoices.map((choice) => choice.name).join(", ")
+    ),
+    expanded: options.some((option) => matchesSuppressedName(option, search)),
+    choices: unavailableChoices,
+  };
+}
+
+function pickerText(key: string, fallback: string): string {
+  const fullKey = `wayfinder-pf2e.PickerUnavailable.${key}`;
+  const globals = globalThis as typeof globalThis & {
+    game?: { i18n?: { localize: (key: string) => string } };
+  };
+  const translated = globals.game?.i18n?.localize(fullKey);
+  return translated && translated !== fullKey ? translated : fallback;
 }
 
 function buildSuppressionMessage(options: SuppressedPickerOption[], matching: boolean): string {
   const grantCount = options.filter((option) => option.reason === "unvalidated-granted-choice").length;
   const eligibilityCount = options.filter((option) => option.reason === "unvalidated-eligibility").length;
   const heritageCount = options.filter((option) => option.reason === "ambiguous-heritage-ownership").length;
+  const unreviewedCount = options.filter((option) => option.reason === "unreviewed-implement").length;
   const matchingLabel = matching ? " matching" : "";
-  if (eligibilityCount === 0 && heritageCount === 0) {
+  if (eligibilityCount === 0 && heritageCount === 0 && unreviewedCount === 0) {
     const subject = grantCount === 1 ? "option" : "options";
     const verb = matching ? (grantCount === 1 ? " is" : " are") : "";
     return `${grantCount}${matchingLabel} ${subject}${verb} hidden because Wayfinder cannot yet validate a choice ${grantCount === 1 ? "it grants" : "they grant"}.`;
   }
-  if (grantCount === 0 && heritageCount === 0) {
+  if (grantCount === 0 && heritageCount === 0 && unreviewedCount === 0) {
     const subject = eligibilityCount === 1 ? "option" : "options";
     const verb = matching ? (eligibilityCount === 1 ? " is" : " are") : "";
     return `${eligibilityCount}${matchingLabel} ${subject}${verb} hidden because Wayfinder cannot yet validate whether ${eligibilityCount === 1 ? "it is" : "they are"} eligible.`;
   }
-  if (grantCount === 0 && eligibilityCount === 0) {
+  if (grantCount === 0 && eligibilityCount === 0 && unreviewedCount === 0) {
     const subject = heritageCount === 1 ? "heritage" : "heritages";
     const verb = matching ? (heritageCount === 1 ? " is" : " are") : "";
     return `${heritageCount}${matchingLabel} ${subject}${verb} hidden because Wayfinder cannot determine which ancestry ${heritageCount === 1 ? "it belongs" : "they belong"} to.`;
@@ -217,6 +278,7 @@ function buildSuppressionMessage(options: SuppressedPickerOption[], matching: bo
       : null,
     eligibilityCount > 0 ? `${eligibilityCount} have eligibility Wayfinder cannot validate` : null,
     heritageCount > 0 ? `${heritageCount} have ambiguous ancestry ownership` : null,
+    unreviewedCount > 0 ? `${unreviewedCount} have implement grants Wayfinder has not reviewed` : null,
   ].filter((category): category is string => category !== null);
   return `${options.length}${matchingLabel} options are hidden: ${categories.join("; ")}.`;
 }

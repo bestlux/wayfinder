@@ -188,6 +188,7 @@ export function qualifySmokeResult(resultInput, caseDefinitions = []) {
       ...classificationFindings(smokeCase),
       ...actorEvidenceFindings(smokeCase.actor, definition.sourceGroupExpectations ?? []),
       ...definitionActorOutcomeFindings(smokeCase.actor, definition),
+      ...nativePhysicalGrantEvidenceFindings(smokeCase, definition),
       ...applySafetyEvidenceFindings(smokeCase, definition),
       ...(caseKind === "character-build" ? characterBuildEvidenceFindings(smokeCase, definition) : []),
       ...(caseKind === "expected-rejection" ? expectedRejectionEvidenceFindings(smokeCase, definition) : []),
@@ -294,6 +295,120 @@ export function buildActorSourceEvidence(actorEvidence, expectations = []) {
 
 export function validateAcquisitionEvidence(smokeCase, definition = {}, result = {}) {
   return acquisitionEvidenceFindings(smokeCase, definition, result);
+}
+
+export function nativePhysicalGrantEvidenceFindings(smokeCase, definition = {}) {
+  const routeIds = definition.expectedNativePhysicalGrantRouteIds;
+  if (routeIds === undefined) return [];
+  const subject = String(smokeCase?.id ?? "case");
+  const routes = Array.isArray(routeIds) ? routeIds.map((routeId) => physicalGrantRouteById(routeId)) : [];
+  if (
+    !nonEmptyUniqueStringArray(routeIds) ||
+    routes.some(
+      (route) =>
+        route?.classification !== "supported-native" ||
+        route.materializer !== "pf2e-native" ||
+        route.grant.eligibilityKind !== "fixed-class-grant" ||
+        !nonEmptyString(route.grant.grantId) ||
+        !nonEmptyString(route.grant.expectedSourceUuid)
+    )
+  ) {
+    return [
+      finding("invalid-native-physical-grant-definition", subject, "Native grant expectations need exact supported fixed registry routes."),
+    ];
+  }
+
+  const actor = smokeCase?.actor;
+  const evidence = smokeCase?.evidence;
+  const acquisition = evidence?.acquisition;
+  const manifest = acquisition?.manifest;
+  const currency = acquisition?.currency;
+  const items = Array.isArray(actor?.items) ? actor.items : [];
+  const itemsById = new Map(items.map((item) => [item.id, item]));
+  const findings = [];
+  if (
+    definition.caseKind !== "character-build" ||
+    definition.expectedOutcome !== "applied" ||
+    evidence?.expectedRejection != null ||
+    actor?.levelAfterApply !== definition.targetLevel ||
+    actor?.moduleDraftAfterApply !== null ||
+    !Array.isArray(evidence?.rerunStepIds) ||
+    evidence.rerunStepIds.length !== 0 ||
+    !Array.isArray(evidence?.preStepIds) ||
+    !routes.every((route) => evidence.preStepIds.includes(route.grant.originSourceSlotId)) ||
+    !nonEmptyString(evidence?.applyReview?.confirmationMessage) ||
+    actor?.moduleStateAfterApply?.completedAcquisitionManifestCorrupt !== false ||
+    manifest?.actorId !== actor?.id ||
+    manifest?.targetLevel !== definition.targetLevel ||
+    manifest?.disposition !== "retain-all" ||
+    !structuredValueEquals(manifest, actor?.moduleStateAfterApply?.completedAcquisitionManifest) ||
+    !Array.isArray(manifest?.classGrants) ||
+    manifest.classGrants.length !== routes.length ||
+    !Array.isArray(manifest?.entries) ||
+    manifest.entries.length !== 0 ||
+    !Array.isArray(manifest?.logicalLines) ||
+    manifest.logicalLines.length !== 0
+  ) {
+    findings.push(
+      finding("native-physical-grant-completion-mismatch", subject, "Native fixed grants must complete Apply with an exact durable retain-all manifest and no pending rerun steps.")
+    );
+  }
+  if (
+    !currency ||
+    !structuredValueEquals(currency, manifest?.currency) ||
+    !ACQUISITION_CURRENCY_KEYS.every((key) => Number.isSafeInteger(currency[key]) && currency[key] >= 0) ||
+    currency.spentCopper !== 0 ||
+    currency.remainingCopper !== currency.budgetCopper ||
+    currency.targetCopper !== currency.preCopper + currency.budgetCopper ||
+    currency.observedCopper !== currency.targetCopper ||
+    actor?.currencyCopper !== currency.observedCopper
+  ) {
+    findings.push(
+      finding("native-physical-grant-currency-mismatch", subject, "Native fixed implements must leave the full equipment budget uncharged and converge actor currency to the manifest.")
+    );
+  }
+  for (const route of routes) {
+    const expected = route.grant;
+    const grantEntries = (Array.isArray(manifest?.classGrants) ? manifest.classGrants : []).filter(
+      (entry) => entry?.grant?.profileId === route.profileId
+    );
+    const sourceItems = items.filter((item) => item?.sourceId === expected.expectedSourceUuid);
+    const item = sourceItems[0];
+    const completed = grantEntries[0];
+    const grant = completed?.grant;
+    if (
+      grantEntries.length !== 1 ||
+      completed?.status !== "resolved" ||
+      !structuredValueEquals(completed?.observedItemIds, item?.id ? [item.id] : []) ||
+      !structuredValueEquals(grant, {
+        version: 1,
+        grantId: expected.grantId,
+        profileId: route.profileId,
+        origin: { sourceSlotId: expected.originSourceSlotId, sourceUuid: expected.originSourceUuid },
+        granterSourceUuid: expected.granterSourceUuid,
+        expected: { sourceUuid: expected.expectedSourceUuid, quantity: 1, itemType: expected.expectedItemType },
+        fundingLane: "class-grant",
+        materializer: "pf2e-native",
+        eligibilityKind: "fixed-class-grant",
+        resaleRule: expected.resaleRule,
+        eligibilityEvidence: { kind: "fixed-native-profile" },
+        nativeGrantChainSourceUuids: expected.nativeGrantChainSourceUuids,
+      }) ||
+      sourceItems.length !== 1 ||
+      item?.type !== expected.expectedItemType ||
+      item?.isPhysical !== true ||
+      item?.isCurrency !== false ||
+      item?.quantity !== 1 ||
+      item?.acquisition !== null ||
+      !nonEmptyString(item?.grantedById) ||
+      !structuredValueEquals(nativeGrantChainSourceUuids(item, itemsById), expected.nativeGrantChainSourceUuids)
+    ) {
+      findings.push(
+        finding("native-physical-grant-materialization-mismatch", `${subject}:${route.routeId}`, "Each fixed implement needs one resolved, unstamped quantity-one native item with its exact registry source and grant chain.")
+      );
+    }
+  }
+  return findings;
 }
 
 export function parseApplyCheckpointId(value) {

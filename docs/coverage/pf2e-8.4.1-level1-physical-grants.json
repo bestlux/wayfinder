@@ -25,7 +25,7 @@
       "skill": 87
     },
     "exclusions": [
-      "Character options and grant routes that first become reachable above level 1 are outside this registry.",
+      "Character options and grant routes that first become reachable above level 1 are outside the discovery scan. The sixteen fixed Thaumaturge First/Second Implement profiles have separate source checks for class progression at levels 1 and 5; this is the sole reviewed level-5 exception.",
       "Non-physical grants are observed for source drift but are not classified as equipment terminals.",
       "Live Foundry behavior remains separately qualified by the smoke matrix; this registry checks pinned PF2E source compatibility."
     ]
@@ -1070,7 +1070,7 @@
       "blocker": {
         "preReview": true,
         "reasonCode": "unprofiled-native-grant",
-        "detail": "PF2E creates this physical item before acquisition, but Wayfinder has no reviewed reconciliation profile for it."
+        "detail": "Only this implement's standard Thaumaturge First Implement (level 1) and Second Implement (level 5) origins have reviewed native equipment support. Third Implement and dedication origins are not supported."
       }
     },
     {
@@ -1099,7 +1099,7 @@
       "blocker": {
         "preReview": true,
         "reasonCode": "unprofiled-native-grant",
-        "detail": "PF2E creates this physical item before acquisition, but Wayfinder has no reviewed reconciliation profile for it."
+        "detail": "Only this implement's standard Thaumaturge First Implement (level 1) and Second Implement (level 5) origins have reviewed native equipment support. Third Implement and dedication origins are not supported."
       }
     },
     {
@@ -1128,7 +1128,7 @@
       "blocker": {
         "preReview": true,
         "reasonCode": "unprofiled-native-grant",
-        "detail": "PF2E creates this physical item before acquisition, but Wayfinder has no reviewed reconciliation profile for it."
+        "detail": "Only this implement's standard Thaumaturge First Implement (level 1) and Second Implement (level 5) origins have reviewed native equipment support. Third Implement and dedication origins are not supported."
       }
     },
     {
@@ -1157,7 +1157,7 @@
       "blocker": {
         "preReview": true,
         "reasonCode": "unprofiled-native-grant",
-        "detail": "PF2E creates this physical item before acquisition, but Wayfinder has no reviewed reconciliation profile for it."
+        "detail": "Only this implement's standard Thaumaturge First Implement (level 1) and Second Implement (level 5) origins have reviewed native equipment support. Third Implement and dedication origins are not supported."
       }
     },
     {
@@ -1186,7 +1186,7 @@
       "blocker": {
         "preReview": true,
         "reasonCode": "unprofiled-native-grant",
-        "detail": "PF2E creates this physical item before acquisition, but Wayfinder has no reviewed reconciliation profile for it."
+        "detail": "Only this implement's standard Thaumaturge First Implement (level 1) and Second Implement (level 5) origins have reviewed native equipment support. Third Implement and dedication origins are not supported."
       }
     },
     {
@@ -1215,7 +1215,7 @@
       "blocker": {
         "preReview": true,
         "reasonCode": "unprofiled-native-grant",
-        "detail": "PF2E creates this physical item before acquisition, but Wayfinder has no reviewed reconciliation profile for it."
+        "detail": "Only this implement's standard Thaumaturge First Implement (level 1) and Second Implement (level 5) origins have reviewed native equipment support. Third Implement and dedication origins are not supported."
       }
     },
     {
@@ -1270,7 +1270,7 @@
       "blocker": {
         "preReview": true,
         "reasonCode": "unprofiled-native-grant",
-        "detail": "PF2E creates this physical item before acquisition, but Wayfinder has no reviewed reconciliation profile for it."
+        "detail": "Only this implement's standard Thaumaturge First Implement (level 1) and Second Implement (level 5) origins have reviewed native equipment support. Third Implement and dedication origins are not supported."
       }
     },
     {
@@ -1299,7 +1299,7 @@
       "blocker": {
         "preReview": true,
         "reasonCode": "unprofiled-native-grant",
-        "detail": "PF2E creates this physical item before acquisition, but Wayfinder has no reviewed reconciliation profile for it."
+        "detail": "Only this implement's standard Thaumaturge First Implement (level 1) and Second Implement (level 5) origins have reviewed native equipment support. Third Implement and dedication origins are not supported."
       }
     },
     {
@@ -1469,6 +1469,838 @@
         "reasonCode": "semantic-prerequisite-mismatch",
         "detail": "This background embeds Pilgrim's Token, whose religion and follower requirements are not yet proven by Wayfinder."
       }
+    },
+    {
+      "routeId": "thaumaturge-amulet-implement-first",
+      "label": "Thaumaturge Amulet implement (First Implement)",
+      "classification": "supported-native",
+      "profileId": "thaumaturge-amulet-implement-first",
+      "materializer": "pf2e-native",
+      "sourcePolicy": "remaster-optional",
+      "nodes": [
+        "Compendium.pf2e.classes.Item.Y5GsHqzCzJlKka6x",
+        "Compendium.pf2e.classfeatures.Item.VSQJtzQE6ikKdsnP",
+        "Compendium.pf2e.classfeatures.Item.PoclGJ7BCEyIuqJe",
+        "Compendium.pf2e.equipment-srd.Item.GbR8rgZMCVBn3Evb"
+      ],
+      "draftSlots": [
+        "class-branch-first-implement-and-esoterica-level-1"
+      ],
+      "activationVariants": [],
+      "terminalSourceUuids": [
+        "Compendium.pf2e.equipment-srd.Item.GbR8rgZMCVBn3Evb"
+      ],
+      "links": [
+        {
+          "from": "Compendium.pf2e.classes.Item.Y5GsHqzCzJlKka6x",
+          "to": "Compendium.pf2e.classfeatures.Item.VSQJtzQE6ikKdsnP",
+          "location": "system.items"
+        },
+        {
+          "from": "Compendium.pf2e.classfeatures.Item.PoclGJ7BCEyIuqJe",
+          "to": "Compendium.pf2e.equipment-srd.Item.GbR8rgZMCVBn3Evb",
+          "location": "rules"
+        }
+      ],
+      "ruleChecks": [
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.VSQJtzQE6ikKdsnP",
+          "key": "ChoiceSet",
+          "flag": "implement",
+          "filterContains": "item:tag:thaumaturge-implement"
+        },
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.VSQJtzQE6ikKdsnP",
+          "key": "GrantItem",
+          "uuid": "{item|flags.system.rulesSelections.implement}"
+        },
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.PoclGJ7BCEyIuqJe",
+          "key": "GrantItem",
+          "uuid": "Compendium.pf2e.equipment-srd.Item.Amulet Implement"
+        }
+      ],
+      "semanticChecks": []
+    },
+    {
+      "routeId": "thaumaturge-amulet-implement-second",
+      "label": "Thaumaturge Amulet implement (Second Implement)",
+      "classification": "supported-native",
+      "profileId": "thaumaturge-amulet-implement-second",
+      "materializer": "pf2e-native",
+      "sourcePolicy": "remaster-optional",
+      "nodes": [
+        "Compendium.pf2e.classes.Item.Y5GsHqzCzJlKka6x",
+        "Compendium.pf2e.classfeatures.Item.Z8WpDAdAXyefLB7Q",
+        "Compendium.pf2e.classfeatures.Item.PoclGJ7BCEyIuqJe",
+        "Compendium.pf2e.equipment-srd.Item.GbR8rgZMCVBn3Evb"
+      ],
+      "draftSlots": [
+        "class-branch-second-implement-level-5"
+      ],
+      "activationVariants": [],
+      "terminalSourceUuids": [
+        "Compendium.pf2e.equipment-srd.Item.GbR8rgZMCVBn3Evb"
+      ],
+      "links": [
+        {
+          "from": "Compendium.pf2e.classes.Item.Y5GsHqzCzJlKka6x",
+          "to": "Compendium.pf2e.classfeatures.Item.Z8WpDAdAXyefLB7Q",
+          "location": "system.items"
+        },
+        {
+          "from": "Compendium.pf2e.classfeatures.Item.PoclGJ7BCEyIuqJe",
+          "to": "Compendium.pf2e.equipment-srd.Item.GbR8rgZMCVBn3Evb",
+          "location": "rules"
+        }
+      ],
+      "ruleChecks": [
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.Z8WpDAdAXyefLB7Q",
+          "key": "ChoiceSet",
+          "flag": "implement",
+          "filterContains": "item:tag:thaumaturge-implement"
+        },
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.Z8WpDAdAXyefLB7Q",
+          "key": "GrantItem",
+          "uuid": "{item|flags.system.rulesSelections.implement}"
+        },
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.PoclGJ7BCEyIuqJe",
+          "key": "GrantItem",
+          "uuid": "Compendium.pf2e.equipment-srd.Item.Amulet Implement"
+        }
+      ],
+      "semanticChecks": []
+    },
+    {
+      "routeId": "thaumaturge-bell-implement-first",
+      "label": "Thaumaturge Bell implement (First Implement)",
+      "classification": "supported-native",
+      "profileId": "thaumaturge-bell-implement-first",
+      "materializer": "pf2e-native",
+      "sourcePolicy": "remaster-optional",
+      "nodes": [
+        "Compendium.pf2e.classes.Item.Y5GsHqzCzJlKka6x",
+        "Compendium.pf2e.classfeatures.Item.VSQJtzQE6ikKdsnP",
+        "Compendium.pf2e.classfeatures.Item.DK1LCE5pd0YCY11c",
+        "Compendium.pf2e.equipment-srd.Item.f0A1zqCFiUJuXc9U"
+      ],
+      "draftSlots": [
+        "class-branch-first-implement-and-esoterica-level-1"
+      ],
+      "activationVariants": [],
+      "terminalSourceUuids": [
+        "Compendium.pf2e.equipment-srd.Item.f0A1zqCFiUJuXc9U"
+      ],
+      "links": [
+        {
+          "from": "Compendium.pf2e.classes.Item.Y5GsHqzCzJlKka6x",
+          "to": "Compendium.pf2e.classfeatures.Item.VSQJtzQE6ikKdsnP",
+          "location": "system.items"
+        },
+        {
+          "from": "Compendium.pf2e.classfeatures.Item.DK1LCE5pd0YCY11c",
+          "to": "Compendium.pf2e.equipment-srd.Item.f0A1zqCFiUJuXc9U",
+          "location": "rules"
+        }
+      ],
+      "ruleChecks": [
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.VSQJtzQE6ikKdsnP",
+          "key": "ChoiceSet",
+          "flag": "implement",
+          "filterContains": "item:tag:thaumaturge-implement"
+        },
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.VSQJtzQE6ikKdsnP",
+          "key": "GrantItem",
+          "uuid": "{item|flags.system.rulesSelections.implement}"
+        },
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.DK1LCE5pd0YCY11c",
+          "key": "GrantItem",
+          "uuid": "Compendium.pf2e.equipment-srd.Item.Bell Implement"
+        }
+      ],
+      "semanticChecks": []
+    },
+    {
+      "routeId": "thaumaturge-bell-implement-second",
+      "label": "Thaumaturge Bell implement (Second Implement)",
+      "classification": "supported-native",
+      "profileId": "thaumaturge-bell-implement-second",
+      "materializer": "pf2e-native",
+      "sourcePolicy": "remaster-optional",
+      "nodes": [
+        "Compendium.pf2e.classes.Item.Y5GsHqzCzJlKka6x",
+        "Compendium.pf2e.classfeatures.Item.Z8WpDAdAXyefLB7Q",
+        "Compendium.pf2e.classfeatures.Item.DK1LCE5pd0YCY11c",
+        "Compendium.pf2e.equipment-srd.Item.f0A1zqCFiUJuXc9U"
+      ],
+      "draftSlots": [
+        "class-branch-second-implement-level-5"
+      ],
+      "activationVariants": [],
+      "terminalSourceUuids": [
+        "Compendium.pf2e.equipment-srd.Item.f0A1zqCFiUJuXc9U"
+      ],
+      "links": [
+        {
+          "from": "Compendium.pf2e.classes.Item.Y5GsHqzCzJlKka6x",
+          "to": "Compendium.pf2e.classfeatures.Item.Z8WpDAdAXyefLB7Q",
+          "location": "system.items"
+        },
+        {
+          "from": "Compendium.pf2e.classfeatures.Item.DK1LCE5pd0YCY11c",
+          "to": "Compendium.pf2e.equipment-srd.Item.f0A1zqCFiUJuXc9U",
+          "location": "rules"
+        }
+      ],
+      "ruleChecks": [
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.Z8WpDAdAXyefLB7Q",
+          "key": "ChoiceSet",
+          "flag": "implement",
+          "filterContains": "item:tag:thaumaturge-implement"
+        },
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.Z8WpDAdAXyefLB7Q",
+          "key": "GrantItem",
+          "uuid": "{item|flags.system.rulesSelections.implement}"
+        },
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.DK1LCE5pd0YCY11c",
+          "key": "GrantItem",
+          "uuid": "Compendium.pf2e.equipment-srd.Item.Bell Implement"
+        }
+      ],
+      "semanticChecks": []
+    },
+    {
+      "routeId": "thaumaturge-chalice-implement-first",
+      "label": "Thaumaturge Chalice implement (First Implement)",
+      "classification": "supported-native",
+      "profileId": "thaumaturge-chalice-implement-first",
+      "materializer": "pf2e-native",
+      "sourcePolicy": "remaster-optional",
+      "nodes": [
+        "Compendium.pf2e.classes.Item.Y5GsHqzCzJlKka6x",
+        "Compendium.pf2e.classfeatures.Item.VSQJtzQE6ikKdsnP",
+        "Compendium.pf2e.classfeatures.Item.1vgFGSnn0DIBmK7j",
+        "Compendium.pf2e.equipment-srd.Item.FodtZGtCsH9NDXlC"
+      ],
+      "draftSlots": [
+        "class-branch-first-implement-and-esoterica-level-1"
+      ],
+      "activationVariants": [],
+      "terminalSourceUuids": [
+        "Compendium.pf2e.equipment-srd.Item.FodtZGtCsH9NDXlC"
+      ],
+      "links": [
+        {
+          "from": "Compendium.pf2e.classes.Item.Y5GsHqzCzJlKka6x",
+          "to": "Compendium.pf2e.classfeatures.Item.VSQJtzQE6ikKdsnP",
+          "location": "system.items"
+        },
+        {
+          "from": "Compendium.pf2e.classfeatures.Item.1vgFGSnn0DIBmK7j",
+          "to": "Compendium.pf2e.equipment-srd.Item.FodtZGtCsH9NDXlC",
+          "location": "rules"
+        }
+      ],
+      "ruleChecks": [
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.VSQJtzQE6ikKdsnP",
+          "key": "ChoiceSet",
+          "flag": "implement",
+          "filterContains": "item:tag:thaumaturge-implement"
+        },
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.VSQJtzQE6ikKdsnP",
+          "key": "GrantItem",
+          "uuid": "{item|flags.system.rulesSelections.implement}"
+        },
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.1vgFGSnn0DIBmK7j",
+          "key": "GrantItem",
+          "uuid": "Compendium.pf2e.equipment-srd.Item.Chalice Implement"
+        }
+      ],
+      "semanticChecks": []
+    },
+    {
+      "routeId": "thaumaturge-chalice-implement-second",
+      "label": "Thaumaturge Chalice implement (Second Implement)",
+      "classification": "supported-native",
+      "profileId": "thaumaturge-chalice-implement-second",
+      "materializer": "pf2e-native",
+      "sourcePolicy": "remaster-optional",
+      "nodes": [
+        "Compendium.pf2e.classes.Item.Y5GsHqzCzJlKka6x",
+        "Compendium.pf2e.classfeatures.Item.Z8WpDAdAXyefLB7Q",
+        "Compendium.pf2e.classfeatures.Item.1vgFGSnn0DIBmK7j",
+        "Compendium.pf2e.equipment-srd.Item.FodtZGtCsH9NDXlC"
+      ],
+      "draftSlots": [
+        "class-branch-second-implement-level-5"
+      ],
+      "activationVariants": [],
+      "terminalSourceUuids": [
+        "Compendium.pf2e.equipment-srd.Item.FodtZGtCsH9NDXlC"
+      ],
+      "links": [
+        {
+          "from": "Compendium.pf2e.classes.Item.Y5GsHqzCzJlKka6x",
+          "to": "Compendium.pf2e.classfeatures.Item.Z8WpDAdAXyefLB7Q",
+          "location": "system.items"
+        },
+        {
+          "from": "Compendium.pf2e.classfeatures.Item.1vgFGSnn0DIBmK7j",
+          "to": "Compendium.pf2e.equipment-srd.Item.FodtZGtCsH9NDXlC",
+          "location": "rules"
+        }
+      ],
+      "ruleChecks": [
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.Z8WpDAdAXyefLB7Q",
+          "key": "ChoiceSet",
+          "flag": "implement",
+          "filterContains": "item:tag:thaumaturge-implement"
+        },
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.Z8WpDAdAXyefLB7Q",
+          "key": "GrantItem",
+          "uuid": "{item|flags.system.rulesSelections.implement}"
+        },
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.1vgFGSnn0DIBmK7j",
+          "key": "GrantItem",
+          "uuid": "Compendium.pf2e.equipment-srd.Item.Chalice Implement"
+        }
+      ],
+      "semanticChecks": []
+    },
+    {
+      "routeId": "thaumaturge-lantern-implement-first",
+      "label": "Thaumaturge Lantern implement (First Implement)",
+      "classification": "supported-native",
+      "profileId": "thaumaturge-lantern-implement-first",
+      "materializer": "pf2e-native",
+      "sourcePolicy": "remaster-optional",
+      "nodes": [
+        "Compendium.pf2e.classes.Item.Y5GsHqzCzJlKka6x",
+        "Compendium.pf2e.classfeatures.Item.VSQJtzQE6ikKdsnP",
+        "Compendium.pf2e.classfeatures.Item.AltwHU7hCqTwpn48",
+        "Compendium.pf2e.equipment-srd.Item.AtiSK2lwEi25f3PT"
+      ],
+      "draftSlots": [
+        "class-branch-first-implement-and-esoterica-level-1"
+      ],
+      "activationVariants": [],
+      "terminalSourceUuids": [
+        "Compendium.pf2e.equipment-srd.Item.AtiSK2lwEi25f3PT"
+      ],
+      "links": [
+        {
+          "from": "Compendium.pf2e.classes.Item.Y5GsHqzCzJlKka6x",
+          "to": "Compendium.pf2e.classfeatures.Item.VSQJtzQE6ikKdsnP",
+          "location": "system.items"
+        },
+        {
+          "from": "Compendium.pf2e.classfeatures.Item.AltwHU7hCqTwpn48",
+          "to": "Compendium.pf2e.equipment-srd.Item.AtiSK2lwEi25f3PT",
+          "location": "rules"
+        }
+      ],
+      "ruleChecks": [
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.VSQJtzQE6ikKdsnP",
+          "key": "ChoiceSet",
+          "flag": "implement",
+          "filterContains": "item:tag:thaumaturge-implement"
+        },
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.VSQJtzQE6ikKdsnP",
+          "key": "GrantItem",
+          "uuid": "{item|flags.system.rulesSelections.implement}"
+        },
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.AltwHU7hCqTwpn48",
+          "key": "GrantItem",
+          "uuid": "Compendium.pf2e.equipment-srd.Item.Lantern Implement"
+        }
+      ],
+      "semanticChecks": []
+    },
+    {
+      "routeId": "thaumaturge-lantern-implement-second",
+      "label": "Thaumaturge Lantern implement (Second Implement)",
+      "classification": "supported-native",
+      "profileId": "thaumaturge-lantern-implement-second",
+      "materializer": "pf2e-native",
+      "sourcePolicy": "remaster-optional",
+      "nodes": [
+        "Compendium.pf2e.classes.Item.Y5GsHqzCzJlKka6x",
+        "Compendium.pf2e.classfeatures.Item.Z8WpDAdAXyefLB7Q",
+        "Compendium.pf2e.classfeatures.Item.AltwHU7hCqTwpn48",
+        "Compendium.pf2e.equipment-srd.Item.AtiSK2lwEi25f3PT"
+      ],
+      "draftSlots": [
+        "class-branch-second-implement-level-5"
+      ],
+      "activationVariants": [],
+      "terminalSourceUuids": [
+        "Compendium.pf2e.equipment-srd.Item.AtiSK2lwEi25f3PT"
+      ],
+      "links": [
+        {
+          "from": "Compendium.pf2e.classes.Item.Y5GsHqzCzJlKka6x",
+          "to": "Compendium.pf2e.classfeatures.Item.Z8WpDAdAXyefLB7Q",
+          "location": "system.items"
+        },
+        {
+          "from": "Compendium.pf2e.classfeatures.Item.AltwHU7hCqTwpn48",
+          "to": "Compendium.pf2e.equipment-srd.Item.AtiSK2lwEi25f3PT",
+          "location": "rules"
+        }
+      ],
+      "ruleChecks": [
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.Z8WpDAdAXyefLB7Q",
+          "key": "ChoiceSet",
+          "flag": "implement",
+          "filterContains": "item:tag:thaumaturge-implement"
+        },
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.Z8WpDAdAXyefLB7Q",
+          "key": "GrantItem",
+          "uuid": "{item|flags.system.rulesSelections.implement}"
+        },
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.AltwHU7hCqTwpn48",
+          "key": "GrantItem",
+          "uuid": "Compendium.pf2e.equipment-srd.Item.Lantern Implement"
+        }
+      ],
+      "semanticChecks": []
+    },
+    {
+      "routeId": "thaumaturge-mirror-implement-first",
+      "label": "Thaumaturge Mirror implement (First Implement)",
+      "classification": "supported-native",
+      "profileId": "thaumaturge-mirror-implement-first",
+      "materializer": "pf2e-native",
+      "sourcePolicy": "remaster-optional",
+      "nodes": [
+        "Compendium.pf2e.classes.Item.Y5GsHqzCzJlKka6x",
+        "Compendium.pf2e.classfeatures.Item.VSQJtzQE6ikKdsnP",
+        "Compendium.pf2e.classfeatures.Item.N6KvTbaRsphc0Ymb",
+        "Compendium.pf2e.equipment-srd.Item.NpNDlH8YE2i67vQV"
+      ],
+      "draftSlots": [
+        "class-branch-first-implement-and-esoterica-level-1"
+      ],
+      "activationVariants": [],
+      "terminalSourceUuids": [
+        "Compendium.pf2e.equipment-srd.Item.NpNDlH8YE2i67vQV"
+      ],
+      "links": [
+        {
+          "from": "Compendium.pf2e.classes.Item.Y5GsHqzCzJlKka6x",
+          "to": "Compendium.pf2e.classfeatures.Item.VSQJtzQE6ikKdsnP",
+          "location": "system.items"
+        },
+        {
+          "from": "Compendium.pf2e.classfeatures.Item.N6KvTbaRsphc0Ymb",
+          "to": "Compendium.pf2e.equipment-srd.Item.NpNDlH8YE2i67vQV",
+          "location": "rules"
+        }
+      ],
+      "ruleChecks": [
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.VSQJtzQE6ikKdsnP",
+          "key": "ChoiceSet",
+          "flag": "implement",
+          "filterContains": "item:tag:thaumaturge-implement"
+        },
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.VSQJtzQE6ikKdsnP",
+          "key": "GrantItem",
+          "uuid": "{item|flags.system.rulesSelections.implement}"
+        },
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.N6KvTbaRsphc0Ymb",
+          "key": "GrantItem",
+          "uuid": "Compendium.pf2e.equipment-srd.Item.Mirror Implement"
+        }
+      ],
+      "semanticChecks": []
+    },
+    {
+      "routeId": "thaumaturge-mirror-implement-second",
+      "label": "Thaumaturge Mirror implement (Second Implement)",
+      "classification": "supported-native",
+      "profileId": "thaumaturge-mirror-implement-second",
+      "materializer": "pf2e-native",
+      "sourcePolicy": "remaster-optional",
+      "nodes": [
+        "Compendium.pf2e.classes.Item.Y5GsHqzCzJlKka6x",
+        "Compendium.pf2e.classfeatures.Item.Z8WpDAdAXyefLB7Q",
+        "Compendium.pf2e.classfeatures.Item.N6KvTbaRsphc0Ymb",
+        "Compendium.pf2e.equipment-srd.Item.NpNDlH8YE2i67vQV"
+      ],
+      "draftSlots": [
+        "class-branch-second-implement-level-5"
+      ],
+      "activationVariants": [],
+      "terminalSourceUuids": [
+        "Compendium.pf2e.equipment-srd.Item.NpNDlH8YE2i67vQV"
+      ],
+      "links": [
+        {
+          "from": "Compendium.pf2e.classes.Item.Y5GsHqzCzJlKka6x",
+          "to": "Compendium.pf2e.classfeatures.Item.Z8WpDAdAXyefLB7Q",
+          "location": "system.items"
+        },
+        {
+          "from": "Compendium.pf2e.classfeatures.Item.N6KvTbaRsphc0Ymb",
+          "to": "Compendium.pf2e.equipment-srd.Item.NpNDlH8YE2i67vQV",
+          "location": "rules"
+        }
+      ],
+      "ruleChecks": [
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.Z8WpDAdAXyefLB7Q",
+          "key": "ChoiceSet",
+          "flag": "implement",
+          "filterContains": "item:tag:thaumaturge-implement"
+        },
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.Z8WpDAdAXyefLB7Q",
+          "key": "GrantItem",
+          "uuid": "{item|flags.system.rulesSelections.implement}"
+        },
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.N6KvTbaRsphc0Ymb",
+          "key": "GrantItem",
+          "uuid": "Compendium.pf2e.equipment-srd.Item.Mirror Implement"
+        }
+      ],
+      "semanticChecks": []
+    },
+    {
+      "routeId": "thaumaturge-regalia-implement-first",
+      "label": "Thaumaturge Regalia implement (First Implement)",
+      "classification": "supported-native",
+      "profileId": "thaumaturge-regalia-implement-first",
+      "materializer": "pf2e-native",
+      "sourcePolicy": "remaster-optional",
+      "nodes": [
+        "Compendium.pf2e.classes.Item.Y5GsHqzCzJlKka6x",
+        "Compendium.pf2e.classfeatures.Item.VSQJtzQE6ikKdsnP",
+        "Compendium.pf2e.classfeatures.Item.DhdLzrcMvB93Rjmt",
+        "Compendium.pf2e.equipment-srd.Item.7FzmHy7PugYNGkoX"
+      ],
+      "draftSlots": [
+        "class-branch-first-implement-and-esoterica-level-1"
+      ],
+      "activationVariants": [],
+      "terminalSourceUuids": [
+        "Compendium.pf2e.equipment-srd.Item.7FzmHy7PugYNGkoX"
+      ],
+      "links": [
+        {
+          "from": "Compendium.pf2e.classes.Item.Y5GsHqzCzJlKka6x",
+          "to": "Compendium.pf2e.classfeatures.Item.VSQJtzQE6ikKdsnP",
+          "location": "system.items"
+        },
+        {
+          "from": "Compendium.pf2e.classfeatures.Item.DhdLzrcMvB93Rjmt",
+          "to": "Compendium.pf2e.equipment-srd.Item.7FzmHy7PugYNGkoX",
+          "location": "rules"
+        }
+      ],
+      "ruleChecks": [
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.VSQJtzQE6ikKdsnP",
+          "key": "ChoiceSet",
+          "flag": "implement",
+          "filterContains": "item:tag:thaumaturge-implement"
+        },
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.VSQJtzQE6ikKdsnP",
+          "key": "GrantItem",
+          "uuid": "{item|flags.system.rulesSelections.implement}"
+        },
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.DhdLzrcMvB93Rjmt",
+          "key": "GrantItem",
+          "uuid": "Compendium.pf2e.equipment-srd.Item.Regalia Implement"
+        }
+      ],
+      "semanticChecks": []
+    },
+    {
+      "routeId": "thaumaturge-regalia-implement-second",
+      "label": "Thaumaturge Regalia implement (Second Implement)",
+      "classification": "supported-native",
+      "profileId": "thaumaturge-regalia-implement-second",
+      "materializer": "pf2e-native",
+      "sourcePolicy": "remaster-optional",
+      "nodes": [
+        "Compendium.pf2e.classes.Item.Y5GsHqzCzJlKka6x",
+        "Compendium.pf2e.classfeatures.Item.Z8WpDAdAXyefLB7Q",
+        "Compendium.pf2e.classfeatures.Item.DhdLzrcMvB93Rjmt",
+        "Compendium.pf2e.equipment-srd.Item.7FzmHy7PugYNGkoX"
+      ],
+      "draftSlots": [
+        "class-branch-second-implement-level-5"
+      ],
+      "activationVariants": [],
+      "terminalSourceUuids": [
+        "Compendium.pf2e.equipment-srd.Item.7FzmHy7PugYNGkoX"
+      ],
+      "links": [
+        {
+          "from": "Compendium.pf2e.classes.Item.Y5GsHqzCzJlKka6x",
+          "to": "Compendium.pf2e.classfeatures.Item.Z8WpDAdAXyefLB7Q",
+          "location": "system.items"
+        },
+        {
+          "from": "Compendium.pf2e.classfeatures.Item.DhdLzrcMvB93Rjmt",
+          "to": "Compendium.pf2e.equipment-srd.Item.7FzmHy7PugYNGkoX",
+          "location": "rules"
+        }
+      ],
+      "ruleChecks": [
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.Z8WpDAdAXyefLB7Q",
+          "key": "ChoiceSet",
+          "flag": "implement",
+          "filterContains": "item:tag:thaumaturge-implement"
+        },
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.Z8WpDAdAXyefLB7Q",
+          "key": "GrantItem",
+          "uuid": "{item|flags.system.rulesSelections.implement}"
+        },
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.DhdLzrcMvB93Rjmt",
+          "key": "GrantItem",
+          "uuid": "Compendium.pf2e.equipment-srd.Item.Regalia Implement"
+        }
+      ],
+      "semanticChecks": []
+    },
+    {
+      "routeId": "thaumaturge-tome-implement-first",
+      "label": "Thaumaturge Tome implement (First Implement)",
+      "classification": "supported-native",
+      "profileId": "thaumaturge-tome-implement-first",
+      "materializer": "pf2e-native",
+      "sourcePolicy": "remaster-optional",
+      "nodes": [
+        "Compendium.pf2e.classes.Item.Y5GsHqzCzJlKka6x",
+        "Compendium.pf2e.classfeatures.Item.VSQJtzQE6ikKdsnP",
+        "Compendium.pf2e.classfeatures.Item.MyN1cQgE0HsLF20e",
+        "Compendium.pf2e.equipment-srd.Item.V9mhR91d2qWa3dGh"
+      ],
+      "draftSlots": [
+        "class-branch-first-implement-and-esoterica-level-1"
+      ],
+      "activationVariants": [],
+      "terminalSourceUuids": [
+        "Compendium.pf2e.equipment-srd.Item.V9mhR91d2qWa3dGh"
+      ],
+      "links": [
+        {
+          "from": "Compendium.pf2e.classes.Item.Y5GsHqzCzJlKka6x",
+          "to": "Compendium.pf2e.classfeatures.Item.VSQJtzQE6ikKdsnP",
+          "location": "system.items"
+        },
+        {
+          "from": "Compendium.pf2e.classfeatures.Item.MyN1cQgE0HsLF20e",
+          "to": "Compendium.pf2e.equipment-srd.Item.V9mhR91d2qWa3dGh",
+          "location": "rules"
+        }
+      ],
+      "ruleChecks": [
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.VSQJtzQE6ikKdsnP",
+          "key": "ChoiceSet",
+          "flag": "implement",
+          "filterContains": "item:tag:thaumaturge-implement"
+        },
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.VSQJtzQE6ikKdsnP",
+          "key": "GrantItem",
+          "uuid": "{item|flags.system.rulesSelections.implement}"
+        },
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.MyN1cQgE0HsLF20e",
+          "key": "GrantItem",
+          "uuid": "Compendium.pf2e.equipment-srd.Item.Tome Implement"
+        }
+      ],
+      "semanticChecks": []
+    },
+    {
+      "routeId": "thaumaturge-tome-implement-second",
+      "label": "Thaumaturge Tome implement (Second Implement)",
+      "classification": "supported-native",
+      "profileId": "thaumaturge-tome-implement-second",
+      "materializer": "pf2e-native",
+      "sourcePolicy": "remaster-optional",
+      "nodes": [
+        "Compendium.pf2e.classes.Item.Y5GsHqzCzJlKka6x",
+        "Compendium.pf2e.classfeatures.Item.Z8WpDAdAXyefLB7Q",
+        "Compendium.pf2e.classfeatures.Item.MyN1cQgE0HsLF20e",
+        "Compendium.pf2e.equipment-srd.Item.V9mhR91d2qWa3dGh"
+      ],
+      "draftSlots": [
+        "class-branch-second-implement-level-5"
+      ],
+      "activationVariants": [],
+      "terminalSourceUuids": [
+        "Compendium.pf2e.equipment-srd.Item.V9mhR91d2qWa3dGh"
+      ],
+      "links": [
+        {
+          "from": "Compendium.pf2e.classes.Item.Y5GsHqzCzJlKka6x",
+          "to": "Compendium.pf2e.classfeatures.Item.Z8WpDAdAXyefLB7Q",
+          "location": "system.items"
+        },
+        {
+          "from": "Compendium.pf2e.classfeatures.Item.MyN1cQgE0HsLF20e",
+          "to": "Compendium.pf2e.equipment-srd.Item.V9mhR91d2qWa3dGh",
+          "location": "rules"
+        }
+      ],
+      "ruleChecks": [
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.Z8WpDAdAXyefLB7Q",
+          "key": "ChoiceSet",
+          "flag": "implement",
+          "filterContains": "item:tag:thaumaturge-implement"
+        },
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.Z8WpDAdAXyefLB7Q",
+          "key": "GrantItem",
+          "uuid": "{item|flags.system.rulesSelections.implement}"
+        },
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.MyN1cQgE0HsLF20e",
+          "key": "GrantItem",
+          "uuid": "Compendium.pf2e.equipment-srd.Item.Tome Implement"
+        }
+      ],
+      "semanticChecks": []
+    },
+    {
+      "routeId": "thaumaturge-wand-implement-first",
+      "label": "Thaumaturge Wand implement (First Implement)",
+      "classification": "supported-native",
+      "profileId": "thaumaturge-wand-implement-first",
+      "materializer": "pf2e-native",
+      "sourcePolicy": "remaster-optional",
+      "nodes": [
+        "Compendium.pf2e.classes.Item.Y5GsHqzCzJlKka6x",
+        "Compendium.pf2e.classfeatures.Item.VSQJtzQE6ikKdsnP",
+        "Compendium.pf2e.classfeatures.Item.pDxdE8S8QJV2PGiB",
+        "Compendium.pf2e.equipment-srd.Item.ZjApNlusD5oZkPTJ"
+      ],
+      "draftSlots": [
+        "class-branch-first-implement-and-esoterica-level-1"
+      ],
+      "activationVariants": [],
+      "terminalSourceUuids": [
+        "Compendium.pf2e.equipment-srd.Item.ZjApNlusD5oZkPTJ"
+      ],
+      "links": [
+        {
+          "from": "Compendium.pf2e.classes.Item.Y5GsHqzCzJlKka6x",
+          "to": "Compendium.pf2e.classfeatures.Item.VSQJtzQE6ikKdsnP",
+          "location": "system.items"
+        },
+        {
+          "from": "Compendium.pf2e.classfeatures.Item.pDxdE8S8QJV2PGiB",
+          "to": "Compendium.pf2e.equipment-srd.Item.ZjApNlusD5oZkPTJ",
+          "location": "rules"
+        }
+      ],
+      "ruleChecks": [
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.VSQJtzQE6ikKdsnP",
+          "key": "ChoiceSet",
+          "flag": "implement",
+          "filterContains": "item:tag:thaumaturge-implement"
+        },
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.VSQJtzQE6ikKdsnP",
+          "key": "GrantItem",
+          "uuid": "{item|flags.system.rulesSelections.implement}"
+        },
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.pDxdE8S8QJV2PGiB",
+          "key": "GrantItem",
+          "uuid": "Compendium.pf2e.equipment-srd.Item.Wand Implement"
+        }
+      ],
+      "semanticChecks": []
+    },
+    {
+      "routeId": "thaumaturge-wand-implement-second",
+      "label": "Thaumaturge Wand implement (Second Implement)",
+      "classification": "supported-native",
+      "profileId": "thaumaturge-wand-implement-second",
+      "materializer": "pf2e-native",
+      "sourcePolicy": "remaster-optional",
+      "nodes": [
+        "Compendium.pf2e.classes.Item.Y5GsHqzCzJlKka6x",
+        "Compendium.pf2e.classfeatures.Item.Z8WpDAdAXyefLB7Q",
+        "Compendium.pf2e.classfeatures.Item.pDxdE8S8QJV2PGiB",
+        "Compendium.pf2e.equipment-srd.Item.ZjApNlusD5oZkPTJ"
+      ],
+      "draftSlots": [
+        "class-branch-second-implement-level-5"
+      ],
+      "activationVariants": [],
+      "terminalSourceUuids": [
+        "Compendium.pf2e.equipment-srd.Item.ZjApNlusD5oZkPTJ"
+      ],
+      "links": [
+        {
+          "from": "Compendium.pf2e.classes.Item.Y5GsHqzCzJlKka6x",
+          "to": "Compendium.pf2e.classfeatures.Item.Z8WpDAdAXyefLB7Q",
+          "location": "system.items"
+        },
+        {
+          "from": "Compendium.pf2e.classfeatures.Item.pDxdE8S8QJV2PGiB",
+          "to": "Compendium.pf2e.equipment-srd.Item.ZjApNlusD5oZkPTJ",
+          "location": "rules"
+        }
+      ],
+      "ruleChecks": [
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.Z8WpDAdAXyefLB7Q",
+          "key": "ChoiceSet",
+          "flag": "implement",
+          "filterContains": "item:tag:thaumaturge-implement"
+        },
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.Z8WpDAdAXyefLB7Q",
+          "key": "GrantItem",
+          "uuid": "{item|flags.system.rulesSelections.implement}"
+        },
+        {
+          "source": "Compendium.pf2e.classfeatures.Item.pDxdE8S8QJV2PGiB",
+          "key": "GrantItem",
+          "uuid": "Compendium.pf2e.equipment-srd.Item.Wand Implement"
+        }
+      ],
+      "semanticChecks": []
     }
   ],
   "discovery": {

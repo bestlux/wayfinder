@@ -304,6 +304,9 @@ export async function selectClassChoiceValue(state, step, value, deps) {
     if (!stepId) {
         return NOOP_RESULT;
     }
+    if (isReviewedWandDamageChoice(step) && !step?.classChoice?.options.some((option) => option.value === value)) {
+        return NOOP_RESULT;
+    }
     const invalidatesDeityBranches = step?.classChoice?.flag === "sanctification";
     const wasSelected = state.draft.classChoices[stepId] === value;
     if (wasSelected) {
@@ -362,6 +365,13 @@ async function invalidateClassChoiceDependents(step, deps) {
         const invalidated = deps.invalidateSelectionsByPrefix(SUMMONER_SPELL_CHOICE_PREFIX);
         return invalidated.length > 0 ? "Eidolon tradition changed. Choose your summoner spells again." : null;
     }
+    if (isReviewedWandDamageChoice(step)) {
+        // This leaf changes Fling Magic's damage. Its implement selectors are
+        // ancestors, and their physical grant authority does not change.
+        const choice = step.classChoice;
+        const invalidated = await deps.invalidateClassChoicesBySourceChoice(choice.sourceUuid, choice.flag);
+        return invalidated.length > 0 ? "That choice changed. Its dependent choices need another look." : null;
+    }
     const branchInvalidated = deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.classBranch);
     const deityBranchInvalidated = step?.classChoice?.flag === "sanctification" || step?.classChoice?.dependsOn === "deity"
         ? await deps.invalidateBranchSelectionsByDependency("deity")
@@ -385,6 +395,26 @@ async function invalidateClassChoiceDependents(step, deps) {
         return "Sanctification changed. Your class path needs another look.";
     }
     return "That choice changed. Your class path, class features, and spells need another look.";
+}
+function isReviewedWandDamageChoice(step) {
+    if (!step || step.kind !== "class-choice" || (step.level !== 1 && step.level !== 5))
+        return false;
+    const choice = step.classChoice;
+    const slotId = `class-choice-initiate-benefit-wand-initiateBenefitWand-level-${step.level}`;
+    return (step.id === slotId &&
+        step.slotId === slotId &&
+        choice.slotId === slotId &&
+        choice.sourcePackId === "pf2e.classfeatures" &&
+        choice.sourceDocumentId === "YbRVsHfmhPXLfCTB" &&
+        choice.sourceUuid === "Compendium.pf2e.classfeatures.Item.YbRVsHfmhPXLfCTB" &&
+        choice.sourceRuleIndex === 1 &&
+        choice.flag === "initiateBenefitWand" &&
+        choice.rollOption === "wand-initiate-damage-type" &&
+        choice.classSlug === "thaumaturge" &&
+        choice.dependsOn === "class" &&
+        choice.options.length === 3 &&
+        new Set(choice.options.map((option) => option.value)).size === 3 &&
+        sameMembers(choice.options.map((option) => option.value), ["cold", "electricity", "fire"]));
 }
 export async function toggleSpellChoiceSelection(state, step, rawValue, deps) {
     if (!step || step.kind !== "spell-choice") {

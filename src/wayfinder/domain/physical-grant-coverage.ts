@@ -1,8 +1,11 @@
 import type { DraftState, PendingStep, SelectionRef } from "../../types.js";
 import {
+  CLASS_GRANT_PROFILE_UUIDS,
   PHYSICAL_GRANT_COVERAGE_PF2E_VERSION,
   type PhysicalGrantCoverageBlocker,
   type PhysicalGrantSelectionChannel,
+  THAUMATURGE_FIXED_IMPLEMENTS,
+  THAUMATURGE_IMPLEMENT_ORIGINS,
   UNSUPPORTED_PHYSICAL_GRANT_ROUTES,
 } from "./physical-grant-route-registry.js";
 import type { WayfinderDraftReadiness, WayfinderStepIssue } from "./step-evaluation.js";
@@ -90,9 +93,9 @@ export function findUnsupportedPhysicalGrantRoutes(
   const facts = [
     ...selectionFacts("selections", draft.selections, activeSlotIds),
     ...selectionFacts("branchSelections", draft.branchSelections, activeSlotIds),
-  ];
+  ].filter((fact) => !isReviewedThaumaturgeOrigin(fact, draft, activeSlotIds));
 
-  return UNSUPPORTED_PHYSICAL_GRANT_ROUTES.flatMap((route) => {
+  const blockers = UNSUPPORTED_PHYSICAL_GRANT_ROUTES.flatMap((route) => {
     const matches = route.activationVariants
       .map((variant) =>
         variant.map((requirement) =>
@@ -114,10 +117,69 @@ export function findUnsupportedPhysicalGrantRoutes(
         reasonCode: route.blocker.reasonCode,
         sourceSlotId: source.sourceSlotId,
         sourceUuid: source.sourceUuid,
-        message: `${route.label} is not supported by Wayfinder starting equipment on PF2E ${PHYSICAL_GRANT_COVERAGE_PF2E_VERSION}. ${route.blocker.detail} Use the PF2E sheet for this build.`,
+        message: `${route.label} is not supported by Wayfinder starting equipment. ${route.blocker.detail} Use the PF2E sheet for this build.`,
       },
     ];
   });
+  const root = draft.selections["class-level-1"];
+  if (root?.uuid === CLASS_GRANT_PROFILE_UUIDS.thaumaturgeClass && root.itemType === "class") {
+    for (const origin of THAUMATURGE_IMPLEMENT_ORIGINS) {
+      const selection = draft.branchSelections[origin.slotId];
+      if (
+        !selection ||
+        !activeSlotIds.has(origin.slotId) ||
+        selection.slotId !== origin.slotId ||
+        THAUMATURGE_FIXED_IMPLEMENTS.some(
+          (entry) => selection.uuid === `Compendium.pf2e.classfeatures.Item.${entry.featureId}`
+        ) ||
+        blockers.some((blocker) => blocker.sourceSlotId === origin.slotId)
+      )
+        continue;
+      blockers.push({
+        code: "unsupported-physical-grant",
+        routeId: "thaumaturge-unreviewed-implement",
+        reasonCode: "unprofiled-native-grant",
+        sourceSlotId: origin.slotId,
+        sourceUuid: selection.uuid,
+        message:
+          "This Thaumaturge implement has no reviewed native equipment support in Wayfinder. Use the PF2E sheet for this build.",
+      });
+    }
+  }
+  return blockers;
+}
+
+function isReviewedThaumaturgeOrigin(
+  fact: ActiveSelectionFact,
+  draft: DraftState,
+  activeSlotIds: ReadonlySet<string>
+): boolean {
+  const root = draft.selections["class-level-1"];
+  const selection = draft.branchSelections[fact.sourceSlotId];
+  const origin = THAUMATURGE_IMPLEMENT_ORIGINS.find((entry) => entry.slotId === fact.sourceSlotId);
+  if (
+    fact.channel !== "branchSelections" ||
+    !origin ||
+    draft.targetLevel < origin.level ||
+    root?.slotId !== "class-level-1" ||
+    root.itemType !== "class" ||
+    root.uuid !== CLASS_GRANT_PROFILE_UUIDS.thaumaturgeClass ||
+    selection?.slotId !== fact.sourceSlotId ||
+    selection.itemType !== "feat" ||
+    selection.featType !== "classfeature" ||
+    !THAUMATURGE_FIXED_IMPLEMENTS.some(
+      (entry) => fact.sourceUuid === `Compendium.pf2e.classfeatures.Item.${entry.featureId}`
+    )
+  )
+    return false;
+  // PF2E can reuse an existing same-source grant; two origins may never claim one implement.
+  return !THAUMATURGE_IMPLEMENT_ORIGINS.some(
+    (entry) =>
+      entry.slotId !== fact.sourceSlotId &&
+      entry.level <= draft.targetLevel &&
+      activeSlotIds.has(entry.slotId) &&
+      draft.branchSelections[entry.slotId]?.uuid === fact.sourceUuid
+  );
 }
 
 interface ActiveSelectionFact {

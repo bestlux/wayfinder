@@ -1,5 +1,14 @@
 {
   "wayfinder-pf2e": {
+    "PickerUnavailable": {
+      "UnavailableSummary": "寻路仪暂不支持：{choices}",
+      "UnavailableTitle": "寻路仪暂不支持",
+      "NotGuided": "尚未支持引导",
+      "ImplementHelp": "请选择受支持的器具以继续。",
+      "UnreviewedImplementReason": "寻路仪尚未核验此器具的实体物品授予关系。请选择受支持的器具以继续。",
+      "WeaponReason": "需要选择一件单手、非魔法、非消耗品的武器。寻路仪尚无法选择该实体物品并安全追踪其授予关系。",
+      "ShieldReason": "需要选择一面非魔法盾牌。寻路仪尚无法选择该实体物品并安全追踪其授予关系。"
+    },
     "FeatTraits": {
       "Label": "特征",
       "All": "全部",
@@ -492,6 +501,8 @@
       "Status": {
         "AddedToCart": "已添加到购物车。",
         "AlreadyOpen": "装备步骤已经开启。",
+        "NativeGrantBuildChanged": "职业授予的装备已变更。应用前请重新审核起始装备。",
+        "NativeGrantVerificationFailed": "Wayfinder 无法验证职业授予的装备。应用前请检查起始装备。",
         "TargetLevelChanged": "已按新等级重新准备装备。应用前，请重新确认物品和金币。",
         "TargetLevelChangedItems": "已按新等级重新准备装备。有 {count} 项先前的物品选择无法保留。应用前，请检查购物车并重新完成必选物品。",
         "AuthorityRevoked": "装备权限已撤销。记录当前批准前无法应用。",

@@ -1,0 +1,1078 @@
+{
+  "provenance": {
+    "repository": "foundryvtt/pf2e",
+    "ref": "pf2e-8.5.1",
+    "retrievedDate": "2026-10-12",
+    "detail": "Official 8.5.1 implement documents and equipment terminals from the issue 47 canonical probe; source fields limited to identity and reviewed grant facts. Class item links copied from the local pf2e checkout."
+  },
+  "documents": {
+    "Compendium.pf2e.classes.Item.Y5GsHqzCzJlKka6x": {
+      "_id": "Y5GsHqzCzJlKka6x",
+      "name": "Thaumaturge",
+      "type": "class",
+      "system": {
+        "items": {
+          "1LMTz": {
+            "img": "systems/pf2e/icons/features/classes/unlimited-esoterica.webp",
+            "level": 19,
+            "name": "Unlimited Esoterica",
+            "uuid": "Compendium.pf2e.classfeatures.Item.Unlimited Esoterica"
+          },
+          "3rn78": {
+            "img": "systems/pf2e/icons/features/classes/first-implement-and-esoterica.webp",
+            "level": 1,
+            "name": "First Implement and Esoterica",
+            "uuid": "Compendium.pf2e.classfeatures.Item.First Implement and Esoterica"
+          },
+          "4h2t7": {
+            "img": "icons/skills/melee/hand-grip-sword-orange.webp",
+            "level": 15,
+            "name": "Greater Weapon Specialization",
+            "uuid": "Compendium.pf2e.classfeatures.Item.Greater Weapon Specialization"
+          },
+          "59mfg": {
+            "img": "icons/equipment/chest/breastplate-quilted-brown.webp",
+            "level": 11,
+            "name": "Medium Armor Expertise",
+            "uuid": "Compendium.pf2e.classfeatures.Item.Medium Armor Expertise"
+          },
+          "63BEI": {
+            "img": "systems/pf2e/icons/features/classes/second-adept.webp",
+            "level": 11,
+            "name": "Second Adept",
+            "uuid": "Compendium.pf2e.classfeatures.Item.Second Adept"
+          },
+          "7qJbx": {
+            "img": "icons/sundries/documents/document-tree-brown.webp",
+            "level": 1,
+            "name": "Esoteric Lore",
+            "uuid": "Compendium.pf2e.classfeatures.Item.Esoteric Lore"
+          },
+          "91CWx": {
+            "img": "systems/pf2e/icons/features/classes/third-implement.webp",
+            "level": 15,
+            "name": "Third Implement",
+            "uuid": "Compendium.pf2e.classfeatures.Item.Third Implement"
+          },
+          "94AW8": {
+            "img": "systems/pf2e/icons/features/classes/implements-empowerment.webp",
+            "level": 1,
+            "name": "Implement's Empowerment",
+            "uuid": "Compendium.pf2e.classfeatures.Item.Implement's Empowerment"
+          },
+          "Ahe8D": {
+            "img": "icons/magic/control/buff-strength-muscle-damage-orange.webp",
+            "level": 15,
+            "name": "Earned Resilience",
+            "uuid": "Compendium.pf2e.classfeatures.Item.Earned Resilience"
+          },
+          "EeAOX": {
+            "img": "systems/pf2e/icons/features/classes/implement-paragon.webp",
+            "level": 17,
+            "name": "Implement Paragon",
+            "uuid": "Compendium.pf2e.classfeatures.Item.Implement Paragon"
+          },
+          "Fg8iw": {
+            "img": "icons/skills/melee/blade-tip-chipped-blood-red.webp",
+            "level": 13,
+            "name": "Weapon Mastery",
+            "uuid": "Compendium.pf2e.classfeatures.Item.Weapon Mastery"
+          },
+          "HFk1R": {
+            "img": "systems/pf2e/icons/features/classes/intensify-vulnerability.webp",
+            "level": 9,
+            "name": "Intensify Vulnerability",
+            "uuid": "Compendium.pf2e.classfeatures.Item.Intensify Vulnerability"
+          },
+          "VjdCa": {
+            "img": "systems/pf2e/icons/features/classes/thaumaturgic-expertise.webp",
+            "level": 9,
+            "name": "Thaumaturgic Expertise",
+            "uuid": "Compendium.pf2e.classfeatures.Item.Thaumaturgic Expertise"
+          },
+          "WiLza": {
+            "img": "icons/skills/melee/hand-grip-sword-red.webp",
+            "level": 5,
+            "name": "Weapon Expertise",
+            "uuid": "Compendium.pf2e.classfeatures.Item.Weapon Expertise"
+          },
+          "anx17": {
+            "img": "systems/pf2e/icons/features/classes/second-implement.webp",
+            "level": 5,
+            "name": "Second Implement",
+            "uuid": "Compendium.pf2e.classfeatures.Item.Second Implement"
+          },
+          "bifEL": {
+            "img": "icons/magic/perception/eye-tendrils-web-purple.webp",
+            "level": 9,
+            "name": "Perception Mastery",
+            "uuid": "Compendium.pf2e.classfeatures.Item.Perception Mastery"
+          },
+          "dMcnT": {
+            "img": "icons/magic/control/silhouette-hold-change-blue.webp",
+            "level": 13,
+            "name": "Perfected Mind",
+            "uuid": "Compendium.pf2e.classfeatures.Item.Perfected Mind"
+          },
+          "etPSx": {
+            "img": "systems/pf2e/icons/features/classes/implement-adept.webp",
+            "level": 7,
+            "name": "Implement Adept",
+            "uuid": "Compendium.pf2e.classfeatures.Item.Implement Adept"
+          },
+          "f5coc": {
+            "img": "systems/pf2e/icons/features/classes/weapon-specialization.webp",
+            "level": 7,
+            "name": "Weapon Specialization",
+            "uuid": "Compendium.pf2e.classfeatures.Item.Weapon Specialization"
+          },
+          "fdT0O": {
+            "img": "systems/pf2e/icons/features/classes/thaumaturgic-mastery.webp",
+            "level": 17,
+            "name": "Thaumaturgic Mastery",
+            "uuid": "Compendium.pf2e.classfeatures.Item.Thaumaturgic Mastery"
+          },
+          "gjFwy": {
+            "img": "systems/pf2e/icons/features/classes/exploit-vulnerability.webp",
+            "level": 1,
+            "name": "Exploit Vulnerability",
+            "uuid": "Compendium.pf2e.classfeatures.Item.Exploit Vulnerability"
+          },
+          "le5cj": {
+            "img": "icons/equipment/chest/breastplate-collared-steel.webp",
+            "level": 19,
+            "name": "Medium Armor Mastery",
+            "uuid": "Compendium.pf2e.classfeatures.Item.Medium Armor Mastery"
+          },
+          "o1UCf": {
+            "img": "icons/magic/symbols/symbol-lightning-bolt.webp",
+            "level": 3,
+            "name": "Reflex Expertise",
+            "uuid": "Compendium.pf2e.classfeatures.Item.Reflex Expertise"
+          },
+          "vgeGn": {
+            "img": "icons/magic/control/silhouette-aura-energy.webp",
+            "level": 7,
+            "name": "Disciplined Mind",
+            "uuid": "Compendium.pf2e.classfeatures.Item.Disciplined Mind"
+          }
+        }
+      }
+    },
+    "Compendium.pf2e.classfeatures.Item.PoclGJ7BCEyIuqJe": {
+      "_id": "PoclGJ7BCEyIuqJe",
+      "name": "Amulet",
+      "type": "feat",
+      "system": {
+        "rules": [
+          {
+            "allowDuplicate": false,
+            "key": "GrantItem",
+            "uuid": "Compendium.pf2e.equipment-srd.Item.Amulet Implement"
+          },
+          {
+            "key": "ActiveEffectLike",
+            "mode": "override",
+            "path": "flags.system.thaumaturge.initiateBenefit",
+            "predicate": ["feat:thaumaturge-dedication"],
+            "value": "Compendium.pf2e.classfeatures.Item.Initiate Benefit (Amulet)"
+          },
+          {
+            "key": "GrantItem",
+            "predicate": ["class:thaumaturge"],
+            "uuid": "Compendium.pf2e.classfeatures.Item.Initiate Benefit (Amulet)"
+          },
+          {
+            "key": "ActiveEffectLike",
+            "mode": "add",
+            "path": "flags.system.thaumaturge.adeptChoices",
+            "predicate": ["class:thaumaturge"],
+            "priority": 20,
+            "value": {
+              "label": "{item|name}",
+              "predicate": [
+                {
+                  "not": "feature:adept-benefit-amulet"
+                }
+              ],
+              "value": "Compendium.pf2e.classfeatures.Item.Adept Benefit (Amulet)"
+            }
+          }
+        ],
+        "traits": {
+          "otherTags": ["thaumaturge-implement"],
+          "rarity": "common",
+          "value": ["thaumaturge"]
+        },
+        "level": {
+          "value": 1
+        }
+      }
+    },
+    "Compendium.pf2e.classfeatures.Item.DK1LCE5pd0YCY11c": {
+      "_id": "DK1LCE5pd0YCY11c",
+      "name": "Bell",
+      "type": "feat",
+      "system": {
+        "rules": [
+          {
+            "allowDuplicate": false,
+            "key": "GrantItem",
+            "uuid": "Compendium.pf2e.equipment-srd.Item.Bell Implement"
+          },
+          {
+            "key": "ActiveEffectLike",
+            "mode": "override",
+            "path": "flags.system.thaumaturge.initiateBenefit",
+            "predicate": ["feat:thaumaturge-dedication"],
+            "value": "Compendium.pf2e.classfeatures.Item.Initiate Benefit (Bell)"
+          },
+          {
+            "key": "GrantItem",
+            "predicate": ["class:thaumaturge"],
+            "uuid": "Compendium.pf2e.classfeatures.Item.Initiate Benefit (Bell)"
+          },
+          {
+            "key": "ActiveEffectLike",
+            "mode": "add",
+            "path": "flags.system.thaumaturge.adeptChoices",
+            "predicate": ["class:thaumaturge"],
+            "priority": 20,
+            "value": {
+              "label": "{item|name}",
+              "predicate": [
+                {
+                  "not": "feature:adept-benefit-bell"
+                }
+              ],
+              "value": "Compendium.pf2e.classfeatures.Item.Adept Benefit (Bell)"
+            }
+          }
+        ],
+        "traits": {
+          "otherTags": ["thaumaturge-implement"],
+          "rarity": "common",
+          "value": ["thaumaturge"]
+        },
+        "level": {
+          "value": 1
+        }
+      }
+    },
+    "Compendium.pf2e.classfeatures.Item.1vgFGSnn0DIBmK7j": {
+      "_id": "1vgFGSnn0DIBmK7j",
+      "name": "Chalice",
+      "type": "feat",
+      "system": {
+        "rules": [
+          {
+            "allowDuplicate": false,
+            "key": "GrantItem",
+            "uuid": "Compendium.pf2e.equipment-srd.Item.Chalice Implement"
+          },
+          {
+            "key": "ActiveEffectLike",
+            "mode": "override",
+            "path": "flags.system.thaumaturge.initiateBenefit",
+            "predicate": ["feat:thaumaturge-dedication"],
+            "value": "Compendium.pf2e.classfeatures.Item.Initiate Benefit (Chalice)"
+          },
+          {
+            "key": "GrantItem",
+            "predicate": ["class:thaumaturge"],
+            "uuid": "Compendium.pf2e.classfeatures.Item.Initiate Benefit (Chalice)"
+          },
+          {
+            "key": "ActiveEffectLike",
+            "mode": "add",
+            "path": "flags.system.thaumaturge.adeptChoices",
+            "predicate": ["class:thaumaturge"],
+            "priority": 20,
+            "value": {
+              "label": "{item|name}",
+              "predicate": [
+                {
+                  "not": "feature:adept-benefit-chalice"
+                }
+              ],
+              "value": "Compendium.pf2e.classfeatures.Item.Adept Benefit (Chalice)"
+            }
+          }
+        ],
+        "traits": {
+          "otherTags": ["thaumaturge-implement"],
+          "rarity": "common",
+          "value": ["thaumaturge"]
+        },
+        "level": {
+          "value": 1
+        }
+      }
+    },
+    "Compendium.pf2e.classfeatures.Item.AltwHU7hCqTwpn48": {
+      "_id": "AltwHU7hCqTwpn48",
+      "name": "Lantern",
+      "type": "feat",
+      "system": {
+        "rules": [
+          {
+            "allowDuplicate": false,
+            "key": "GrantItem",
+            "uuid": "Compendium.pf2e.equipment-srd.Item.Lantern Implement"
+          },
+          {
+            "key": "ActiveEffectLike",
+            "mode": "override",
+            "path": "flags.system.thaumaturge.initiateBenefit",
+            "predicate": ["feat:thaumaturge-dedication"],
+            "value": "Compendium.pf2e.classfeatures.Item.Initiate Benefit (Lantern)"
+          },
+          {
+            "key": "GrantItem",
+            "predicate": ["class:thaumaturge"],
+            "uuid": "Compendium.pf2e.classfeatures.Item.Initiate Benefit (Lantern)"
+          },
+          {
+            "key": "ActiveEffectLike",
+            "mode": "add",
+            "path": "flags.system.thaumaturge.adeptChoices",
+            "predicate": ["class:thaumaturge"],
+            "priority": 20,
+            "value": {
+              "label": "{item|name}",
+              "predicate": [
+                {
+                  "not": "feature:adept-benefit-lantern"
+                }
+              ],
+              "value": "Compendium.pf2e.classfeatures.Item.Adept Benefit (Lantern)"
+            }
+          }
+        ],
+        "traits": {
+          "otherTags": ["thaumaturge-implement"],
+          "rarity": "common",
+          "value": ["thaumaturge"]
+        },
+        "level": {
+          "value": 1
+        }
+      }
+    },
+    "Compendium.pf2e.classfeatures.Item.N6KvTbaRsphc0Ymb": {
+      "_id": "N6KvTbaRsphc0Ymb",
+      "name": "Mirror",
+      "type": "feat",
+      "system": {
+        "rules": [
+          {
+            "allowDuplicate": false,
+            "key": "GrantItem",
+            "uuid": "Compendium.pf2e.equipment-srd.Item.Mirror Implement"
+          },
+          {
+            "key": "ActiveEffectLike",
+            "mode": "override",
+            "path": "flags.system.thaumaturge.initiateBenefit",
+            "predicate": ["feat:thaumaturge-dedication"],
+            "value": "Compendium.pf2e.classfeatures.Item.Initiate Benefit (Mirror)"
+          },
+          {
+            "key": "GrantItem",
+            "predicate": ["class:thaumaturge"],
+            "uuid": "Compendium.pf2e.classfeatures.Item.Initiate Benefit (Mirror)"
+          },
+          {
+            "key": "ActiveEffectLike",
+            "mode": "add",
+            "path": "flags.system.thaumaturge.adeptChoices",
+            "predicate": ["class:thaumaturge"],
+            "priority": 20,
+            "value": {
+              "label": "{item|name}",
+              "predicate": [
+                {
+                  "not": "feature:adept-benefit-mirror"
+                }
+              ],
+              "value": "Compendium.pf2e.classfeatures.Item.Adept Benefit (Mirror)"
+            }
+          }
+        ],
+        "traits": {
+          "otherTags": ["thaumaturge-implement"],
+          "rarity": "common",
+          "value": ["thaumaturge"]
+        },
+        "level": {
+          "value": 1
+        }
+      }
+    },
+    "Compendium.pf2e.classfeatures.Item.DhdLzrcMvB93Rjmt": {
+      "_id": "DhdLzrcMvB93Rjmt",
+      "name": "Regalia",
+      "type": "feat",
+      "system": {
+        "rules": [
+          {
+            "allowDuplicate": false,
+            "key": "GrantItem",
+            "uuid": "Compendium.pf2e.equipment-srd.Item.Regalia Implement"
+          },
+          {
+            "key": "ActiveEffectLike",
+            "mode": "override",
+            "path": "flags.system.thaumaturge.initiateBenefit",
+            "predicate": ["feat:thaumaturge-dedication"],
+            "value": "Compendium.pf2e.classfeatures.Item.Initiate Benefit (Regalia)"
+          },
+          {
+            "key": "GrantItem",
+            "predicate": ["class:thaumaturge"],
+            "uuid": "Compendium.pf2e.classfeatures.Item.Initiate Benefit (Regalia)"
+          },
+          {
+            "key": "ActiveEffectLike",
+            "mode": "add",
+            "path": "flags.system.thaumaturge.adeptChoices",
+            "predicate": ["class:thaumaturge"],
+            "priority": 20,
+            "value": {
+              "label": "{item|name}",
+              "predicate": [
+                {
+                  "not": "feature:adept-benefit-regalia"
+                }
+              ],
+              "value": "Compendium.pf2e.classfeatures.Item.Adept Benefit (Regalia)"
+            }
+          }
+        ],
+        "traits": {
+          "otherTags": ["thaumaturge-implement"],
+          "rarity": "common",
+          "value": ["thaumaturge"]
+        },
+        "level": {
+          "value": 1
+        }
+      }
+    },
+    "Compendium.pf2e.classfeatures.Item.84GDSAXaMKMTg2IT": {
+      "_id": "84GDSAXaMKMTg2IT",
+      "name": "Shield",
+      "type": "feat",
+      "system": {
+        "rules": [
+          {
+            "adjustName": false,
+            "allowedDrops": {
+              "label": "PF2E.SpecificRule.AllowedDrops.ShieldOneBulk",
+              "predicate": ["item:type:shield"]
+            },
+            "choices": {
+              "filter": [
+                {
+                  "not": "item:magical"
+                }
+              ],
+              "itemType": "shield"
+            },
+            "flag": "shieldImplement",
+            "key": "ChoiceSet",
+            "prompt": "PF2E.SpecificRule.Thaumaturge.Implement.Shield.Prompt"
+          },
+          {
+            "flag": "shieldImplement",
+            "key": "GrantItem",
+            "track": true,
+            "uuid": "{item|flags.system.rulesSelections.shieldImplement}"
+          },
+          {
+            "key": "ActiveEffectLike",
+            "mode": "override",
+            "path": "flags.system.thaumaturge.shieldImplement",
+            "priority": 5,
+            "value": "{item|flags.system.itemGrants.shieldImplement.id}"
+          },
+          {
+            "key": "RollOption",
+            "option": "implement-held",
+            "predicate": ["shield-implement:equipped"]
+          },
+          {
+            "key": "RollOption",
+            "option": "implement:shield:equipped",
+            "predicate": ["shield-implement:equipped"]
+          },
+          {
+            "itemId": "{item|flags.system.itemGrants.shieldImplement.id}",
+            "key": "ItemAlteration",
+            "mode": "add",
+            "property": "description",
+            "value": [
+              {
+                "divider": true,
+                "text": "@Embed[Compendium.pf2e.classfeatures.Item.84GDSAXaMKMTg2IT inline]"
+              }
+            ]
+          },
+          {
+            "key": "ActiveEffectLike",
+            "mode": "override",
+            "path": "flags.system.thaumaturge.initiateBenefit",
+            "predicate": ["feat:thaumaturge-dedication"],
+            "value": "Compendium.pf2e.classfeatures.Item.Initiate Benefit (Shield)"
+          },
+          {
+            "key": "GrantItem",
+            "predicate": ["class:thaumaturge"],
+            "uuid": "Compendium.pf2e.classfeatures.Item.Initiate Benefit (Shield)"
+          },
+          {
+            "key": "ActiveEffectLike",
+            "mode": "add",
+            "path": "flags.system.thaumaturge.adeptChoices",
+            "predicate": ["class:thaumaturge"],
+            "priority": 20,
+            "value": {
+              "label": "{item|name}",
+              "predicate": [
+                {
+                  "not": "feature:adept-benefit-shield"
+                }
+              ],
+              "value": "Compendium.pf2e.classfeatures.Item.Adept Benefit (Shield)"
+            }
+          }
+        ],
+        "traits": {
+          "otherTags": ["thaumaturge-implement"],
+          "rarity": "common",
+          "value": ["thaumaturge"]
+        },
+        "level": {
+          "value": 1
+        }
+      }
+    },
+    "Compendium.pf2e.classfeatures.Item.MyN1cQgE0HsLF20e": {
+      "_id": "MyN1cQgE0HsLF20e",
+      "name": "Tome",
+      "type": "feat",
+      "system": {
+        "rules": [
+          {
+            "allowDuplicate": false,
+            "key": "GrantItem",
+            "uuid": "Compendium.pf2e.equipment-srd.Item.Tome Implement"
+          },
+          {
+            "key": "ActiveEffectLike",
+            "mode": "override",
+            "path": "flags.system.thaumaturge.initiateBenefit",
+            "predicate": ["feat:thaumaturge-dedication"],
+            "value": "Compendium.pf2e.classfeatures.Item.Initiate Benefit (Tome)"
+          },
+          {
+            "key": "GrantItem",
+            "predicate": ["class:thaumaturge"],
+            "uuid": "Compendium.pf2e.classfeatures.Item.Initiate Benefit (Tome)"
+          },
+          {
+            "key": "ActiveEffectLike",
+            "mode": "add",
+            "path": "flags.system.thaumaturge.adeptChoices",
+            "predicate": ["class:thaumaturge"],
+            "priority": 20,
+            "value": {
+              "label": "{item|name}",
+              "predicate": [
+                {
+                  "not": "feature:adept-benefit-tome"
+                }
+              ],
+              "value": "Compendium.pf2e.classfeatures.Item.Adept Benefit (Tome)"
+            }
+          }
+        ],
+        "traits": {
+          "otherTags": ["thaumaturge-implement"],
+          "rarity": "common",
+          "value": ["thaumaturge"]
+        },
+        "level": {
+          "value": 1
+        }
+      }
+    },
+    "Compendium.pf2e.classfeatures.Item.pDxdE8S8QJV2PGiB": {
+      "_id": "pDxdE8S8QJV2PGiB",
+      "name": "Wand",
+      "type": "feat",
+      "system": {
+        "rules": [
+          {
+            "allowDuplicate": false,
+            "key": "GrantItem",
+            "uuid": "Compendium.pf2e.equipment-srd.Item.Wand Implement"
+          },
+          {
+            "key": "ActiveEffectLike",
+            "mode": "override",
+            "path": "flags.system.thaumaturge.initiateBenefit",
+            "predicate": ["feat:thaumaturge-dedication"],
+            "value": "Compendium.pf2e.classfeatures.Item.Initiate Benefit (Wand)"
+          },
+          {
+            "key": "GrantItem",
+            "predicate": ["class:thaumaturge"],
+            "uuid": "Compendium.pf2e.classfeatures.Item.Initiate Benefit (Wand)"
+          },
+          {
+            "key": "ActiveEffectLike",
+            "mode": "add",
+            "path": "flags.system.thaumaturge.adeptChoices",
+            "predicate": ["class:thaumaturge"],
+            "priority": 20,
+            "value": {
+              "label": "{item|name}",
+              "predicate": [
+                {
+                  "not": "feature:adept-benefit-wand"
+                }
+              ],
+              "value": "Compendium.pf2e.classfeatures.Item.Adept Benefit (Wand)"
+            }
+          }
+        ],
+        "traits": {
+          "otherTags": ["thaumaturge-implement"],
+          "rarity": "common",
+          "value": ["thaumaturge"]
+        },
+        "level": {
+          "value": 1
+        }
+      }
+    },
+    "Compendium.pf2e.classfeatures.Item.YiDkrwaxiF7Gao7y": {
+      "_id": "YiDkrwaxiF7Gao7y",
+      "name": "Weapon",
+      "type": "feat",
+      "system": {
+        "rules": [
+          {
+            "adjustName": false,
+            "allowedDrops": {
+              "label": "PF2E.SpecificRule.AllowedDrops.OneHandedWeapon",
+              "predicate": [
+                "item:usage:hands:1",
+                {
+                  "not": "item:trait:consumable"
+                }
+              ]
+            },
+            "choices": {
+              "filter": [
+                "item:usage:hands:1",
+                {
+                  "nor": ["item:magical", "item:trait:consumable"]
+                }
+              ],
+              "itemType": "weapon"
+            },
+            "flag": "weaponImplement",
+            "key": "ChoiceSet",
+            "prompt": "PF2E.SpecificRule.Prompt.Weapon"
+          },
+          {
+            "flag": "weaponImplement",
+            "key": "GrantItem",
+            "track": true,
+            "uuid": "{item|flags.system.rulesSelections.weaponImplement}"
+          },
+          {
+            "key": "ActiveEffectLike",
+            "mode": "override",
+            "path": "flags.system.thaumaturge.weaponImplement",
+            "priority": 5,
+            "value": "{item|flags.system.itemGrants.weaponImplement.id}"
+          },
+          {
+            "key": "RollOption",
+            "option": "implement-held",
+            "predicate": ["weapon-implement:equipped"]
+          },
+          {
+            "key": "RollOption",
+            "option": "implement:weapon:equipped",
+            "predicate": ["weapon-implement:equipped"]
+          },
+          {
+            "itemId": "{item|flags.system.itemGrants.weaponImplement.id}",
+            "key": "ItemAlteration",
+            "mode": "add",
+            "property": "description",
+            "value": [
+              {
+                "divider": true,
+                "text": "@Embed[Compendium.pf2e.classfeatures.Item.YiDkrwaxiF7Gao7y inline]"
+              }
+            ]
+          },
+          {
+            "key": "ActiveEffectLike",
+            "mode": "override",
+            "path": "flags.system.thaumaturge.initiateBenefit",
+            "predicate": ["feat:thaumaturge-dedication"],
+            "value": "Compendium.pf2e.classfeatures.Item.Initiate Benefit (Weapon)"
+          },
+          {
+            "key": "GrantItem",
+            "predicate": ["class:thaumaturge"],
+            "uuid": "Compendium.pf2e.classfeatures.Item.Initiate Benefit (Weapon)"
+          },
+          {
+            "key": "ActiveEffectLike",
+            "mode": "add",
+            "path": "flags.system.thaumaturge.adeptChoices",
+            "predicate": ["class:thaumaturge"],
+            "priority": 20,
+            "value": {
+              "label": "{item|name}",
+              "predicate": [
+                {
+                  "not": "feature:adept-benefit-weapon"
+                }
+              ],
+              "value": "Compendium.pf2e.classfeatures.Item.Adept Benefit (Weapon)"
+            }
+          }
+        ],
+        "traits": {
+          "otherTags": ["thaumaturge-implement"],
+          "rarity": "common",
+          "value": ["thaumaturge"]
+        },
+        "level": {
+          "value": 1
+        }
+      }
+    },
+    "Compendium.pf2e.classfeatures.Item.VSQJtzQE6ikKdsnP": {
+      "_id": "VSQJtzQE6ikKdsnP",
+      "name": "First Implement and Esoterica",
+      "type": "feat",
+      "system": {
+        "rules": [
+          {
+            "key": "ActiveEffectLike",
+            "mode": "override",
+            "path": "flags.system.thaumaturge.adeptChoices",
+            "priority": 10,
+            "value": []
+          },
+          {
+            "adjustName": false,
+            "choices": {
+              "filter": ["item:tag:thaumaturge-implement"]
+            },
+            "flag": "implement",
+            "key": "ChoiceSet",
+            "prompt": "PF2E.SpecificRule.Prompt.FirstImplement"
+          },
+          {
+            "key": "GrantItem",
+            "uuid": "{item|flags.system.rulesSelections.implement}"
+          }
+        ],
+        "traits": {
+          "rarity": "common",
+          "value": ["thaumaturge"]
+        },
+        "level": {
+          "value": 1
+        }
+      }
+    },
+    "Compendium.pf2e.classfeatures.Item.Z8WpDAdAXyefLB7Q": {
+      "_id": "Z8WpDAdAXyefLB7Q",
+      "name": "Second Implement",
+      "type": "feat",
+      "system": {
+        "rules": [
+          {
+            "adjustName": false,
+            "choices": {
+              "filter": ["item:tag:thaumaturge-implement"]
+            },
+            "flag": "implement",
+            "key": "ChoiceSet",
+            "prompt": "PF2E.SpecificRule.Prompt.SecondImplement"
+          },
+          {
+            "key": "GrantItem",
+            "uuid": "{item|flags.system.rulesSelections.implement}"
+          }
+        ],
+        "traits": {
+          "rarity": "common",
+          "value": ["thaumaturge"]
+        },
+        "level": {
+          "value": 5
+        }
+      }
+    },
+    "Compendium.pf2e.equipment-srd.Item.GbR8rgZMCVBn3Evb": {
+      "_id": "GbR8rgZMCVBn3Evb",
+      "name": "Amulet Implement",
+      "type": "equipment",
+      "system": {
+        "rules": [
+          {
+            "key": "RollOption",
+            "option": "implement-held"
+          },
+          {
+            "key": "RollOption",
+            "option": "implement:amulet:equipped"
+          }
+        ],
+        "traits": {
+          "rarity": "common",
+          "value": []
+        },
+        "level": {
+          "value": 0
+        },
+        "quantity": 1,
+        "price": {
+          "value": {}
+        },
+        "usage": {
+          "value": "held-in-one-hand"
+        }
+      }
+    },
+    "Compendium.pf2e.equipment-srd.Item.f0A1zqCFiUJuXc9U": {
+      "_id": "f0A1zqCFiUJuXc9U",
+      "name": "Bell Implement",
+      "type": "equipment",
+      "system": {
+        "rules": [
+          {
+            "key": "RollOption",
+            "option": "implement-held"
+          },
+          {
+            "key": "RollOption",
+            "option": "implement:bell:equipped"
+          }
+        ],
+        "traits": {
+          "rarity": "common",
+          "value": []
+        },
+        "level": {
+          "value": 0
+        },
+        "quantity": 1,
+        "price": {
+          "value": {}
+        },
+        "usage": {
+          "value": "held-in-one-hand"
+        }
+      }
+    },
+    "Compendium.pf2e.equipment-srd.Item.FodtZGtCsH9NDXlC": {
+      "_id": "FodtZGtCsH9NDXlC",
+      "name": "Chalice Implement",
+      "type": "equipment",
+      "system": {
+        "rules": [
+          {
+            "key": "RollOption",
+            "option": "implement-held"
+          },
+          {
+            "key": "RollOption",
+            "option": "implement:chalice:equipped"
+          }
+        ],
+        "traits": {
+          "rarity": "common",
+          "value": []
+        },
+        "level": {
+          "value": 0
+        },
+        "quantity": 1,
+        "price": {
+          "value": {}
+        },
+        "usage": {
+          "value": "held-in-one-hand"
+        }
+      }
+    },
+    "Compendium.pf2e.equipment-srd.Item.AtiSK2lwEi25f3PT": {
+      "_id": "AtiSK2lwEi25f3PT",
+      "name": "Lantern Implement",
+      "type": "equipment",
+      "system": {
+        "rules": [
+          {
+            "key": "RollOption",
+            "option": "implement-held"
+          },
+          {
+            "key": "RollOption",
+            "option": "implement:lantern:equipped"
+          }
+        ],
+        "traits": {
+          "rarity": "common",
+          "value": []
+        },
+        "level": {
+          "value": 0
+        },
+        "quantity": 1,
+        "price": {
+          "value": {}
+        },
+        "usage": {
+          "value": "held-in-one-hand"
+        }
+      }
+    },
+    "Compendium.pf2e.equipment-srd.Item.NpNDlH8YE2i67vQV": {
+      "_id": "NpNDlH8YE2i67vQV",
+      "name": "Mirror Implement",
+      "type": "equipment",
+      "system": {
+        "rules": [
+          {
+            "key": "RollOption",
+            "option": "implement-held"
+          },
+          {
+            "key": "RollOption",
+            "option": "implement:mirror:equipped"
+          }
+        ],
+        "traits": {
+          "rarity": "common",
+          "value": []
+        },
+        "level": {
+          "value": 0
+        },
+        "quantity": 1,
+        "price": {
+          "value": {}
+        },
+        "usage": {
+          "value": "held-in-one-hand"
+        }
+      }
+    },
+    "Compendium.pf2e.equipment-srd.Item.7FzmHy7PugYNGkoX": {
+      "_id": "7FzmHy7PugYNGkoX",
+      "name": "Regalia Implement",
+      "type": "equipment",
+      "system": {
+        "rules": [
+          {
+            "key": "RollOption",
+            "option": "implement-held"
+          },
+          {
+            "key": "RollOption",
+            "option": "implement:regalia:equipped"
+          }
+        ],
+        "traits": {
+          "rarity": "common",
+          "value": []
+        },
+        "level": {
+          "value": 0
+        },
+        "quantity": 1,
+        "price": {
+          "value": {}
+        },
+        "usage": {
+          "value": "held-in-one-hand"
+        }
+      }
+    },
+    "Compendium.pf2e.equipment-srd.Item.V9mhR91d2qWa3dGh": {
+      "_id": "V9mhR91d2qWa3dGh",
+      "name": "Tome Implement",
+      "type": "equipment",
+      "system": {
+        "rules": [
+          {
+            "key": "RollOption",
+            "option": "implement-held"
+          },
+          {
+            "key": "RollOption",
+            "option": "implement:tome:equipped"
+          }
+        ],
+        "traits": {
+          "rarity": "common",
+          "value": []
+        },
+        "level": {
+          "value": 0
+        },
+        "quantity": 1,
+        "price": {
+          "value": {}
+        },
+        "usage": {
+          "value": "held-in-one-hand"
+        }
+      }
+    },
+    "Compendium.pf2e.equipment-srd.Item.ZjApNlusD5oZkPTJ": {
+      "_id": "ZjApNlusD5oZkPTJ",
+      "name": "Wand Implement",
+      "type": "equipment",
+      "system": {
+        "rules": [
+          {
+            "key": "RollOption",
+            "option": "implement-held"
+          },
+          {
+            "key": "RollOption",
+            "option": "implement:wand:equipped"
+          }
+        ],
+        "traits": {
+          "rarity": "common",
+          "value": []
+        },
+        "level": {
+          "value": 0
+        },
+        "quantity": 1,
+        "price": {
+          "value": {}
+        },
+        "usage": {
+          "value": "held-in-one-hand"
+        }
+      }
+    }
+  }
+}

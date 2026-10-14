@@ -9,6 +9,7 @@ import {
 import {
   assertPhysicalGrantRegistry,
   assertPhysicalGrantReportCurrent,
+  assertReviewedThaumaturgeRelationships,
   assertUnsupportedDiscoveryBindings,
   generatePhysicalGrantCoverage,
   renderPhysicalGrantReport,
@@ -39,7 +40,7 @@ describe("PF2E physical-grant registry", () => {
     reordered.routes.reverse();
 
     expect(renderPhysicalGrantReport(reordered)).toBe(rendered);
-    expect(rendered).toContain("| `supported-native` | 4 |");
+    expect(rendered).toContain("| `supported-native` | 20 |");
     expect(rendered).toContain("| `supported-wayfinder-acquisition` | 1 |");
     expect(rendered).toContain("| `unsupported-handoff` | 46 |");
     expect(rendered).toContain(
@@ -184,6 +185,66 @@ describe("PF2E physical-grant registry", () => {
     );
   });
 
+  test("reviews fixed implement source relationships independently of the level-1 discovery boundary", () => {
+    const registry = registryFixture();
+    const corpus = thaumaturgeCorpus(registry);
+
+    expect(() => assertReviewedThaumaturgeRelationships(registry, corpus)).not.toThrow();
+    expect(registry.routes.filter((entry: any) => entry.profileId?.startsWith("thaumaturge-"))).toHaveLength(16);
+    expect(registry.scanBoundary.exclusions[0]).toContain("sole reviewed level-5 exception");
+  });
+
+  test.each([
+    [
+      "class progression level",
+      (documents: any[]) => {
+        documents[0].system.items.second.level = 1;
+      },
+    ],
+    [
+      "selector query",
+      (documents: any[]) => {
+        documents[1].system.rules[0].choices.filter = ["item:tag:unrelated"];
+      },
+    ],
+    [
+      "duplicate physical grant",
+      (documents: any[]) => {
+        documents[3].system.rules[0].allowDuplicate = true;
+      },
+    ],
+    [
+      "conditional physical grant",
+      (documents: any[]) => {
+        documents[3].system.rules[0].predicate = ["unreviewed"];
+      },
+    ],
+    [
+      "equipment quantity",
+      (documents: any[]) => {
+        documents[4].system.quantity = 2;
+      },
+    ],
+    [
+      "equipment price",
+      (documents: any[]) => {
+        documents[4].system.price.value = { gp: 1 };
+      },
+    ],
+    [
+      "equipment nested grant",
+      (documents: any[]) => {
+        documents[4].system.rules.push({ key: "GrantItem", uuid: "unreviewed" });
+      },
+    ],
+  ])("rejects fixed implement source drift: %s", (_label, mutate) => {
+    const registry = registryFixture();
+    const corpus = thaumaturgeCorpus(registry);
+    mutate([...corpus.byUuid.values()]);
+
+    expect(() => assertReviewedThaumaturgeRelationships(registry, corpus)).toThrow(/relationship changed/u);
+  });
+
   test("delegates an exact clean pinned checkout to both scanner and row-evidence verification", async () => {
     const registry = registryFixture();
     const readGitState = vi.fn(async () => ({ commit: registry.source.commit, dirtyEntries: [] }));
@@ -268,6 +329,60 @@ describe("PF2E physical-grant registry", () => {
     expect(packageJson.scripts.check).toContain("npm run check:physical-grant-report");
   });
 });
+
+function thaumaturgeCorpus(registry: any) {
+  const profiles = registry.routes.filter((entry: any) => entry.profileId?.startsWith("thaumaturge-"));
+  const first = route(registry, "thaumaturge-amulet-implement-first");
+  const second = route(registry, "thaumaturge-amulet-implement-second");
+  const byUuid = new Map<string, any>();
+  byUuid.set(first.nodes[0], {
+    uuid: first.nodes[0],
+    system: {
+      items: {
+        first: { level: 1, uuid: first.nodes[1] },
+        second: { level: 5, uuid: second.nodes[1] },
+      },
+    },
+  });
+  for (const [profile, level] of [
+    [first, 1],
+    [second, 5],
+  ]) {
+    byUuid.set(profile.nodes[1], {
+      uuid: profile.nodes[1],
+      system: {
+        level: { value: level },
+        rules: [
+          { key: "ChoiceSet", flag: "implement", choices: { filter: ["item:tag:thaumaturge-implement"] } },
+          { key: "GrantItem", uuid: "{item|flags.system.rulesSelections.implement}" },
+        ],
+      },
+    });
+  }
+  for (const profile of profiles) {
+    const slug = profile.profileId.split("-")[1];
+    byUuid.set(profile.nodes[2], {
+      uuid: profile.nodes[2],
+      system: {
+        rules: [{ key: "GrantItem", uuid: profile.nodes[3], allowDuplicate: false }],
+        traits: { otherTags: ["thaumaturge-implement"] },
+      },
+    });
+    byUuid.set(profile.nodes[3], {
+      uuid: profile.nodes[3],
+      type: "equipment",
+      system: {
+        quantity: 1,
+        price: { value: {} },
+        rules: [
+          { key: "RollOption", option: "implement-held" },
+          { key: "RollOption", option: `implement:${slug}:equipped` },
+        ],
+      },
+    });
+  }
+  return { byUuid };
+}
 
 function normalizeRegistryRoute(route: any) {
   return {

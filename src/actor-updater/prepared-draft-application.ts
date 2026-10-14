@@ -79,6 +79,10 @@ import { DEFAULT_CREATE_DEPS } from "./selection-source-application.js";
 import { applySingletonChoiceDraft } from "./singleton-choice-application.js";
 import { applySpellChoiceDraft } from "./spell-choice-application.js";
 import { spellLocationId } from "./spellcasting-entry-support.js";
+import {
+  isThaumaturgeNativeLoreExpectation,
+  thaumaturgeNativeLoreSourceSelection,
+} from "./thaumaturge-native-lore-profile.js";
 import { applyTrainingDraft, buildTrainingActorUpdate } from "./training-application.js";
 
 const FOUNDATION_ITEM_TYPES = new Set(["ancestry", "heritage", "background", "class"]);
@@ -1321,6 +1325,7 @@ function verifyPreparedOutcome(prepared: PreparedDraftApplication): void {
 
 function verifyTrainingLoreOutcomes(prepared: PreparedDraftApplication, actorItems: ActorItemLike[]): void {
   const expectedByName = new Map<string, { name: string; slotId: string; key: string }>();
+  const hasNativeEsotericLore = prepared.requiredBeforeSkillGrants.some(isThaumaturgeNativeLoreExpectation);
   for (const step of prepared.steps) {
     if (step.kind !== "skill-training") continue;
     const training = prepared.draft.skillTrainings[step.slotId];
@@ -1333,6 +1338,9 @@ function verifyTrainingLoreOutcomes(prepared: PreparedDraftApplication, actorIte
       }),
     ]) {
       const normalizedName = normalizeLoreName(entry.name);
+      if (hasNativeEsotericLore && entry.key.startsWith("fixed:") && normalizedName.toLowerCase() === "esoteric lore") {
+        continue;
+      }
       expectedByName.set(normalizedName.toLowerCase(), {
         name: normalizedName,
         slotId: step.slotId,
@@ -1461,6 +1469,24 @@ async function prepareSourceCatalog(
     sourcesByKey.set(sourceCatalogKey(selection), cloneData(source));
     if (!sourcesByUuid.has(selection.uuid)) sourcesByUuid.set(selection.uuid, cloneData(source));
     skillSources.push({ selection: cloneData(selection), source: cloneData(source) });
+    const nativeLoreSelection = thaumaturgeNativeLoreSourceSelection({
+      sourceId: selection.uuid,
+      document: source,
+    });
+    if (nativeLoreSelection) {
+      const retainedLore = !isActiveMaterializedSource
+        ? (listActorItems(actor) as ActorItemLike[]).find((item) => itemMatchesSourceId(item, nativeLoreSelection.uuid))
+        : null;
+      const loreSource = retainedLore
+        ? snapshotActorItemSource(retainedLore)
+        : (await deps.fetchSelectionDocument(nativeLoreSelection))?.toObject();
+      if (!loreSource) {
+        throw new Error("Cannot prepare Thaumaturge native Esoteric Lore: its exact source could not be inspected.");
+      }
+      // PF2E owns this child. Inspect its exact skill rule without adding a
+      // materialized or expected selection to Wayfinder's grant catalog.
+      skillSources.push({ selection: nativeLoreSelection, source: cloneData(loreSource) });
+    }
     if (!documentsByUuid.has(selection.uuid)) {
       const targetSource = isActiveMaterializedSource ? source : (existingSource ?? document?.toObject() ?? source);
       documentsByUuid.set(selection.uuid, cloneData(targetSource));

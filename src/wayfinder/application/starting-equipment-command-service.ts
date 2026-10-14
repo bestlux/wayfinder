@@ -24,7 +24,7 @@ import type {
   AcquisitionLineDraft,
   AcquisitionRecipeSelectionProvenanceV1,
 } from "../domain/acquisition-types.js";
-import { createPreparedClassGrantPlan, type PlannedClassGrantV1 } from "../domain/class-grant-reconciliation.js";
+import { createPreparedClassGrantPlan } from "../domain/class-grant-reconciliation.js";
 import type {
   EquipmentHigherLevelStartClaim,
   EquipmentHigherLevelStartEvidence,
@@ -59,6 +59,7 @@ import {
   saveTrustedEquipmentPolicyJudgment,
   saveTrustedEquipmentPolicyRequestDecline,
 } from "./equipment-policy-service.js";
+import { synchronizeNativeGrantLines } from "./native-class-grant-synchronization-service.js";
 import {
   StartingEquipmentCommandBlockedError,
   StartingEquipmentPhysicalGrantCoverageError,
@@ -1088,68 +1089,6 @@ function setLineQuantity(draft: AcquisitionDraftState, lineId: string, quantity:
   const lines = [...draft.lines];
   lines[index] = { ...current, price: price.value };
   return invalidateAcquisitionReview({ ...draft, lines }, ["quantity"]);
-}
-
-function synchronizeNativeGrantLines(
-  draft: AcquisitionDraftState,
-  priorPlannedClassGrants: readonly PlannedClassGrantV1[],
-  preparedLines: readonly AcquisitionLineDraft[],
-  invalidateReview: boolean
-): AcquisitionDraftState {
-  const priorNativeGrantIds = new Set(
-    priorPlannedClassGrants.filter((grant) => grant.materializer === "pf2e-native").map((grant) => grant.grantId)
-  );
-  const currentNativeGrantIds = new Set(
-    draft.plannedClassGrants.filter((grant) => grant.materializer === "pf2e-native").map((grant) => grant.grantId)
-  );
-  const preparedByGrantId = new Map<string, AcquisitionLineDraft>();
-  for (const line of preparedLines) {
-    if (line.funding.lane !== "class-grant") {
-      throw new TypeError("Native class-grant preparation returned a non-grant acquisition line.");
-    }
-    const grantId = line.funding.grant.plannedGrantId;
-    if (!currentNativeGrantIds.has(grantId) || preparedByGrantId.has(grantId)) {
-      throw new TypeError("Native class-grant preparation returned an invalid or duplicate grant line.");
-    }
-    preparedByGrantId.set(grantId, line);
-  }
-  if (preparedByGrantId.size !== currentNativeGrantIds.size) {
-    throw new TypeError("Native class-grant preparation did not cover every current native grant.");
-  }
-
-  const emitted = new Set<string>();
-  const lines: AcquisitionLineDraft[] = [];
-  for (const line of draft.lines) {
-    const grantId = line.funding.lane === "class-grant" ? line.funding.grant.plannedGrantId : null;
-    if (grantId && (priorNativeGrantIds.has(grantId) || currentNativeGrantIds.has(grantId))) {
-      const replacement = preparedByGrantId.get(grantId);
-      if (replacement && !emitted.has(grantId)) {
-        lines.push(replacement);
-        emitted.add(grantId);
-      }
-      continue;
-    }
-    lines.push(line);
-  }
-  for (const [grantId, line] of preparedByGrantId) {
-    if (!emitted.has(grantId)) lines.push(line);
-  }
-  if (canonicalJson(draft.lines) === canonicalJson(lines)) return draft;
-  const acquisition = normalizeAcquisitionDraft({ ...draft, lines });
-  if (!acquisition) throw new TypeError("Native class-grant preparation returned malformed acquisition lines.");
-  return invalidateReview ? invalidateAcquisitionReview(acquisition, ["document"]) : acquisition;
-}
-
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (value !== null && typeof value === "object") {
-    const input = value as Record<string, unknown>;
-    return `{${Object.keys(input)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${canonicalJson(input[key])}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
 }
 
 function requireAcquisition(draft: DraftState): AcquisitionDraftState {

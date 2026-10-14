@@ -4,6 +4,7 @@ import { queueRuleSelectionUpdate } from "../shared/pf2e-item-source.js";
 import { resolveSingletonChoiceSkillGrant } from "../shared/singleton-choice-skill-grants.js";
 import { itemMatchesSourceId } from "../shared/source-id.js";
 import { compileSkillProgression, } from "../wayfinder/domain/skill-progression.js";
+import { isThaumaturgeNativeLoreExpectation } from "./thaumaturge-native-lore-profile.js";
 const SKILL_PROGRESSION_CHANGED_MESSAGE = "Skill progression changed during Apply; reopen Wayfinder and review the affected choices.";
 export async function applyTrainingDraft(actor, draft, steps, options = {}) {
     const actorItems = listActorItems(actor);
@@ -30,6 +31,7 @@ export async function applyTrainingDraft(actor, draft, steps, options = {}) {
     const updatesByItemId = new Map();
     const desiredTrainingLores = new Map();
     const activeTrainingSlotIds = new Set();
+    const hasNativeEsotericLore = options.requiredBeforeSkillGrants?.some(isThaumaturgeNativeLoreExpectation) ?? false;
     for (const step of steps) {
         if (step.kind !== "skill-training") {
             continue;
@@ -51,6 +53,8 @@ export async function applyTrainingDraft(actor, draft, steps, options = {}) {
             if (!normalizedLore) {
                 continue;
             }
+            if (hasNativeEsotericLore && normalizedLore.toLowerCase() === "esoteric lore")
+                continue;
             desiredTrainingLores.set(`${slotId}:fixed:${index}`, {
                 slotId,
                 key: `fixed:${index}`,
@@ -83,7 +87,7 @@ export async function applyTrainingDraft(actor, draft, steps, options = {}) {
         typeof actor.update === "function") {
         await actor.update(actorUpdate);
     }
-    await reconcileTrainingLore(actor, actorItems, Array.from(desiredTrainingLores.values()), activeTrainingSlotIds);
+    await reconcileTrainingLore(actor, actorItems, Array.from(desiredTrainingLores.values()), activeTrainingSlotIds, hasNativeEsotericLore ? new Set(["esoteric lore"]) : new Set());
     return { ...progression.finalRanks };
 }
 export function collectAppliedSkillSourceGrants(actor, draft, steps) {
@@ -242,7 +246,7 @@ function queueTrainingRuleSelectionUpdate(actorItems, updatesByItemId, persisten
     }
     queueRuleSelectionUpdate(updatesByItemId, item, persistence.sourceRuleIndex, flag, selection);
 }
-async function reconcileTrainingLore(actor, actorItems, desiredEntries, activeTrainingSlotIds) {
+async function reconcileTrainingLore(actor, actorItems, desiredEntries, activeTrainingSlotIds, preservedLoreNames) {
     const desiredByName = new Map();
     for (const entry of desiredEntries) {
         const normalizedName = normalizeLoreName(entry.name);
@@ -261,6 +265,7 @@ async function reconcileTrainingLore(actor, actorItems, desiredEntries, activeTr
         .filter((item) => {
         const moduleFlags = item.flags?.[MODULE_ID];
         return (activeTrainingSlotIds.has(String(moduleFlags?.slotId ?? "")) &&
+            !preservedLoreNames.has((normalizeLoreName(item.name ?? "") ?? "").toLowerCase()) &&
             !desiredBySlotKey.has(`${String(moduleFlags?.slotId ?? "")}:${String(moduleFlags?.trainingKey ?? "")}`));
     })
         .map((item) => item.id)

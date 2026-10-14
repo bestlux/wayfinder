@@ -1,4 +1,4 @@
-import { supportedPhysicalGrantRoute, } from "./physical-grant-route-registry.js";
+import { physicalGrantRouteById, supportedPhysicalGrantRoute, } from "./physical-grant-route-registry.js";
 import { SEMANTIC_WEALTH_POLICY } from "./semantic-wealth-policy.js";
 export { CLASS_GRANT_PROFILE_UUIDS, } from "./physical-grant-route-registry.js";
 const preparedPlans = new WeakSet();
@@ -420,11 +420,10 @@ function failure(code, message) {
     return { ok: false, code, message };
 }
 function isProfileId(value) {
-    return (value === "alchemist-formula-book" ||
-        value === "investigator-alchemical-sciences-formula-book" ||
-        value === "giant-instinct-titan-mauler" ||
-        value === "dwarf-clan-dagger" ||
-        value === "sarangay-head-gem");
+    if (typeof value !== "string")
+        return false;
+    const route = physicalGrantRouteById(value);
+    return route !== null && route.classification !== "unsupported-handoff";
 }
 function safeNonNegativeInteger(value) {
     return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;

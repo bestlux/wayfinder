@@ -56,6 +56,21 @@ const UUIDS = CLASS_GRANT_PROFILE_UUIDS;
 const RUNTIME_ROUTES_BY_ID = new Map(
   PHYSICAL_GRANT_ROUTE_REGISTRY.map((route) => [route.routeId, route]),
 );
+const THAUMATURGE_CLASS_UUID = "Compendium.pf2e.classes.Item.Y5GsHqzCzJlKka6x";
+const THAUMATURGE_IMPLEMENT_ORIGINS = Object.freeze({
+  first: {
+    level: 1,
+    slotId: "class-branch-first-implement-and-esoterica-level-1",
+    sourceUuid: "Compendium.pf2e.classfeatures.Item.VSQJtzQE6ikKdsnP",
+  },
+  second: {
+    level: 5,
+    slotId: "class-branch-second-implement-level-5",
+    sourceUuid: "Compendium.pf2e.classfeatures.Item.Z8WpDAdAXyefLB7Q",
+  },
+});
+const THAUMATURGE_FIXED_IMPLEMENT_PROFILE =
+  /^thaumaturge-(amulet|bell|chalice|lantern|mirror|regalia|tome|wand)-implement-(first|second)$/u;
 
 export async function readPhysicalGrantRegistry(registryPath = DEFAULT_PHYSICAL_GRANT_REGISTRY_PATH) {
   const source = await readFile(registryPath, "utf8");
@@ -519,6 +534,7 @@ export async function verifyPhysicalGrantSourceEvidence({ pf2eRepo, registry, sc
     for (const check of route.semanticChecks) assertSemanticCheck(corpus, route.routeId, check);
   }
   assertReviewedDynamicRelationships(registry, corpus);
+  assertReviewedThaumaturgeRelationships(registry, corpus);
   assertSupportedDiscoveryBindings(registry, scan, corpus);
   assertUnsupportedDiscoveryBindings(registry, scan);
 }
@@ -597,12 +613,14 @@ function assertDocumentLink(corpus, routeId, link) {
         ? source.system?.description
         : source.system?.rules;
   const candidates = collectStrings(material);
+  const namedUuid = `Compendium.pf2e.${target.pack}.Item.${target.name}`;
   if (
     !candidates.some(
       (candidate) =>
         candidate === target._id ||
         candidate === target.name ||
         candidate === target.uuid ||
+        candidate === namedUuid ||
         candidate.includes(target.uuid),
     )
   ) {
@@ -708,6 +726,67 @@ function assertDynamicChoiceRelationship(
   }
 }
 
+export function assertReviewedThaumaturgeRelationships(registry, corpus) {
+  for (const route of registry.routes) {
+    const match = THAUMATURGE_FIXED_IMPLEMENT_PROFILE.exec(route.profileId ?? "");
+    if (!match) continue;
+    const origin = THAUMATURGE_IMPLEMENT_ORIGINS[match[2]];
+    const [terminalUuid] = route.terminalSourceUuids;
+    const featureUuid = route.nodes[2];
+    if (
+      stableJson(route.nodes) !==
+        stableJson([THAUMATURGE_CLASS_UUID, origin.sourceUuid, featureUuid, terminalUuid]) ||
+      stableJson(route.draftSlots) !== stableJson([origin.slotId])
+    ) {
+      throw new Error(`Physical-grant route ${route.routeId} has an unreviewed implement origin.`);
+    }
+    const classDocument = requireDocument(corpus.byUuid, THAUMATURGE_CLASS_UUID, route.routeId);
+    const selector = requireDocument(corpus.byUuid, origin.sourceUuid, route.routeId);
+    const classEntries = Object.values(classDocument.system?.items ?? {}).filter(
+      (entry) =>
+        entry?.level === origin.level &&
+        [selector.uuid, `Compendium.pf2e.classfeatures.Item.${selector.name}`].includes(entry.uuid),
+    );
+    if (classEntries.length !== 1 || selector.system?.level?.value !== origin.level) {
+      throw new Error(`Physical-grant route ${route.routeId} class progression relationship changed.`);
+    }
+    assertDynamicChoiceRelationship(corpus, {
+      choiceUuid: origin.sourceUuid,
+      filterToken: "item:tag:thaumaturge-implement",
+      flag: "implement",
+      routeId: route.routeId,
+      selectedTag: "thaumaturge-implement",
+      selectedUuid: featureUuid,
+    });
+    const feature = requireDocument(corpus.byUuid, featureUuid, route.routeId);
+    const terminal = requireDocument(corpus.byUuid, terminalUuid, route.routeId);
+    const physicalGrants = (feature.system?.rules ?? []).filter(
+      (rule) =>
+        rule?.key === "GrantItem" &&
+        [terminal.uuid, `Compendium.pf2e.equipment-srd.Item.${terminal.name}`].includes(rule.uuid),
+    );
+    const [grant] = physicalGrants;
+    const price = terminal.system?.price?.value;
+    if (
+      physicalGrants.length !== 1 ||
+      grant.allowDuplicate !== false ||
+      grant.predicate !== undefined ||
+      terminal.type !== "equipment" ||
+      terminal.system?.quantity !== 1 ||
+      stableJson(terminal.system?.rules) !== stableJson([
+        { key: "RollOption", option: "implement-held" },
+        { key: "RollOption", option: `implement:${match[1]}:equipped` },
+      ]) ||
+      !price ||
+      typeof price !== "object" ||
+      Array.isArray(price) ||
+      Object.values(price).some((value) => value !== 0)
+    ) {
+      throw new Error(`Physical-grant route ${route.routeId} fixed equipment grant relationship changed.`);
+    }
+  }
+}
+
 function assertSupportedDiscoveryBindings(registry, scan, corpus) {
   if (!Array.isArray(scan?.observedRoutes) || !Array.isArray(scan?.reachableDocumentUuids)) {
     throw new Error("PF2E scanner result is missing observedRoutes or reachableDocumentUuids.");
@@ -721,6 +800,12 @@ function assertSupportedDiscoveryBindings(registry, scan, corpus) {
     for (const uuid of route.nodes.filter(
       (entry) => !route.terminalSourceUuids.includes(entry),
     )) {
+      // Second Implement is explicitly source-reviewed at level 5 above. The
+      // discovery snapshot remains a level-1 scan and must not claim to see it.
+      if (
+        THAUMATURGE_FIXED_IMPLEMENT_PROFILE.test(route.profileId) &&
+        uuid === THAUMATURGE_IMPLEMENT_ORIGINS.second.sourceUuid
+      ) continue;
       if (!reachable.has(uuid)) {
         throw new Error(
           `Supported physical-grant profile ${route.profileId} source ${uuid} is not scanner-reachable.`,
@@ -736,6 +821,23 @@ function assertSupportedDiscoveryBindings(registry, scan, corpus) {
       nodes: route.nodes,
       terminalKind: "equipment",
       terminalUuid: route.terminalSourceUuids[0],
+    });
+  }
+  for (const route of supportedRoutes.filter((entry) =>
+    /^thaumaturge-(?:amulet|bell|chalice|lantern|mirror|regalia|tome|wand)-implement-first$/u.test(entry.profileId),
+  )) {
+    requireObservedRoute(scan.observedRoutes, {
+      label: `${route.profileId} fixed equipment`,
+      nodes: route.nodes.slice(2),
+      terminalKind: "equipment",
+      terminalUuid: route.terminalSourceUuids[0],
+    });
+  }
+  if (supportedRoutes.some((route) => THAUMATURGE_FIXED_IMPLEMENT_PROFILE.test(route.profileId))) {
+    requireObservedRoute(scan.observedRoutes, {
+      label: "Thaumaturge first implement selection",
+      nodes: [THAUMATURGE_CLASS_UUID, THAUMATURGE_IMPLEMENT_ORIGINS.first.sourceUuid],
+      terminalKind: "dynamic",
     });
   }
   requireObservedRoute(scan.observedRoutes, {

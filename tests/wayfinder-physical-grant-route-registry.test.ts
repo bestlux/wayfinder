@@ -36,8 +36,8 @@ const coverage = JSON.parse(readFileSync(resolve("docs/coverage/pf2e-8.4.1-level
 
 describe("physical-grant route registry", () => {
   it("exactly owns every pinned route classification and runtime activation fact", () => {
-    expect(PHYSICAL_GRANT_ROUTE_REGISTRY).toHaveLength(51);
-    expect(new Set(PHYSICAL_GRANT_ROUTE_REGISTRY.map((route) => route.routeId)).size).toBe(51);
+    expect(PHYSICAL_GRANT_ROUTE_REGISTRY).toHaveLength(67);
+    expect(new Set(PHYSICAL_GRANT_ROUTE_REGISTRY.map((route) => route.routeId)).size).toBe(67);
     expect(coverage.unclassifiedAdditions).toEqual([]);
 
     const expected = coverage.routes.map(normalizeCoverageRoute).sort(byRouteId);
@@ -46,12 +46,12 @@ describe("physical-grant route registry", () => {
   });
 
   it("partitions every route into one supported or unsupported runtime lane", () => {
-    expect(SUPPORTED_PHYSICAL_GRANT_ROUTES).toHaveLength(5);
+    expect(SUPPORTED_PHYSICAL_GRANT_ROUTES).toHaveLength(21);
     expect(UNSUPPORTED_PHYSICAL_GRANT_ROUTES).toHaveLength(46);
     expect([
       ...SUPPORTED_PHYSICAL_GRANT_ROUTES.map((route) => route.routeId),
       ...UNSUPPORTED_PHYSICAL_GRANT_ROUTES.map((route) => route.routeId),
-    ]).toHaveLength(51);
+    ]).toHaveLength(67);
   });
 
   it("explicitly dispositions every independently scanned route key", () => {
@@ -81,7 +81,7 @@ describe("physical-grant route registry", () => {
       (route) => route.classification === "supported-wayfinder-acquisition"
     );
 
-    expect(native).toHaveLength(4);
+    expect(native).toHaveLength(20);
     expect(native.every((route) => route.materializer === "pf2e-native")).toBe(true);
     expect(native.every((route) => route.expectedOutcome.acquisitionItemCreateCount === 0)).toBe(true);
     expect(native.every((route) => route.expectedOutcome.acquisitionStamped === false)).toBe(true);

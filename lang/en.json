@@ -1,5 +1,14 @@
 {
   "wayfinder-pf2e": {
+    "PickerUnavailable": {
+      "UnavailableSummary": "Unavailable in Wayfinder: {choices}",
+      "UnavailableTitle": "Unavailable in Wayfinder",
+      "NotGuided": "Not guided yet",
+      "ImplementHelp": "Choose a supported implement to continue.",
+      "UnreviewedImplementReason": "Wayfinder has not yet reviewed this implement's physical item grant. Choose a supported implement to continue.",
+      "WeaponReason": "Requires choosing a one-handed, nonmagical, nonconsumable weapon. Wayfinder cannot yet choose that physical item and safely track its grant.",
+      "ShieldReason": "Requires choosing a nonmagical shield. Wayfinder cannot yet choose that physical item and safely track its grant."
+    },
     "FeatTraits": {
       "Label": "Traits",
       "All": "All",
@@ -481,6 +490,8 @@
       "Status": {
         "AddedToCart": "Added to your cart.",
         "AlreadyOpen": "Your equipment step is already open.",
+        "NativeGrantBuildChanged": "The equipment granted by your class changed. Review starting equipment again before Apply.",
+        "NativeGrantVerificationFailed": "Wayfinder could not verify the equipment granted by your class. Check starting equipment before Apply.",
         "TargetLevelChanged": "Equipment is ready for your new level. Review your items and coin again before applying.",
         "TargetLevelChangedItems": "Equipment is ready for your new level. {count} previous item choices could not carry over. Review your cart and make any required item choices again before applying.",
         "AuthorityRevoked": "Equipment authority revoked. Apply is blocked until current approval is recorded.",

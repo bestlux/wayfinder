@@ -11,6 +11,7 @@ import {
   type SkillProgressionMode,
   type SkillSourceGrant,
 } from "../wayfinder/domain/skill-progression.js";
+import { isThaumaturgeNativeLoreExpectation } from "./thaumaturge-native-lore-profile.js";
 
 const SKILL_PROGRESSION_CHANGED_MESSAGE =
   "Skill progression changed during Apply; reopen Wayfinder and review the affected choices.";
@@ -58,6 +59,7 @@ export async function applyTrainingDraft(
   const updatesByItemId = new Map<string, Record<string, unknown>>();
   const desiredTrainingLores = new Map<string, { slotId: string; key: string; name: string }>();
   const activeTrainingSlotIds = new Set<string>();
+  const hasNativeEsotericLore = options.requiredBeforeSkillGrants?.some(isThaumaturgeNativeLoreExpectation) ?? false;
 
   for (const step of steps) {
     if (step.kind !== "skill-training") {
@@ -89,6 +91,8 @@ export async function applyTrainingDraft(
       if (!normalizedLore) {
         continue;
       }
+
+      if (hasNativeEsotericLore && normalizedLore.toLowerCase() === "esoteric lore") continue;
 
       desiredTrainingLores.set(`${slotId}:fixed:${index}`, {
         slotId,
@@ -131,7 +135,13 @@ export async function applyTrainingDraft(
     await actor.update(actorUpdate);
   }
 
-  await reconcileTrainingLore(actor, actorItems, Array.from(desiredTrainingLores.values()), activeTrainingSlotIds);
+  await reconcileTrainingLore(
+    actor,
+    actorItems,
+    Array.from(desiredTrainingLores.values()),
+    activeTrainingSlotIds,
+    hasNativeEsotericLore ? new Set(["esoteric lore"]) : new Set()
+  );
 
   return { ...progression.finalRanks };
 }
@@ -366,7 +376,8 @@ async function reconcileTrainingLore(
   actor: ActorLike,
   actorItems: ActorItemLike[],
   desiredEntries: Array<{ slotId: string; key: string; name: string }>,
-  activeTrainingSlotIds: ReadonlySet<string>
+  activeTrainingSlotIds: ReadonlySet<string>,
+  preservedLoreNames: ReadonlySet<string>
 ): Promise<void> {
   const desiredByName = new Map<string, { slotId: string; key: string; name: string }>();
   for (const entry of desiredEntries) {
@@ -392,6 +403,7 @@ async function reconcileTrainingLore(
       const moduleFlags = item.flags?.[MODULE_ID] as { slotId?: unknown; trainingKey?: unknown } | undefined;
       return (
         activeTrainingSlotIds.has(String(moduleFlags?.slotId ?? "")) &&
+        !preservedLoreNames.has((normalizeLoreName(item.name ?? "") ?? "").toLowerCase()) &&
         !desiredBySlotKey.has(`${String(moduleFlags?.slotId ?? "")}:${String(moduleFlags?.trainingKey ?? "")}`)
       );
     })

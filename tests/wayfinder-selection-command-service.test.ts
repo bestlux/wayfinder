@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createEmptyDraft } from "../src/draft-service";
-import type { PendingStep, SelectionRef } from "../src/types";
+import type { ClassChoiceStep, PendingStep, SelectionRef } from "../src/types";
 import {
   chooseSelectionOption,
   type SelectionCommandState,
@@ -10,7 +10,10 @@ import {
   toggleLanguageChoiceValue,
   toggleSpellChoiceSelection,
 } from "../src/wayfinder/application/selection-command-service";
+import { createPlannedClassGrant } from "../src/wayfinder/domain/class-grant-reconciliation";
+import { supportedPhysicalGrantRoute } from "../src/wayfinder/domain/physical-grant-route-registry";
 import { SLOT_IDS, SLOT_PREFIXES } from "../src/wayfinder/slot-ids";
+import { acquisitionFixture, acquisitionLine, acquisitionPrice } from "./fixtures/acquisition-fixture";
 
 describe("wayfinder selection command service", () => {
   it("stores an explicit class-archetype path and invalidates its downstream class policy", async () => {
@@ -859,6 +862,210 @@ describe("wayfinder selection command service", () => {
     expect(invalidatedSourceChoices).toEqual([{ sourceUuid, flag: "elementalInstinctElement" }]);
   });
 
+  describe.each([1, 5] as const)("reviewed Wand damage choice at level %i", (level) => {
+    it.each([
+      ["cold", "electricity"],
+      ["cold", "fire"],
+      ["electricity", "cold"],
+      ["electricity", "fire"],
+      ["fire", "cold"],
+      ["fire", "electricity"],
+    ])("switches %s to %s without clearing implement ancestors or native equipment", async (previous, next) => {
+      const step = wandDamageChoiceStep(level);
+      const { draft, state, deps } = wandDamageCommandFixture(step);
+      draft.classChoices[step.slotId] = previous;
+      const implementSelections = { ...draft.branchSelections };
+      const nativeAcquisition = draft.acquisition;
+      const acquisitionSnapshot = structuredClone(nativeAcquisition);
+
+      const result = await selectClassChoiceValue(state, step, next, deps);
+
+      expect(result).toMatchObject({ kind: "changed", shouldAdvance: true });
+      expect(draft.classChoices[step.slotId]).toBe(next);
+      expect(draft.classChoices[WAND_DEPENDENT_SLOT]).toBeUndefined();
+      expect(draft.classChoices[UNRELATED_CLASS_CHOICE_SLOT]).toBe("keep-me");
+      expect(draft.branchSelections).toEqual(implementSelections);
+      for (const [slotId, implement] of Object.entries(implementSelections)) {
+        expect(draft.branchSelections[slotId]).toBe(implement);
+      }
+      expect(draft.acquisition).toBe(nativeAcquisition);
+      expect(draft.acquisition).toEqual(acquisitionSnapshot);
+      expect(state.recentlyInvalidatedStepIds.has(step.slotId)).toBe(false);
+      expect(deps.invalidateClassChoicesBySourceChoice).toHaveBeenCalledExactlyOnceWith(
+        step.classChoice.sourceUuid,
+        "initiateBenefitWand"
+      );
+      expectNoBroadClassChoiceInvalidation(deps);
+    });
+
+    it.each([
+      "cold",
+      "electricity",
+      "fire",
+    ])("toggles off %s without clearing implement ancestors or native equipment", async (value) => {
+      const step = wandDamageChoiceStep(level);
+      const { draft, state, deps } = wandDamageCommandFixture(step);
+      draft.classChoices[step.slotId] = value;
+      const implementSelections = { ...draft.branchSelections };
+      const nativeAcquisition = draft.acquisition;
+      const acquisitionSnapshot = structuredClone(nativeAcquisition);
+
+      const result = await selectClassChoiceValue(state, step, value, deps);
+
+      expect(result).toMatchObject({ kind: "changed", shouldAdvance: false, shouldRender: true });
+      expect(draft.classChoices[step.slotId]).toBeUndefined();
+      expect(draft.classChoices[WAND_DEPENDENT_SLOT]).toBeUndefined();
+      expect(draft.classChoices[UNRELATED_CLASS_CHOICE_SLOT]).toBe("keep-me");
+      expect(draft.branchSelections).toEqual(implementSelections);
+      for (const [slotId, implement] of Object.entries(implementSelections)) {
+        expect(draft.branchSelections[slotId]).toBe(implement);
+      }
+      expect(draft.acquisition).toBe(nativeAcquisition);
+      expect(draft.acquisition).toEqual(acquisitionSnapshot);
+      expect(state.recentlyInvalidatedStepIds.has(step.slotId)).toBe(false);
+      expect(deps.invalidateClassChoicesBySourceChoice).toHaveBeenCalledExactlyOnceWith(
+        step.classChoice.sourceUuid,
+        "initiateBenefitWand"
+      );
+      expectNoBroadClassChoiceInvalidation(deps);
+    });
+
+    it("ignores an unrecognized damage value without changing the draft or invalidating dependents", async () => {
+      const step = wandDamageChoiceStep(level);
+      const { draft, state, deps } = wandDamageCommandFixture(step);
+      draft.classChoices[step.slotId] = "cold";
+      const snapshot = structuredClone(draft);
+
+      const result = await selectClassChoiceValue(state, step, "acid", deps);
+
+      expect(result).toMatchObject({ kind: "noop", shouldAdvance: false, shouldRender: false });
+      expect(draft).toEqual(snapshot);
+      expect(state.recentlyInvalidatedStepIds.has(step.slotId)).toBe(true);
+      expect(deps.invalidateClassChoicesBySourceChoice).not.toHaveBeenCalled();
+      expectNoBroadClassChoiceInvalidation(deps);
+    });
+  });
+
+  it.each<[string, (step: ClassChoiceStep) => void]>([
+    [
+      "unrecognized source UUID",
+      (step) => {
+        step.classChoice.sourceUuid = "Compendium.pf2e.classfeatures.Item.unknown";
+      },
+    ],
+    [
+      "unrecognized source pack",
+      (step) => {
+        step.classChoice.sourcePackId = "custom.classfeatures";
+      },
+    ],
+    [
+      "unrecognized source document",
+      (step) => {
+        step.classChoice.sourceDocumentId = "unknown";
+      },
+    ],
+    [
+      "unrecognized source rule",
+      (step) => {
+        step.classChoice.sourceRuleIndex = 0;
+      },
+    ],
+    [
+      "unrecognized step ID",
+      (step) => {
+        step.id = "class-choice-other-level-1";
+      },
+    ],
+    [
+      "unrecognized step slot",
+      (step) => {
+        step.slotId = "class-choice-other-level-1";
+      },
+    ],
+    [
+      "unrecognized choice slot",
+      (step) => {
+        step.classChoice.slotId = "class-choice-other-level-1";
+      },
+    ],
+    [
+      "unrecognized flag",
+      (step) => {
+        step.classChoice.flag = "otherWandDamage";
+      },
+    ],
+    [
+      "unrecognized roll option",
+      (step) => {
+        step.classChoice.rollOption = "other-wand-damage";
+      },
+    ],
+    [
+      "unrecognized class",
+      (step) => {
+        step.classChoice.classSlug = "wizard";
+      },
+    ],
+    [
+      "unrecognized dependency",
+      (step) => {
+        step.classChoice.dependsOn = "deity";
+      },
+    ],
+    [
+      "missing damage option",
+      (step) => {
+        step.classChoice.options.pop();
+      },
+    ],
+    [
+      "additional damage option",
+      (step) => {
+        step.classChoice.options.push({ value: "acid", label: "Acid", img: null, detail: null });
+      },
+    ],
+    [
+      "duplicate damage options",
+      (step) => {
+        step.classChoice.options[1] = { ...step.classChoice.options[0] };
+      },
+    ],
+    [
+      "unrecognized damage option",
+      (step) => {
+        step.classChoice.options[1].value = "acid";
+      },
+    ],
+    [
+      "unqualified step kind",
+      (step) => {
+        Object.assign(step, { kind: "pick-item" });
+      },
+    ],
+    [
+      "unqualified level",
+      (step) => {
+        Object.assign(step, { level: 9 });
+      },
+    ],
+  ])("keeps conservative class-choice invalidation for a Wand-like choice with %s", async (_name, mutate) => {
+    const step = wandDamageChoiceStep(1);
+    mutate(step);
+    const { draft, state, deps } = wandDamageCommandFixture(step);
+    draft.classChoices[step.slotId] = "cold";
+
+    const result = await selectClassChoiceValue(state, step, "fire", deps);
+
+    expect(result).toMatchObject({ kind: "changed", shouldAdvance: true });
+    expect(draft.classChoices[step.slotId]).toBe("fire");
+    expect(draft.branchSelections).toEqual({});
+    expect(deps.invalidateSelectionsByPrefix).toHaveBeenCalledExactlyOnceWith(SLOT_PREFIXES.classBranch);
+    expect(deps.invalidateGrantSelectionsBySource).toHaveBeenCalledExactlyOnceWith("classfeature");
+    expect(deps.invalidateFlagChoicesBySource).toHaveBeenCalledExactlyOnceWith("classfeature");
+    expect(deps.invalidateSpellChoicesByDependency).toHaveBeenCalledExactlyOnceWith("class-branch");
+  });
+
   it("rejects duplicate spell selections already chosen elsewhere", async () => {
     const draft = createEmptyDraft(1);
     draft.spellChoices["spell-choice-wizard-rank-1-level-1"] = [
@@ -1048,6 +1255,110 @@ describe("wayfinder selection command service", () => {
     expect(draft.spellChoices[step.slotId]?.map((entry) => entry.documentId)).toEqual(["guidance"]);
   });
 });
+
+const WAND_DAMAGE_SOURCE_UUID = "Compendium.pf2e.classfeatures.Item.YbRVsHfmhPXLfCTB";
+const WAND_DEPENDENT_SLOT = "class-choice-wand-dependent-level-5";
+const UNRELATED_CLASS_CHOICE_SLOT = "class-choice-unrelated-level-1";
+
+function wandDamageChoiceStep(level: 1 | 5): ClassChoiceStep {
+  const slotId = `class-choice-initiate-benefit-wand-initiateBenefitWand-level-${level}`;
+  return {
+    id: slotId,
+    level,
+    kind: "class-choice",
+    slotKind: "class-choice",
+    title: "Wand damage type",
+    description: "",
+    required: true,
+    slotId,
+    classChoice: {
+      slotId,
+      sourcePackId: "pf2e.classfeatures",
+      sourceDocumentId: "YbRVsHfmhPXLfCTB",
+      sourceUuid: WAND_DAMAGE_SOURCE_UUID,
+      sourceName: "Initiate Benefit (Wand)",
+      sourceRuleIndex: 1,
+      flag: "initiateBenefitWand",
+      rollOption: "wand-initiate-damage-type",
+      classSlug: "thaumaturge",
+      dependsOn: "class",
+      options: ["cold", "electricity", "fire"].map((value) => ({ value, label: value, img: null, detail: null })),
+    },
+  };
+}
+
+function wandDamageCommandFixture(step: ClassChoiceStep) {
+  const draft = createEmptyDraft(5);
+  const grants = (["first", "second"] as const).map((origin) => {
+    const wandOrigin = step.level === 5 ? "second" : "first";
+    const implement = origin === wandOrigin ? "wand" : "bell";
+    const profileId = `thaumaturge-${implement}-implement-${origin}` as const;
+    const route = supportedPhysicalGrantRoute(profileId)!;
+    const slotId = route.grant.originSourceSlotId!;
+    draft.branchSelections[slotId] = {
+      ...selection(slotId, "feat", route.grant.originSourceUuid.split(".").at(-1)!, implement),
+      packId: "pf2e.classfeatures",
+      uuid: route.grant.originSourceUuid,
+      level: origin === "first" ? 1 : 5,
+    };
+    return createPlannedClassGrant({
+      profileId,
+      grantId: route.grant.grantId!,
+      origin: { sourceSlotId: slotId, sourceUuid: route.grant.originSourceUuid },
+      granterSourceUuid: route.grant.granterSourceUuid,
+      expected: { sourceUuid: route.grant.expectedSourceUuid!, quantity: 1, itemType: "equipment" },
+      nativeGrantChainSourceUuids: route.grant.nativeGrantChainSourceUuids,
+      materializer: "pf2e-native",
+      eligibilityKind: "fixed-class-grant",
+      resaleRule: "normal",
+      eligibilityEvidence: { kind: "fixed-native-profile" },
+    });
+  });
+  draft.acquisition = acquisitionFixture({
+    plannedClassGrants: grants,
+    lines: [
+      ...grants.map((grant) =>
+        acquisitionLine({
+          lineId: `native:${grant.grantId}`,
+          sourceUuid: grant.expected.sourceUuid,
+          itemLevel: 0,
+          funding: { lane: "class-grant", grant: { plannedGrantId: grant.grantId } },
+          stackingIntent: "separate",
+          price: acquisitionPrice({ basePrice: { kind: "priced", value: {} }, sizeSensitive: false }),
+        })
+      ),
+      acquisitionLine({ lineId: "currency-purchase" }),
+    ],
+  }).draft;
+  draft.classChoices[WAND_DEPENDENT_SLOT] = "clear-me";
+  draft.classChoices[UNRELATED_CLASS_CHOICE_SLOT] = "keep-me";
+  const state = commandState(draft, { invalidatedSlotIds: [step.slotId] });
+  const deps = {
+    invalidateSelectionsByPrefix: vi.fn((prefix: string) => {
+      const invalidated = Object.keys(draft.branchSelections).filter((slotId) => slotId.startsWith(prefix));
+      for (const slotId of invalidated) delete draft.branchSelections[slotId];
+      return invalidated;
+    }),
+    invalidateBranchSelectionsByDependency: vi.fn(async (_dependency: "class" | "deity") => []),
+    invalidateClassChoicesBySourceChoice: vi.fn(async (sourceUuid: string, flag: string) => {
+      if (sourceUuid !== WAND_DAMAGE_SOURCE_UUID || flag !== "initiateBenefitWand") return [];
+      delete draft.classChoices[WAND_DEPENDENT_SLOT];
+      return [WAND_DEPENDENT_SLOT];
+    }),
+    invalidateGrantSelectionsBySource: vi.fn(async (_sourceItemType: "classfeature") => []),
+    invalidateFlagChoicesBySource: vi.fn(async (_sourceItemType: "classfeature") => []),
+    invalidateSpellChoicesByDependency: vi.fn(async (_dependency: "class-branch") => []),
+  };
+  return { draft, state, deps };
+}
+
+function expectNoBroadClassChoiceInvalidation(deps: ReturnType<typeof wandDamageCommandFixture>["deps"]): void {
+  expect(deps.invalidateSelectionsByPrefix).not.toHaveBeenCalled();
+  expect(deps.invalidateBranchSelectionsByDependency).not.toHaveBeenCalled();
+  expect(deps.invalidateGrantSelectionsBySource).not.toHaveBeenCalled();
+  expect(deps.invalidateFlagChoicesBySource).not.toHaveBeenCalled();
+  expect(deps.invalidateSpellChoicesByDependency).not.toHaveBeenCalled();
+}
 
 function commandState(
   draft = createEmptyDraft(1),

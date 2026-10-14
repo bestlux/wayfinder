@@ -1,6 +1,6 @@
 # Beta Readiness Foundry Smoke
 
-Last updated: 2026-10-07.
+Last updated: 2026-10-14.
 
 This is the launch-readiness live smoke layer for Wayfinder. It complements unit tests by exercising the built module inside a real Foundry world against live PF2E compendia.
 
@@ -46,6 +46,26 @@ The companion static class audit checks the maintained smoke matrix against the 
 ```powershell
 npm run audit:classes
 ```
+
+## 2026-10-14 Issue 46 Equipment comparison previews
+
+Starting Equipment now shows localized weapon damage and shield AC when raised in catalogue rows and detail facts. Comparison facts come from compendium indexes: browsing does not hydrate every result or calculate an actor's Strike damage. Striking is applied only to a qualified single-die source; multi-die weapons, flat bomb damage, persistent and splash effects, additional rules, alternate forms, and unsupported sources retain conservative summaries or fallbacks. Automatic Bonus Progression has separate explanatory copy. English/Chinese labels, accessible row names, narrow layouts, enlarged text, and virtual-list geometry are covered.
+
+Current PF2E 8.6.1 qualification exposed two Apply incompatibilities. Required nullable ancestry boost fields now clear with `null` when the native schema requires it, retaining legacy deletion behavior for older source-shaped systems. Commander's exact native Warfare Lore rule contributes its current-level preparation expectation; manual progression and unrelated rank-drift rejection remain intact. Installed Wizard and Commander creation and incremental 1-to-5 Apply/rerun cases passed. Nine nonpersistent native Commander observations at levels 1, 2, 3, 5, 6, 7, 14, 15, and 20 matched ranks 1, 1, 2, 2, 2, 3, 3, 4, and 4. Independent data, UI, ancestry, and Commander reviews were clean after corrections.
+
+Clean candidate `d8770584b00f9a2d658f1445f906d7000bd9dae7` passed `npm run check`: 214 suites / 2,555 tests, formatting, lint, build, generated-script synchronization, policy reports, and strict TypeScript checks. The unchanged clean PF2E 8.4.1 source pin `bf1502676d863c73d67fd615af78c73ff908c10f` passed the release-only physical-grant gate. The class audit retains its existing 27/29 coverage, with Necromancer and Runesmith gaps.
+
+Installed feature and WF-080-51 qualification used a separate loopback-only Foundry 14.367 / PF2E 8.6.1 world and the installed candidate. The focused run in `.wayfinder-smoke/issue46-focused-installed-0110-qualified-candidate` passed 49/49 checks and independently matched all 291 actual HTTP asset bodies to immutable candidate bytes before and after testing, without routing. It covered seven core equipment examples, four special source cases through indexes, English/Chinese at 1240, 980, and 760px, 200% text, a short 760-by-800px window, scrolling to preview/cart controls, accessible comparison labels, and separate ABP preview copy. Browsing preserved inventory, currency, draft selections, and acquisition identities. This does not claim a physical screen-reader session or that every existing footer caption fits the short enlarged-text viewport.
+
+Full WF-080-51 qualification in `.wayfinder-smoke/wf51-0110-issue46-qualified-candidate` passed all eleven children: 55 character executions / 54 unique scenarios, seven focused cases, both locales, and fifteen aggregate rows. The isolated world included a stable byte-matched copy of installed Battlezoo 2.9 for the maintained supplemental equipment cases. Earlier runs that exposed Commander incompatibility or lacked that prerequisite are diagnostic, not release evidence. A fresh post-test read-only check in `.wayfinder-smoke/issue46-final-boundary.json` confirmed the original party source hash, all five protected equipment/PF2E setting hashes, and original locale, with no browser errors or remaining fixtures.
+
+Two independent, sequential full equipment profiles used instrumentation and routed candidate assets with independent Git-byte checks. Each passed 840 measured interactions plus 56 warmups, with zero failures. Overall p95 was 51.1 / 49.3ms; the highest action-width p95 was 64.2 / 61.6ms, below the unchanged 75ms limit. Maximum measured DOM count was 798, below 850. Loading, index-only browsing, result-window geometry, rapid scrolling, genuine enrichment failure/recovery, and cleanup gates passed. The current core corpus contains 5,913 indexed records, 2,839 qualified level-5 records, and 1,149 default-shelf records. Rebaselining preserves the exact 36-ID shelf prefix and raises only the stale non-result chrome pin from 416 to the actual 424 measured for both published 0.10.5 and the candidate; row and total limits remain 12 and 850. Combined raw evidence is `.wayfinder-interaction/issue46-0110-equipment-evidence.json`.
+
+Qualified packaging in `dist/qualified-release` emitted 300 entries with ZIP SHA-256 `c92c181e87fa4ef32bcbbcbc087ead77da73cdbfac7b556ea834aff010cde307`. Independent audit checked every entry against immutable Git blobs, archive structure and CRCs, notices and exclusions, metadata and policy/evidence digests, every WF51 child result/log binding, 252 WF51 served files, focused installed provenance, and both raw performance runs. Evidence is under `.wayfinder-smoke/issue46-0110-independent-audit`.
+
+Tag `v0.11.0` and [release workflow `38619652635`](https://github.com/bestlux/wayfinder/actions/runs/38619652635) published that candidate on the first attempt. All three jobs passed, including CI's 2,540 tests passed / 15 browser tests skipped, Foundry dry run, and actual registration. Independent anonymous downloads verified identical qualified/versioned/latest/embedded manifests, the ZIP hash and all 300 entries, provider asset digests, package manifest, legal documents, and release notes. Remote master, the peeled tag, and workflow head matched at publication. Fresh [Foundry origin HTML](https://foundryvtt.com/packages/wayfinder-pf2e) confirmed 0.11.0 with its version-specific manifest and verified Foundry 14.367.
+
+The owned test server was stopped and its copied license file removed after verification. The primary Foundry server and its pre-existing rewritten manifest were preserved. The release was pushed directly from the isolated candidate worktree; this evidence record advances master after the immutable release tag. Issue #46 remains open; no issue comment or closure was part of this authorization.
 
 ## 2026-10-07 Issue 44 follow-up: saved start confirmation
 

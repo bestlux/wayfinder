@@ -26,6 +26,7 @@ import {
   resolveActiveClassArchetypeProfile,
   synchronizeRetainedClassArchetypeChoice,
 } from "../wayfinder/application/planned-static-skill-source-service.js";
+import { findThaumaturgeNativeSelectorRecovery } from "../wayfinder/application/thaumaturge-native-selector-recovery.js";
 import { inspectRetainedClassArchetypeProfileDocuments } from "../wayfinder/class-archetype/registry.js";
 import { assertVindicatorTracklessChoice } from "../wayfinder/class-archetype/vindicator.js";
 import type { AcquisitionCurrencyConvergenceWitnessV1 } from "../wayfinder/domain/acquisition-currency-convergence.js";
@@ -1422,6 +1423,14 @@ async function prepareSourceCatalog(
   activeSelections: SelectionRef[],
   deps: PrepareDraftApplicationDependencies
 ): Promise<PreparedSourceCatalog> {
+  const recoverySelectorUuids = new Set<string>();
+  if (draft.acquisition?.plannedClassGrants.some((grant) => grant.profileId.startsWith("thaumaturge-"))) {
+    const actorItems = captureObservedClassGrantItems(actor);
+    for (const grant of draft.acquisition.plannedClassGrants) {
+      const recovery = findThaumaturgeNativeSelectorRecovery({ draft, grant, actorItems });
+      if (recovery) recoverySelectorUuids.add(recovery.selectorSourceUuid);
+    }
+  }
   const refs = collectSourceRefs(actor, draft, steps, activeSelections);
   const activeMaterializedSourceKeys = new Set(activeSelections.map(sourceCatalogKey));
   for (const { selection } of listPlannedStaticSkillSources(draft, steps)) {
@@ -1488,7 +1497,13 @@ async function prepareSourceCatalog(
       skillSources.push({ selection: nativeLoreSelection, source: cloneData(loreSource) });
     }
     if (!documentsByUuid.has(selection.uuid)) {
-      const targetSource = isActiveMaterializedSource ? source : (existingSource ?? document?.toObject() ?? source);
+      const recoverySelectorSource = recoverySelectorUuids.has(selection.uuid) ? document?.toObject() : null;
+      if (recoverySelectorUuids.has(selection.uuid) && !recoverySelectorSource) {
+        throw new Error("The reviewed recovery selector's current source document could not be inspected.");
+      }
+      const targetSource =
+        recoverySelectorSource ??
+        (isActiveMaterializedSource ? source : (existingSource ?? document?.toObject() ?? source));
       documentsByUuid.set(selection.uuid, cloneData(targetSource));
     }
     for (const grant of readManualSystemItemGrants(source as ActorItemLike)) {

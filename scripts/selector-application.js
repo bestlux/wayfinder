@@ -29,7 +29,7 @@ export async function applySelectorApplication(actor, plan, deps) {
     }
     if (!createdSelector)
         assertExistingSelectorGrantAuthority(actor, plan);
-    const selectorRules = await loadSelectorRules(selectorItem, plan.selectorSelection, createdSelector, deps);
+    const selectorRules = await loadSelectorRules(selectorItem, plan.selectorSelection, createdSelector || !!plan.recoverySelectorItemId, deps);
     applyRuleSelections(selectorRules, plan.ruleSelections);
     if (grantPlans.length > 0) {
         applyRuleSelections(selectorRules, grantPlans.map((grantPlan) => ({
@@ -67,7 +67,7 @@ export async function applySelectorApplication(actor, plan, deps) {
         for (const grantPlan of grantPlans) {
             const currentGrantedItem = findGrantedItemForPlan(actor, selectorItem, grantPlan);
             assertUnclaimedGrantRoute(plan.selectorSelection.name, grantPlan.flag, currentGrantedItem, claimedGrantedItemIds);
-            const grantedItemResult = await ensureGrantedItem(actor, selectorItem, grantPlan, deps.createEmbeddedSource);
+            const grantedItemResult = await ensureGrantedItem(actor, selectorItem, grantPlan, deps.createEmbeddedSource, !!plan.recoverySelectorItemId);
             createdItemIds.push(...grantedItemResult.createdItemIds);
             if (grantedItemResult.replacedItemId) {
                 replacedItemIds.push(grantedItemResult.replacedItemId);
@@ -101,7 +101,11 @@ export async function applySelectorApplication(actor, plan, deps) {
                 rollbackErrors.push(rollbackError);
             }
         }
-        const rollbackIds = Array.from(new Set([...createdItemIds, ...(createdSelector ? [selectorItem.id] : [])]));
+        // A recovery update can commit and then reject its acknowledgement. Keep
+        // its owned subtree together so a frozen retry can reconcile either state.
+        const rollbackIds = plan.recoverySelectorItemId
+            ? []
+            : Array.from(new Set([...createdItemIds, ...(createdSelector ? [selectorItem.id] : [])]));
         if (rollbackIds.length > 0) {
             try {
                 await actor.deleteEmbeddedDocuments("Item", rollbackIds);
@@ -217,6 +221,11 @@ function findSelectorItemBySourceId(actor, sourceId) {
     return listActorItems(actor).find((item) => itemMatchesSourceId(item, sourceId)) ?? null;
 }
 async function createSelectorItem(actor, plan, createEmbeddedSource) {
+    if (plan.recoverySelectorItemId &&
+        (!/^[A-Za-z0-9]{16}$/u.test(plan.recoverySelectorItemId) ||
+            listActorItems(actor).some((item) => item.id === plan.recoverySelectorItemId))) {
+        throw new Error("The recovery selector identity is invalid or already occupied.");
+    }
     const selectorSource = await createEmbeddedSource(plan.selectorSelection);
     if (!selectorSource) {
         return null;
@@ -252,8 +261,15 @@ async function createSelectorItem(actor, plan, createEmbeddedSource) {
     if (classItem?.id) {
         selectorSource.system.location = classItem.id;
     }
-    const created = await actor.createEmbeddedDocuments("Item", [selectorSource]);
-    return Array.isArray(created) ? (created[0] ?? null) : null;
+    if (plan.recoverySelectorItemId)
+        selectorSource._id = plan.recoverySelectorItemId;
+    const created = plan.recoverySelectorItemId
+        ? await actor.createEmbeddedDocuments("Item", [selectorSource], { keepId: true })
+        : await actor.createEmbeddedDocuments("Item", [selectorSource]);
+    const item = Array.isArray(created) ? (created[0] ?? null) : null;
+    if (plan.recoverySelectorItemId && item?.id !== plan.recoverySelectorItemId)
+        throw new Error("Foundry did not restore the exact recovery selector identity.");
+    return item;
 }
 function normalizeGrantPlans(plan) {
     return [...(plan.grantPlan ? [plan.grantPlan] : []), ...(plan.grantPlans ?? [])];
@@ -298,7 +314,7 @@ function pruneCreationRules(rules, selectedRuleIndexes, policy) {
         return true;
     });
 }
-async function ensureGrantedItem(actor, selectorItem, grantPlan, createEmbeddedSource) {
+async function ensureGrantedItem(actor, selectorItem, grantPlan, createEmbeddedSource, completeRecoveredNativeChildren = false) {
     const selectorItemId = typeof selectorItem.id === "string" ? selectorItem.id : null;
     if (!selectorItemId) {
         throw new Error("Cannot create a selector grant without a persisted selector item.");
@@ -311,7 +327,7 @@ async function ensureGrantedItem(actor, selectorItem, grantPlan, createEmbeddedS
     const existingMatches = existingGranted && itemMatchesSourceId(existingGranted, grantPlan.selection.uuid);
     if (existingMatches) {
         let manualPreparation = { createdItemIds: [], updates: [] };
-        if (grantPlan.adoptExistingSource) {
+        if (grantPlan.adoptExistingSource || completeRecoveredNativeChildren) {
             const refreshedSource = await createEmbeddedSource(grantPlan.selection);
             manualPreparation = await createManualStaticGrantedItems(actor, existingGranted, refreshedSource ?? existingGranted, {
                 parentSlotId: grantPlan.slotId,

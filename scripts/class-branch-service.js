@@ -1,4 +1,6 @@
 import { applySelectorApplication, buildSelectorSelection, stripSelectedSelectorEntries, } from "./selector-application.js";
+import { captureObservedClassGrantItems } from "./wayfinder/application/class-grant-projection-service.js";
+import { findThaumaturgeNativeSelectorRecovery } from "./wayfinder/application/thaumaturge-native-selector-recovery.js";
 import { materializeClassChoiceSelection } from "./wayfinder/class-choice/selection-value.js";
 export async function applyClassBranchDraft(actor, draft, steps, deps) {
     const stepOrder = new Map(steps.map((step, index) => [step.slotId, index]));
@@ -43,6 +45,18 @@ export async function applyClassBranchDraft(actor, draft, steps, deps) {
                 updateCreatedGrant: selectedSteps.length === 1,
             })),
         };
+        if (selectedSteps.length === 1) {
+            const grant = draft.acquisition?.plannedClassGrants.find((entry) => entry.origin.sourceSlotId === selectedSteps[0].slotId);
+            if (grant) {
+                const recovery = findThaumaturgeNativeSelectorRecovery({
+                    draft,
+                    grant,
+                    actorItems: captureObservedClassGrantItems(actor),
+                });
+                if (recovery?.selectorSourceUuid === firstBranch.selectorUuid)
+                    plan.recoverySelectorItemId = recovery.selectorItemId;
+            }
+        }
         await applySelectorApplication(actor, plan, {
             ...deps,
             createEmbeddedSource: (selection, sourceDraft, sourceSteps) => deps.createEmbeddedSource(selection, sourceDraft ?? draft, sourceSteps ?? steps),

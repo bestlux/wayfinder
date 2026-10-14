@@ -13,6 +13,7 @@ import { findSpellcastingEntryForChoice } from "../shared/spellcasting.js";
 import { summonerSpellcastingCompatibilityIssues } from "../shared/summoner-spellcasting-compatibility.js";
 import { captureObservedClassGrantItems } from "../wayfinder/application/class-grant-projection-service.js";
 import { listPlannedStaticSkillSources, resolveActiveClassArchetypeProfile, synchronizeRetainedClassArchetypeChoice, } from "../wayfinder/application/planned-static-skill-source-service.js";
+import { findThaumaturgeNativeSelectorRecovery } from "../wayfinder/application/thaumaturge-native-selector-recovery.js";
 import { inspectRetainedClassArchetypeProfileDocuments } from "../wayfinder/class-archetype/registry.js";
 import { assertVindicatorTracklessChoice } from "../wayfinder/class-archetype/vindicator.js";
 import { assertPreparedClassGrantPlanMatches, reconcilePreparedClassGrants, } from "../wayfinder/domain/class-grant-reconciliation.js";
@@ -968,6 +969,15 @@ function assertAcquisitionAuthority(actor, draft, assertApplyAuthority) {
     assertApplyAuthority(actor, draft);
 }
 async function prepareSourceCatalog(actor, draft, steps, activeSelections, deps) {
+    const recoverySelectorUuids = new Set();
+    if (draft.acquisition?.plannedClassGrants.some((grant) => grant.profileId.startsWith("thaumaturge-"))) {
+        const actorItems = captureObservedClassGrantItems(actor);
+        for (const grant of draft.acquisition.plannedClassGrants) {
+            const recovery = findThaumaturgeNativeSelectorRecovery({ draft, grant, actorItems });
+            if (recovery)
+                recoverySelectorUuids.add(recovery.selectorSourceUuid);
+        }
+    }
     const refs = collectSourceRefs(actor, draft, steps, activeSelections);
     const activeMaterializedSourceKeys = new Set(activeSelections.map(sourceCatalogKey));
     for (const { selection } of listPlannedStaticSkillSources(draft, steps)) {
@@ -1032,7 +1042,12 @@ async function prepareSourceCatalog(actor, draft, steps, activeSelections, deps)
             skillSources.push({ selection: nativeLoreSelection, source: cloneData(loreSource) });
         }
         if (!documentsByUuid.has(selection.uuid)) {
-            const targetSource = isActiveMaterializedSource ? source : (existingSource ?? document?.toObject() ?? source);
+            const recoverySelectorSource = recoverySelectorUuids.has(selection.uuid) ? document?.toObject() : null;
+            if (recoverySelectorUuids.has(selection.uuid) && !recoverySelectorSource) {
+                throw new Error("The reviewed recovery selector's current source document could not be inspected.");
+            }
+            const targetSource = recoverySelectorSource ??
+                (isActiveMaterializedSource ? source : (existingSource ?? document?.toObject() ?? source));
             documentsByUuid.set(selection.uuid, cloneData(targetSource));
         }
         for (const grant of readManualSystemItemGrants(source)) {

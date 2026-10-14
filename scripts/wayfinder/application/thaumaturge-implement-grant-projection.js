@@ -1,6 +1,7 @@
 import { sourceIdOf } from "../../shared/source-id.js";
 import { createPlannedClassGrant, reconcilePlannedClassGrants, } from "../domain/class-grant-reconciliation.js";
 import { CLASS_GRANT_PROFILE_UUIDS, supportedPhysicalGrantRoute, THAUMATURGE_FIXED_IMPLEMENTS, THAUMATURGE_IMPLEMENT_ORIGINS, } from "../domain/physical-grant-route-registry.js";
+import { findThaumaturgeNativeSelectorRecovery } from "./thaumaturge-native-selector-recovery.js";
 const BENEFIT_IDS = {
     amulet: "ALcWRnRjvuPKu4nV",
     bell: "M0UnQTqofeg1npcl",
@@ -82,7 +83,12 @@ export async function projectThaumaturgeImplementGrants(args) {
                 draftId: "thaumaturge-source-preflight",
                 batchId: "thaumaturge-source-preflight",
             });
-            if (existingItems.length !== 1 || reconciliation.entries[0]?.status !== "resolved") {
+            const recoverable = findThaumaturgeNativeSelectorRecovery({
+                draft: args.draft,
+                grant: plannedGrant,
+                actorItems: args.observedActorItems,
+            });
+            if (existingItems.length !== 1 || (reconciliation.entries[0]?.status !== "resolved" && !recoverable)) {
                 fail("source-drift", "An existing implement item does not have the exact reviewed Thaumaturge grant ancestry, or multiple copies exist. Wayfinder cannot adopt it as a class grant.");
                 continue;
             }

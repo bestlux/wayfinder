@@ -20,6 +20,7 @@ const cases = [
   ...implementsByName.map((first) => ({ id: `l1-${first.toLowerCase()}`, targetLevel: 1, first })),
   ...implementsByName.map((second, index) => ({ id: `l5-second-${second.toLowerCase()}`, targetLevel: 5, first: implementsByName[(index + 1) % implementsByName.length], second })),
   ...["native-before", "native-after", "final-before", "final-after"].map((fault) => ({ id: `retry-${fault}`, targetLevel: 5, first: "Amulet", second: "Wand", fault })),
+  { id: "retry-first-native-after", targetLevel: 1, first: "Wand", fault: "native-after" },
   { id: "reviewed-first-change", targetLevel: 1, first: "Bell", initialReviewedFirst: "Amulet" },
 ];
 

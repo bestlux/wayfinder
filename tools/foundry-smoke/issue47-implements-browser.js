@@ -250,7 +250,7 @@
     const method = isNative ? "createEmbeddedDocuments" : "update";
     const descriptor = Object.getOwnPropertyDescriptor(actor, method);
     const original = actor[method];
-    const evidence = { configured: fault, injected: false, targetSourceUuid: isNative ? featureUuid(fixed.find((entry) => entry.name === payload.definition.second)) : null };
+    const evidence = { configured: fault, injected: false, targetSourceUuid: isNative ? featureUuid(fixed.find((entry) => entry.name === (payload.definition.second ?? payload.definition.first))) : null };
     Object.defineProperty(actor, method, { configurable: true, writable: true, value: async function (...args) {
       const match = isNative
         ? args[0] === "Item" && Array.isArray(args[1]) && args[1].some((source) => sourceId(source) === evidence.targetSourceUuid)
@@ -295,8 +295,20 @@
       const previous = fixed.find((entry) => entry.name === payload.definition.initialReviewedFirst);
       if (observed.items.some((item) => item.sourceUuid === itemUuid(previous) || item.sourceUuid === featureUuid(previous)) || manifest?.classGrants?.some((grant) => grant.grant.expected.sourceUuid === itemUuid(previous))) failures.push("Apply retained the previously reviewed implement feature, physical item, or manifest grant.");
     }
+    let wandOutcome = null;
+    if (expectedNames.includes("Wand")) {
+      const wand = observed.items.filter((item) => item.sourceUuid === featureUuid(fixed.find((entry) => entry.name === "Wand")));
+      const benefits = actor.items.filter((item) => sourceId(item) === "Compendium.pf2e.classfeatures.Item.YbRVsHfmhPXLfCTB");
+      const actions = actor.items.filter((item) => sourceId(item) === "Compendium.pf2e.actionspf2e.Item.04VQuQih77pxX06q");
+      const benefit = benefits[0];
+      const flingMagic = actions[0];
+      const selectedDamageType = benefit?.flags?.pf2e?.rulesSelections?.initiateBenefitWand ?? null;
+      const expectedDamageType = payload.initial.wand?.value;
+      if (wand.length !== 1 || benefits.length !== 1 || actions.length !== 1 || selectedDamageType !== expectedDamageType || benefit?.flags?.pf2e?.grantedBy?.id !== wand[0]?.id || !Object.values(wand[0]?.itemGrants ?? {}).some((grant) => grant.id === benefit?.id) || flingMagic?.flags?.pf2e?.grantedBy?.id !== benefit?.id || !Object.values(benefit?.flags?.pf2e?.itemGrants ?? {}).some((grant) => grant.id === flingMagic?.id)) failures.push("Wand benefit, chosen damage type, or Fling Magic native ancestry is missing or duplicated.");
+      wandOutcome = { benefitId: benefit?.id ?? null, flingMagicId: flingMagic?.id ?? null, selectedDamageType, expectedDamageType };
+    }
     if (manifest?.classGrants?.length !== expectedNames.length) failures.push("Completed manifest class-grant count is wrong.");
-    return { observed, manifest, budgetCopper, expectedCopper, failures, passed: failures.length === 0 };
+    return { observed, manifest, budgetCopper, expectedCopper, wandOutcome, failures, passed: failures.length === 0 };
   }
   async function boundary(payload) {
     guard(payload, true);

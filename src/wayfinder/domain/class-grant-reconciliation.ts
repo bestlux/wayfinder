@@ -110,6 +110,8 @@ export interface ObservedClassGrantItem {
   readonly locationItemId: string | null;
   readonly wayfinderSlotId: string | null;
   readonly acquisitionIdentity: AcquisitionIdentityV1 | null;
+  readonly wayfinderImportedBy?: string | null;
+  readonly itemGrants?: Readonly<Record<string, string>>;
 }
 
 export interface PreparedClassGrantPlanV1 {

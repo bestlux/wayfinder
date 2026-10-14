@@ -136,6 +136,12 @@ export function captureObservedClassGrantItems(actor) {
                     ? item.flags[MODULE_ID].slotId
                     : null,
                 acquisitionIdentity,
+                wayfinderImportedBy: isRecord(item.flags) && isRecord(item.flags[MODULE_ID]) && nonEmpty(item.flags[MODULE_ID].importedBy)
+                    ? item.flags[MODULE_ID].importedBy
+                    : null,
+                itemGrants: isRecord(item.flags) && isRecord(item.flags.pf2e) && isRecord(item.flags.pf2e.itemGrants)
+                    ? Object.fromEntries(Object.entries(item.flags.pf2e.itemGrants).flatMap(([key, value]) => isRecord(value) && nonEmpty(value.id) ? [[key, value.id]] : []))
+                    : {},
             });
         }
         for (const child of collectionContents(item.subitems))

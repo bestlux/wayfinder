@@ -5,13 +5,21 @@ import {
   createBranchSelectorSelection,
   stripPreselectedClassBranchEntries,
 } from "../src/class-branch-service";
-import { createEmptyDraft } from "../src/draft-service";
+import { MODULE_ID } from "../src/constants";
+import { createEmptyDraft, normalizeDraft } from "../src/draft-service";
 import type { PendingStep, SelectionRef } from "../src/types";
+import { createAcquisitionDraft } from "../src/wayfinder/domain/acquisition-draft";
+import { createEconomicBaseline } from "../src/wayfinder/domain/economic-baseline";
+import {
+  CLASS_GRANT_PROFILE_UUIDS,
+  THAUMATURGE_IMPLEMENT_ORIGINS,
+} from "../src/wayfinder/domain/physical-grant-route-registry";
 import {
   createClassArchetypeStep,
   createClassBranchStep,
   createClassChoiceStep,
 } from "../src/wayfinder/domain/step-types";
+import { nativePhysicalGrantSmokeFixture } from "./fixtures/native-physical-grant-smoke-fixture";
 import { pf2e841DragonEidolonEntry } from "./fixtures/pf2e-841-eidolons";
 
 describe("class-branch-service", () => {
@@ -836,6 +844,153 @@ describe("class-branch-service", () => {
     ]);
     expect(deleteEmbeddedDocuments).not.toHaveBeenCalled();
     expect(actorItems.map((item) => item.id)).toEqual(["class-1", "selector-1", "fire-gate-1", "air-gate-1"]);
+  });
+});
+
+describe("class-branch native recovery routing", () => {
+  it("consumes persisted missing-parent proof and resumes the same restored selector on retry", async () => {
+    const origin = THAUMATURGE_IMPLEMENT_ORIGINS[0];
+    const native = nativePhysicalGrantSmokeFixture(["thaumaturge-amulet-implement-first"]);
+    const grant = native.classGrants[0].grant;
+    const selectorEvidence = native.items.find((item) => item.sourceId === origin.selectorUuid)!;
+    const featureEvidence = native.items.find((item) => item.sourceId === grant.granterSourceUuid)!;
+    const physicalEvidence = native.items.find((item) => item.isPhysical)!;
+    const draft = createEmptyDraft(1);
+    draft.selections["class-level-1"] = {
+      ...selection(
+        "class-level-1",
+        "pf2e.classes",
+        "Y5GsHqzCzJlKka6x",
+        CLASS_GRANT_PROFILE_UUIDS.thaumaturgeClass,
+        "Thaumaturge"
+      ),
+      itemType: "class",
+      featType: null,
+    };
+    draft.branchSelections[origin.slotId] = selection(
+      origin.slotId,
+      "pf2e.classfeatures",
+      featureEvidence.id,
+      grant.granterSourceUuid,
+      "Amulet"
+    );
+    draft.applyAttemptStepIds = [origin.slotId];
+    draft.applyRecoveryActorUpdate = { "system.details.level.value": 1 };
+    draft.acquisition = {
+      ...createAcquisitionDraft({
+        draftId: "draft-47",
+        batchId: "batch-47",
+        manifestId: "manifest-47",
+        targetLevel: 1,
+        recipe: { kind: "permanent-items" },
+      }),
+      plannedClassGrants: [grant],
+      baseline: createEconomicBaseline({
+        actorId: "actor-47",
+        capturedAt: "2026-10-14T20:00:00.000Z",
+        currencyCopper: 0,
+        physicalItems: [],
+      }),
+    };
+    const reopened = normalizeDraft(JSON.parse(JSON.stringify(draft)), 1);
+    const steps = [
+      createClassBranchStep(1, {
+        slotId: origin.slotId,
+        selectorPackId: "pf2e.classfeatures",
+        selectorDocumentId: selectorEvidence.id,
+        selectorUuid: origin.selectorUuid,
+        selectorName: origin.selectorName,
+        selectorRuleIndex: 1,
+        grantRuleIndex: 2,
+        flag: "implement",
+        optionTag: "thaumaturge-implement",
+        classSlug: "thaumaturge",
+        dependsOn: "class",
+      }),
+    ];
+    const actorItems: any[] = native.items
+      .filter((item) => item !== selectorEvidence)
+      .map((item) => ({
+        id: item.id,
+        type: item.sourceId === CLASS_GRANT_PROFILE_UUIDS.thaumaturgeClass ? "class" : item.type,
+        sourceId: item.sourceId,
+        system: item.isPhysical ? { quantity: 1 } : {},
+        flags: {
+          core: { sourceId: item.sourceId },
+          [MODULE_ID]: {
+            importedBy: MODULE_ID,
+            slotId: item === featureEvidence ? origin.slotId : "class-level-1",
+          },
+          ...(item.grantedById
+            ? {
+                pf2e: {
+                  grantedBy: { id: item.grantedById },
+                  ...(item === featureEvidence ? { itemGrants: { amuletImplement: { id: physicalEvidence.id } } } : {}),
+                },
+              }
+            : {}),
+        },
+      }));
+    const selectorSource = {
+      name: origin.selectorName,
+      type: "feat",
+      flags: { core: { sourceId: origin.selectorUuid } },
+      system: {
+        rules: [
+          { key: "ActiveEffectLike", path: "flags.system.thaumaturge.adeptChoices", value: [] },
+          { key: "ChoiceSet", flag: "implement" },
+          { key: "GrantItem", uuid: "{item|flags.system.rulesSelections.implement}" },
+        ],
+      },
+    };
+    const actor = {
+      id: "actor-47",
+      items: { contents: actorItems },
+      createEmbeddedDocuments: vi.fn(async (_type: string, sources: any[], options?: { keepId?: boolean }) =>
+        sources.map((source) => {
+          const item = { ...structuredClone(source), id: options?.keepId ? source._id : "unexpectedNewId1" };
+          actorItems.push(item);
+          return item;
+        })
+      ),
+      updateEmbeddedDocuments: vi.fn(async () => []),
+      deleteEmbeddedDocuments: vi.fn(async () => []),
+    };
+    const deps = {
+      createEmbeddedSource: vi.fn(async (picked: SelectionRef) =>
+        picked.uuid === origin.selectorUuid ? structuredClone(selectorSource) : { name: picked.name, type: "feat" }
+      ),
+      fetchSelectionDocument: vi.fn(async () => structuredClone(selectorSource)),
+    };
+
+    await applyClassBranchDraft(actor, reopened, steps, deps);
+    await applyClassBranchDraft(actor, reopened, steps, deps);
+
+    expect(reopened.acquisitionCorrupt).toBe(false);
+    expect(actor.createEmbeddedDocuments).toHaveBeenCalledExactlyOnceWith(
+      "Item",
+      [expect.objectContaining({ _id: selectorEvidence.id })],
+      { keepId: true }
+    );
+    expect(actor.updateEmbeddedDocuments).toHaveBeenLastCalledWith(
+      "Item",
+      expect.arrayContaining([
+        expect.objectContaining({
+          _id: selectorEvidence.id,
+          "flags.pf2e.itemGrants.implement": { id: featureEvidence.id, onDelete: "detach", nested: null },
+        }),
+      ])
+    );
+    expect(actorItems.map((item) => item.id)).toEqual([
+      ...native.items.filter((item) => item !== selectorEvidence).map((item) => item.id),
+      selectorEvidence.id,
+    ]);
+    expect(actor.deleteEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(deps.createEmbeddedSource).toHaveBeenCalledWith(reopened.branchSelections[origin.slotId], reopened, steps);
+    expect(
+      deps.createEmbeddedSource.mock.calls.filter(([picked]) => picked.uuid === grant.granterSourceUuid)
+    ).toHaveLength(2);
+    expect(deps.fetchSelectionDocument).toHaveBeenCalledTimes(2);
   });
 });
 

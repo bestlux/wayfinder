@@ -15,16 +15,20 @@ const testGlobals = globalThis as typeof globalThis & {
 };
 
 describe("actor-updater boost application", () => {
-  it("uses the Foundry v14 forced-deletion operator instead of legacy deletion keys", async () => {
+  it.each([
+    false,
+    true,
+  ])("clears inactive ancestry fields under their native nullable contract (model: %s)", async (hasModel) => {
     class TestForcedDeletion {}
     testGlobals.foundry ??= {};
     testGlobals.foundry.data ??= {};
     testGlobals.foundry.data.operators ??= {};
     testGlobals.foundry.data.operators.ForcedDeletion = TestForcedDeletion;
+    const getField = vi.fn((_path: string) => ({ required: true, nullable: true }));
     const updateEmbeddedDocuments = vi.fn(async () => []);
     const actor = {
       items: {
-        contents: [{ id: "ancestry-1", type: "ancestry" }],
+        contents: [{ id: "ancestry-1", type: "ancestry", system: hasModel ? { schema: { getField } } : undefined }],
       },
       updateEmbeddedDocuments,
     };
@@ -86,16 +90,22 @@ describe("actor-updater boost application", () => {
     expect(updateEmbeddedDocuments).toHaveBeenCalledWith("Item", [
       {
         _id: "ancestry-1",
-        "system.alternateAncestryBoosts": expect.any(TestForcedDeletion),
+        "system.alternateAncestryBoosts": hasModel ? null : expect.any(TestForcedDeletion),
         "system.voluntary.flaws": [],
-        "system.voluntary.boost": expect.any(TestForcedDeletion),
+        "system.voluntary.boost": hasModel ? null : expect.any(TestForcedDeletion),
       },
     ]);
     const calls = updateEmbeddedDocuments.mock.calls as unknown as Array<[string, Array<Record<string, unknown>>]>;
     const ancestryUpdate = calls[0]?.[1]?.[0] ?? {};
     expect(Object.keys(ancestryUpdate).some((key) => key.includes("-="))).toBe(false);
-    expect(ancestryUpdate["system.alternateAncestryBoosts"]).toBeInstanceOf(TestForcedDeletion);
-    expect(ancestryUpdate["system.voluntary.boost"]).toBeInstanceOf(TestForcedDeletion);
+    if (hasModel) {
+      expect(ancestryUpdate["system.alternateAncestryBoosts"]).toBeNull();
+      expect(ancestryUpdate["system.voluntary.boost"]).toBeNull();
+      expect(getField.mock.calls).toEqual([["alternateAncestryBoosts"], ["voluntary.boost"]]);
+    } else {
+      expect(ancestryUpdate["system.alternateAncestryBoosts"]).toBeInstanceOf(TestForcedDeletion);
+      expect(ancestryUpdate["system.voluntary.boost"]).toBeInstanceOf(TestForcedDeletion);
+    }
   });
 
   it("writes effective ancestry, background, class, and actor boost values", async () => {

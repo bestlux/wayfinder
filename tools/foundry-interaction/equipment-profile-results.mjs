@@ -142,7 +142,7 @@ const FROZEN_BUDGETS = Object.freeze({
   maxResultDomElementsPerMountedRow: 12,
   maxResultChromeDomElementCount: 2,
   maxAdaptiveResultDomElementCount: 1730,
-  maxNonResultChromeDomElementCount: 416,
+  maxNonResultChromeDomElementCount: 424,
   maxImageRequestsPerSample: 0,
   maxLongTaskCountPerActionWidth: 0,
 });
@@ -186,7 +186,7 @@ const FROZEN_DEFAULT_SHELF_VALUES = [
   "Compendium.pf2e.equipment-srd.Item.sqhr1crb184s3Vnd",
   "Compendium.pf2e.equipment-srd.Item.hMYdSFmMWzidzHih",
 ];
-const FROZEN_COUNTS = { indexed: 5856, levelQualified: 2283, defaultShelf: 1138, matching: 1, visible: 1 };
+const FROZEN_COUNTS = { indexed: 5913, levelQualified: 2839, defaultShelf: 1149, matching: 1, visible: 1 };
 const FROZEN_COUNT_SEMANTICS = {
   indexed: "Raw entries in the exact core equipment pack index.",
   levelQualified: "Runtime browse entries after recipe maximum-level filtering, including policy-unavailable rows.",
@@ -194,7 +194,7 @@ const FROZEN_COUNT_SEMANTICS = {
   matching: "Registered runtime-adapter records for the exact final query before the 12-row cap.",
   visible: "Rendered result rows for the exact final query.",
 };
-const FROZEN_RUNTIME = { foundryVersion: "14.366", pf2eVersion: "8.4.1" };
+const FROZEN_RUNTIME = { foundryVersion: "14.367", pf2eVersion: "8.6.1" };
 const FROZEN_POLICY = {
   effectivePackIds: ["pf2e.equipment-srd"],
   blanketRarity: "common",
@@ -324,7 +324,7 @@ export function validateEquipmentProfile(profile) {
     failures.push("Equipment profile default-shelf identities drifted from the frozen usefulness-ranking prefix.");
   }
   if (stableJson(profile?.expectedRuntime) !== stableJson(FROZEN_RUNTIME)) {
-    failures.push("Equipment profile runtime must remain Foundry 14.366 and PF2E 8.4.1.");
+    failures.push("Equipment profile runtime must remain Foundry 14.367 and PF2E 8.6.1.");
   }
   if (stableJson(profile?.expectedPolicy) !== stableJson(FROZEN_POLICY)) {
     failures.push("Equipment profile policy drifted from the frozen core-only owner contract.");

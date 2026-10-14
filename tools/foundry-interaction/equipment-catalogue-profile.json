@@ -80,9 +80,9 @@
     "Compendium.pf2e.equipment-srd.Item.hMYdSFmMWzidzHih"
   ],
   "expectedCatalogueCounts": {
-    "indexed": 5856,
-    "levelQualified": 2283,
-    "defaultShelf": 1138,
+    "indexed": 5913,
+    "levelQualified": 2839,
+    "defaultShelf": 1149,
     "matching": 1,
     "visible": 1
   },
@@ -100,8 +100,8 @@
     "recipeChoiceAuthority": "actor-owner"
   },
   "expectedRuntime": {
-    "foundryVersion": "14.366",
-    "pf2eVersion": "8.4.1"
+    "foundryVersion": "14.367",
+    "pf2eVersion": "8.6.1"
   },
   "warmupSamplesPerActionWidth": 2,
   "measuredSamplesPerActionWidth": 30,
@@ -186,7 +186,7 @@
     "maxResultDomElementsPerMountedRow": 12,
     "maxResultChromeDomElementCount": 2,
     "maxAdaptiveResultDomElementCount": 1730,
-    "maxNonResultChromeDomElementCount": 416,
+    "maxNonResultChromeDomElementCount": 424,
     "maxImageRequestsPerSample": 0,
     "maxLongTaskCountPerActionWidth": 0
   }

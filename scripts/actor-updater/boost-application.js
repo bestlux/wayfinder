@@ -15,7 +15,7 @@ export async function applyBoostDraft(actor, draft, deps = DEFAULT_DEPS, options
             ancestryUpdate["system.alternateAncestryBoosts"] = buildState.ancestry.alternateBoosts;
         }
         else {
-            ancestryUpdate["system.alternateAncestryBoosts"] = foundryDeleteValue();
+            ancestryUpdate["system.alternateAncestryBoosts"] = emptyAncestryFieldValue(ancestryItem.system, "alternateAncestryBoosts");
         }
         for (const [slot, value] of Object.entries(buildState.ancestry.selectedBoosts)) {
             ancestryUpdate[`system.boosts.${slot}.selected`] = value;
@@ -27,7 +27,7 @@ export async function applyBoostDraft(actor, draft, deps = DEFAULT_DEPS, options
             ancestryUpdate["system.voluntary.boost"] = buildState.ancestry.voluntary.boost;
         }
         else {
-            ancestryUpdate["system.voluntary.boost"] = foundryDeleteValue();
+            ancestryUpdate["system.voluntary.boost"] = emptyAncestryFieldValue(ancestryItem.system, "voluntary.boost");
         }
         updates.push(ancestryUpdate);
     }
@@ -59,6 +59,13 @@ export async function applyBoostDraft(actor, draft, deps = DEFAULT_DEPS, options
         await actor.update(actorUpdate);
     }
     return { actorUpdate };
+}
+/** PF2E's required nullable ancestry fields must remain present when cleared. */
+function emptyAncestryFieldValue(system, path) {
+    const model = system;
+    const schema = model?.schema;
+    const field = typeof schema?.getField === "function" ? schema.getField(path) : undefined;
+    return field?.required === true && field.nullable === true ? null : foundryDeleteValue();
 }
 function buildActorBuildUpdate(actor, levelBoosts, draftedLevelBoosts) {
     const sourceActor = actor;

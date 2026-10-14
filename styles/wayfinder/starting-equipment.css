@@ -391,7 +391,8 @@
 .wayfinder-app .equipment-workspace {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(16rem, 0.55fr);
-  grid-template-rows: minmax(8rem, 1fr) auto;
+  /* Leave a usable shelf below the search and filters when text is enlarged. */
+  grid-template-rows: minmax(18rem, 1fr) auto;
   gap: 0.4rem;
   flex: 1;
   min-width: 0;
@@ -1630,6 +1631,10 @@
   .wayfinder-app .equipment-detail {
     grid-row: 2;
     max-height: 40cqh;
+  }
+
+  .wayfinder-app .equipment-detail:not(.is-empty) {
+    min-height: 14rem;
   }
 
   .wayfinder-app .equipment-cart {

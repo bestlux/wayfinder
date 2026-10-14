@@ -18,6 +18,7 @@ const browserIt = chromePath ? it : it.skip;
 const BROWSER_INTEGRATION_TEST_TIMEOUT_MS = 20_000;
 vi.setConfig({ testTimeout: BROWSER_INTEGRATION_TEST_TIMEOUT_MS });
 const productionStyles = readFileSync(resolve("styles/wayfinder/starting-equipment.css"), "utf8");
+const previewStyles = readFileSync(resolve("styles/wayfinder/picker-preview.css"), "utf8");
 const stableCatalogueScript = readFileSync(
   resolve("scripts/wayfinder/application/equipment-stable-catalogue.js"),
   "utf8"
@@ -400,6 +401,102 @@ browserIt("keeps comparison facts visible across widths, locales, and text zoom"
   }
 });
 
+browserIt("keeps browse and preview comparisons visible with enlarged controls", async () => {
+  const browser = await chromium.launch({ executablePath: chromePath, headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1240, height: 1000 } });
+    await page.setContent(zoomChromeFixture());
+    await page.addScriptTag({ content: stableCatalogueScript });
+    const evidence = await page.evaluate(async () => {
+      const viewport = document.querySelector<HTMLElement>("[data-stable-list]")!;
+      const canvas = document.querySelector<HTMLElement>("[data-stable-canvas]")!;
+      const host = viewport.closest<HTMLElement>("[data-stable-host]")!;
+      const row = {
+        sourceUuid: "item-longsword",
+        name: "Longsword",
+        previewAriaLabel: "Preview Longsword · Damage: 1d8 slashing",
+        previewFocusId: "preview:item-longsword",
+        levelLabel: "Lvl 0",
+        rarity: "common",
+        rarityLabel: "Common",
+        itemType: "weapon",
+        itemTypeLabel: "Weapon",
+        typeIcon: "fa-hammer",
+        sourceLabel: "Player Core",
+        comparisonLabel: "Damage: 1d8 slashing",
+        unavailableReason: null,
+        priceLabel: "1 gp",
+        canAdd: true,
+        previewing: false,
+      };
+      const controller = new window.EquipmentStableCatalogue({ host, viewport, canvas });
+      const projection = {
+        key: "zoomed-chrome",
+        orderKey: "zoomed-chrome",
+        stepId: "starting-equipment-level-5",
+        renderedQuery: "Longsword",
+        totalResultCount: 1,
+        resultOffset: 0,
+        resultLimit: 120,
+        viewRevision: 1,
+        sourceRevision: 1,
+        criteriaRevision: 1,
+        sourceUuids: [row.sourceUuid],
+        rowAt: () => row,
+      };
+      controller.setProjection(projection);
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      const comparison = viewport.querySelector<HTMLElement>(".equipment-result-comparison")!;
+      const bounds = comparison.getBoundingClientRect();
+      const viewportBounds = viewport.getBoundingClientRect();
+      const catalogueBounds = document.querySelector(".equipment-catalogue")!.getBoundingClientRect();
+      const cartBounds = document.querySelector(".equipment-cart")!.getBoundingClientRect();
+      const rowHeight = viewport.querySelector("[role='listitem']")!.getBoundingClientRect().height;
+      const measured = {
+        completeRowFits: viewport.clientHeight >= rowHeight,
+        comparisonVisible: bounds.top >= viewportBounds.top && bounds.bottom <= viewportBounds.bottom,
+        comparisonText: comparison.textContent,
+        cartFollowsCatalogue: cartBounds.top >= catalogueBounds.bottom,
+        rowHeight,
+        viewportHeight: viewport.clientHeight,
+      };
+      document.querySelector<HTMLElement>(".wayfinder-stage")!.style.width = "760px";
+      document.querySelector<HTMLElement>(".equipment-workspace")!.style.width = "486px";
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      controller.setProjection(projection);
+      const detail = document.querySelector<HTMLElement>(".equipment-detail")!;
+      const detailBounds = detail.getBoundingClientRect();
+      const detailComparison = detail.querySelector<HTMLElement>(".equipment-detail-comparison dd")!;
+      const detailComparisonBounds = detailComparison.getBoundingClientRect();
+      const stacked = {
+        detailViewportHeight: detail.clientHeight,
+        detailComparisonVisible:
+          detailComparisonBounds.top >= detailBounds.top && detailComparisonBounds.bottom <= detailBounds.bottom,
+        detailComparisonText: detailComparison.textContent,
+        cartFollowsDetail:
+          document.querySelector(".equipment-cart")!.getBoundingClientRect().top >= detailBounds.bottom,
+      };
+      controller.dispose();
+      return { measured, stacked };
+    });
+    expect(evidence.measured).toMatchObject({
+      completeRowFits: true,
+      comparisonVisible: true,
+      comparisonText: "Damage: 1d8 slashing",
+      cartFollowsCatalogue: true,
+      rowHeight: 224,
+    });
+    expect(evidence.stacked).toMatchObject({
+      detailComparisonVisible: true,
+      detailComparisonText: "Damage: 1d8 slashing",
+      cartFollowsDetail: true,
+    });
+    expect(evidence.stacked.detailViewportHeight).toBeGreaterThanOrEqual(440);
+  } finally {
+    await browser.close();
+  }
+});
+
 browserIt("preserves the durable host across projections and disposes it only after full replacement", async () => {
   const browser = await chromium.launch({ executablePath: chromePath, headless: true });
   try {
@@ -683,6 +780,48 @@ function responsiveFixture(): string {
       </div>
     </div>
   </div>`;
+}
+
+function zoomChromeFixture(): string {
+  return `<style>${previewStyles}${productionStyles}
+    :root { font-size:32px; }
+    .wayfinder-app, .wayfinder-app * { box-sizing:border-box; }
+    .wayfinder-stage { container:wayfinder-stage / inline-size; width:980px; }
+    .wayfinder-app .equipment-workspace { width:942px; height:16rem; }
+    .wayfinder-app .equipment-search-row { min-height:3.1rem; }
+    .wayfinder-app .equipment-filter-row { min-height:3.375rem; }
+    .wayfinder-app .equipment-result-count { min-height:1.2rem; margin:0; }
+    .wayfinder-app .equipment-cart { min-height:7.5rem; }
+  </style>
+  <div class="wayfinder-stage"><div class="wayfinder-app">
+    <div class="equipment-workspace">
+      <section class="equipment-catalogue">
+        <div class="equipment-search-row">Search controls</div>
+        <div class="equipment-filter-row">Equipment filters</div>
+        <p class="equipment-result-count">Showing 1–1 of 1</p>
+        <div class="equipment-catalogue-host" data-stable-host>
+          <div class="equipment-result-list" role="list" tabindex="-1" data-stable-list>
+            <div class="equipment-stable-catalogue-canvas" role="presentation" data-stable-canvas></div>
+          </div>
+        </div>
+      </section>
+      <aside class="equipment-detail">
+        <header class="equipment-detail-banner">
+          <span class="equipment-detail-art" aria-hidden="true"></span>
+          <div class="equipment-detail-heading">
+            <h4>Longsword</h4><p class="equipment-detail-source">Player Core</p>
+            <ul class="preview-tags"><li class="tag">Common</li><li class="tag">Weapon</li></ul>
+          </div>
+          <span class="equipment-detail-price">1 gp</span>
+        </header>
+        <dl class="detail-grid equipment-detail-stats">
+          <div class="detail-row equipment-detail-comparison"><dt>Damage &amp; protection</dt><dd>Damage: 1d8 slashing</dd></div>
+        </dl>
+        <p class="equipment-detail-comparison-explanation">Listed default damage. Character abilities and additional effects can change its damage.</p>
+      </aside>
+      <section class="equipment-cart">Your kit</section>
+    </div>
+  </div></div>`;
 }
 
 function hostLifecycleFixture(): string {

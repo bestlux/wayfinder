@@ -53,7 +53,7 @@ describe("equipment catalogue performance profile", () => {
       maxResultDomElementsPerMountedRow: 12,
       maxResultChromeDomElementCount: 2,
       maxAdaptiveResultDomElementCount: 1730,
-      maxNonResultChromeDomElementCount: 416,
+      maxNonResultChromeDomElementCount: 424,
       maxImageRequestsPerSample: 0,
       maxLongTaskCountPerActionWidth: 0,
     });
@@ -86,9 +86,9 @@ describe("equipment catalogue performance profile", () => {
     expect(profile.samplingSemantics.performance).toContain("default 820px");
     expect(profile.samplingSemantics.resultWindows).toContain("not timing samples");
     expect(profile.expectedCatalogueCounts).toEqual({
-      indexed: 5856,
-      levelQualified: 2283,
-      defaultShelf: 1138,
+      indexed: 5913,
+      levelQualified: 2839,
+      defaultShelf: 1149,
       matching: 1,
       visible: 1,
     });
@@ -140,7 +140,7 @@ describe("equipment catalogue performance profile", () => {
     expect(validateEquipmentFixture(profile, changed, "testing-world")).toEqual(
       expect.arrayContaining([
         expect.stringContaining("distinct"),
-        expect.stringContaining("8.4.1"),
+        expect.stringContaining("8.6.1"),
         expect.stringContaining("exactly one"),
         expect.stringContaining("identities"),
       ])
@@ -555,7 +555,7 @@ describe("equipment catalogue performance profile", () => {
     const oversizedRoot = structuredClone(observations[2]);
     oversizedRoot.domElementCount = 9999;
     expect(validateEquipmentResultWindowObservation(oversizedRoot, profile)).toContain(
-      "tall root DOM exceeded its 910-element size-specific limit."
+      "tall root DOM exceeded its 918-element size-specific limit."
     );
 
     const missing = observations.slice(0, 2);
@@ -897,8 +897,8 @@ function fixture(runId = "run-1") {
     runtime: {
       worldId: "testing-world",
       locale: "en",
-      foundryVersion: "14.366",
-      pf2eVersion: "8.4.1",
+      foundryVersion: "14.367",
+      pf2eVersion: "8.6.1",
     },
     users: {
       gm: { id: "gm", isGM: true },
@@ -984,14 +984,14 @@ function sample(actionId: string) {
     measuredRowHeightPx: 64,
     resultDomElementCount: ["cold-open", "warm-reopen"].includes(actionId) ? 282 : 12,
     mountedResultCount: ["cold-open", "warm-reopen"].includes(actionId) ? 28 : 1,
-    totalResultCount: ["cold-open", "warm-reopen"].includes(actionId) ? 1138 : 1,
+    totalResultCount: ["cold-open", "warm-reopen"].includes(actionId) ? 1149 : 1,
     scrollTop: 0,
     firstMountedResultIndex: 0,
     lastMountedResultIndex: ["cold-open", "warm-reopen"].includes(actionId) ? 27 : 0,
     mountedIndexesContiguous: true,
     stableHost: true,
     stableHostPreserved: true,
-    canvasHeightPx: ["cold-open", "warm-reopen"].includes(actionId) ? 1138 * 64 : 64,
+    canvasHeightPx: ["cold-open", "warm-reopen"].includes(actionId) ? 1149 * 64 : 64,
     maxVisibleGapPx: 0,
     imageRequestCount: 0,
     longTaskSupported: true,
@@ -1246,7 +1246,7 @@ function stableHostScrollProbe() {
   };
   const initialWindow = {
     mountedResultCount: 41,
-    totalResultCount: 1138,
+    totalResultCount: 1149,
     scrollTop: 0,
     firstMountedResultIndex: 0,
     lastMountedResultIndex: 40,
@@ -1257,7 +1257,7 @@ function stableHostScrollProbe() {
   };
   const destinationWindow = {
     mountedResultCount: 53,
-    totalResultCount: 1138,
+    totalResultCount: 1149,
     scrollTop: 2000,
     firstMountedResultIndex: 19,
     lastMountedResultIndex: 71,

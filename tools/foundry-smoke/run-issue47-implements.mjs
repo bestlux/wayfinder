@@ -105,8 +105,9 @@ async function main() {
         const details = app.locator(".picker-unavailable-choices");
         if (!await details.evaluate((element) => element.open)) await details.locator("summary").click();
       }
-      if (await app.count()) await app.screenshot({ path: path.join(outDir, filename) });
-      else await playerPage.screenshot({ path: path.join(outDir, filename) });
+      // Foundry can replace the application root during a render; capture the
+      // viewport so a detached root cannot invalidate an otherwise stable shot.
+      await playerPage.screenshot({ path: path.join(outDir, filename), animations: "disabled" });
       return filename;
     });
     await playerPage.exposeFunction("__issue47ExerciseUnavailable", async ({ stepId, names }) => {

@@ -1,6 +1,7 @@
 import { cloneData } from "../../shared/cloning.js";
 import { ADVENTURERS_PACK_SOURCE_UUID } from "../domain/acquisition-types.js";
 import { evaluateEquipmentItemAuthority, resolveEquipmentItemExceptionJudgmentIds, } from "../domain/equipment-policy.js";
+import { normalizeEquipmentComparisonFacts } from "./equipment-comparison-facts.js";
 import { profileEquipmentStage } from "./equipment-performance-profiler.js";
 import { sortEquipmentSourceDiagnostics, sourceDiagnostic, } from "./equipment-source-policy.js";
 export const EQUIPMENT_CATALOGUE_PROJECTION_VERSION = 1;
@@ -14,6 +15,7 @@ const INDEX_FIELDS = Object.freeze([
     "system.traits.value",
     "system.traits.otherTags",
     "system.traits.config.modular",
+    "system.traits.toggles.doubleBarrel.selected",
     "system.publication.title",
     "system.source.value",
     "system.price.value",
@@ -27,6 +29,13 @@ const INDEX_FIELDS = Object.freeze([
     "system.grade",
     "system.specific",
     "system.subitems",
+    "system.meleeUsage",
+    "system.damage",
+    "system.acBonus",
+    "system.splashDamage.value",
+    "system.slug",
+    "flags.pf2e.battleForm",
+    "flags.pf2e.fixedAttack",
 ]);
 const PHYSICAL_ITEM_TYPES = new Set(["ammo", "armor", "backpack", "consumable", "equipment", "shield", "weapon"]);
 const CONTAINER_ITEM_TYPES = new Set(["kit"]);
@@ -626,6 +635,7 @@ function indexNormalizationWitness(source) {
         traits.value,
         traits.otherTags,
         record(traits.config).modular,
+        record(record(traits.toggles).doubleBarrel).selected,
         publication.title,
         legacySource.value,
         price.value,
@@ -639,6 +649,13 @@ function indexNormalizationWitness(source) {
         system.grade,
         system.specific,
         system.subitems,
+        system.meleeUsage,
+        system.damage,
+        system.acBonus,
+        system.splashDamage,
+        system.slug,
+        record(record(source.flags).pf2e).battleForm,
+        record(record(source.flags).pf2e).fixedAttack,
     ]);
 }
 function exactNormalizationWitness(value, ancestors = new Set()) {
@@ -766,6 +783,7 @@ function normalizeCandidate(source, packId, sourceUuid, knownDocumentId, allowIn
         indexedBrowsePriceFacts,
         traits: Object.freeze(uniqueSorted(stringArray(traitsRoot.value).map((trait) => trait.toLowerCase()))),
         ruleKeys: Object.freeze(ruleKeys),
+        comparison: normalizeEquipmentComparisonFacts(value),
     };
     const candidate = Object.freeze({
         ...candidateMaterial,
@@ -971,6 +989,7 @@ function stripEvaluation(entry) {
         indexedBrowsePriceFacts: entry.indexedBrowsePriceFacts,
         traits: entry.traits,
         ruleKeys: entry.ruleKeys,
+        comparison: entry.comparison,
         previewIdentity: entry.previewIdentity,
     });
 }
@@ -1125,6 +1144,7 @@ function fingerprintEquipmentPreview(candidate) {
     hash = hashFingerprintPart(hash, null);
     for (const ruleKey of candidate.ruleKeys)
         hash = hashFingerprintPart(hash, ruleKey);
+    hash = hashFingerprintPart(hash, canonicalJson(candidate.comparison));
     return `equipment-preview-v1-${(hash >>> 0).toString(16).padStart(8, "0")}`;
 }
 async function yieldProjectionTask() {

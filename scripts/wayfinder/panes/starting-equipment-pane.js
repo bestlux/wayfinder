@@ -5,6 +5,7 @@ import { resolveAcquisitionPrice } from "../domain/acquisition-ledger.js";
 import { itemLevelWithinCurrencyBoundary, resolveEquipmentItemLevelBoundary, } from "../domain/equipment-item-level-boundary.js";
 import { equipmentPolicyJudgmentFactsEqual } from "../domain/equipment-policy.js";
 import { clampStartingEquipmentResultWindow, STARTING_EQUIPMENT_RESULT_WINDOW, } from "../starting-equipment-result-window.js";
+import { localizeEquipmentComparison } from "./equipment-comparison-label.js";
 const FOUNDRY_INTL_LOCALE_ALIASES = Object.freeze({
     cn: "zh-CN",
 });
@@ -121,7 +122,12 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
         const priceLabel = invariant.priceLabel;
         const localizedRarity = invariant.rarityLabel;
         const resultLabel = localize("wayfinder-pf2e.StartingEquipment.Catalogue.ResultLabel", {
-            name: record.name,
+            name: invariant.comparisonLabel
+                ? localize("wayfinder-pf2e.StartingEquipment.Comparison.AccessibleName", {
+                    name: record.name,
+                    comparison: invariant.comparisonLabel,
+                })
+                : record.name,
             meta: localize("wayfinder-pf2e.StartingEquipment.Catalogue.ItemMeta", {
                 level: record.level,
                 rarity: localizedRarity,
@@ -139,6 +145,8 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
             rarityLabel: localizedRarity,
             typeIcon: invariant.typeIcon,
             itemTypeLabel: invariant.itemTypeLabel,
+            comparisonLabel: invariant.comparisonLabel,
+            comparisonExplanation: invariant.comparisonExplanation,
             traits: invariant.traits,
             bulkLabel: invariant.bulkLabel,
             unavailableReason: invariant.unavailableReason,
@@ -227,6 +235,11 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
             description: previewDetails?.description ?? "",
             bulkLabel: previewDetails?.bulkLabel ?? "",
             handsLabel: previewDetails?.handsLabel ?? null,
+            comparisonExplanation: previewRecord.comparison?.kind === "weapon" &&
+                acquisition?.policySnapshot?.material.abp.enabled &&
+                !acquisition.policySnapshot.material.abp.actorOverrideDisabled
+                ? localize("wayfinder-pf2e.StartingEquipment.Comparison.WeaponAbpExplanation")
+                : previewRecord.comparisonExplanation,
         }
         : null;
     const selectedTitanMaulerRecord = catalogue.titanMauler.selectedSourceUuid
@@ -880,7 +893,10 @@ function localizedCatalogueInvariant(record, localize, locale) {
     const cached = byLocalize?.get(localize)?.get(locale);
     if (cached)
         return cached;
+    const comparison = localizeEquipmentComparison(record.comparison, localize);
     const invariant = Object.freeze({
+        comparisonLabel: comparison.label,
+        comparisonExplanation: comparison.explanation,
         levelLabel: localize("wayfinder-pf2e.StartingEquipment.Catalogue.LevelTag", { level: record.level }),
         priceLabel: cataloguePriceLabel(record, localize),
         rarityLabel: rarityLabel(record.rarity, localize),

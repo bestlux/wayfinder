@@ -52,6 +52,88 @@ function catalogueRows(pane: ReturnType<typeof buildStartingEquipmentPaneLocaliz
  */
 
 describe("starting equipment pane", () => {
+  it("announces item comparison facts and explains ABP without changing the draft", () => {
+    const draft = createEmptyDraft(1);
+    draft.acquisition = acquisitionFixture({ lines: [], disposition: "unreviewed" }).draft;
+    draft.acquisition = {
+      ...draft.acquisition,
+      policySnapshot: {
+        ...draft.acquisition.policySnapshot!,
+        material: {
+          ...draft.acquisition.policySnapshot!.material,
+          abp: { ...draft.acquisition.policySnapshot!.material.abp, enabled: true, actorOverrideDisabled: false },
+        },
+      },
+    };
+    const before = JSON.stringify(draft);
+    const records: StartingEquipmentCatalogueRecord[] = [
+      {
+        sourceUuid: "Compendium.pf2e.equipment-srd.Item.weapon",
+        name: "Longsword",
+        itemType: "weapon",
+        level: 0,
+        rarity: "common",
+        sourceLabel: "Player Core",
+        priceCopper: 100,
+        priceLabel: "1 gp",
+        bulkLabel: "L",
+        handsLabel: "1",
+        traits: [],
+        available: true,
+        unavailableReason: null,
+        exceptionRequestable: false,
+        titanMaulerEligible: false,
+        comparison: {
+          kind: "weapon",
+          primary: { dice: 1, die: "d8", modifier: 0, damageType: "slashing" },
+          hasAdditionalEffects: false,
+          includesStriking: false,
+        },
+      },
+      {
+        sourceUuid: "Compendium.pf2e.equipment-srd.Item.shield",
+        name: "Steel Shield",
+        itemType: "shield",
+        level: 0,
+        rarity: "common",
+        sourceLabel: "Player Core",
+        priceCopper: 200,
+        priceLabel: "2 gp",
+        bulkLabel: "1",
+        handsLabel: "1",
+        traits: [],
+        available: true,
+        unavailableReason: null,
+        exceptionRequestable: false,
+        titanMaulerEligible: false,
+        comparison: { kind: "shield", acBonus: 2 },
+      },
+    ];
+    const pane = buildStartingEquipmentPane(
+      createStartingEquipmentStep(1),
+      draft,
+      { state: "incomplete", complete: false, status: "Review purchases", issue: null },
+      {
+        state: "ready",
+        message: "",
+        query: "",
+        matchedRecordCount: 2,
+        recordSource: equipmentCatalogueRecordSourceFromRecords(records),
+        filters: [],
+        activeFilters: {},
+        previewSourceUuid: records[0]!.sourceUuid,
+        titanMauler: { required: false, selectedSourceUuid: null },
+      }
+    );
+    const rows = catalogueRows(pane);
+    expect(rows[0]?.comparisonLabel).toBe("Damage: 1d8 slashing");
+    expect(rows[0]?.previewAriaLabel).toContain("Damage: 1d8 slashing");
+    expect(rows[1]?.comparisonLabel).toBe("AC +2 when raised");
+    expect(rows[1]?.previewAriaLabel).toContain("AC +2 when raised");
+    expect(pane.catalogue.preview?.comparisonExplanation).toContain("Automatic Bonus Progression");
+    expect(JSON.stringify(draft)).toBe(before);
+  });
+
   it("offers ordinary outfitter initialization when a saved equipment draft returns to level one", () => {
     const draft = createEmptyDraft(1);
     draft.acquisition = reconcileAcquisitionTargetLevel(

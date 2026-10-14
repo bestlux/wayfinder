@@ -14,6 +14,12 @@
     </header>
 
     <dl class="detail-grid equipment-detail-stats">
+      {{#if comparisonLabel}}
+        <div class="detail-row equipment-detail-comparison">
+          <dt>{{localize "wayfinder-pf2e.StartingEquipment.Comparison.DetailHeading"}}</dt>
+          <dd>{{comparisonLabel}}</dd>
+        </div>
+      {{/if}}
       <div class="detail-row">
         <dt>{{localize "wayfinder-pf2e.StartingEquipment.Detail.Level"}}</dt>
         <dd>{{level}}</dd>
@@ -31,6 +37,7 @@
         </div>
       {{/if}}
     </dl>
+    {{#if comparisonExplanation}}<p class="equipment-detail-comparison-explanation">{{comparisonExplanation}}</p>{{/if}}
 
     {{#if traits.length}}
       <div class="equipment-detail-traits">

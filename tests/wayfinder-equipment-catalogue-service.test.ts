@@ -31,6 +31,89 @@ const UNCOMMON_ID = "uncommon-item";
 const UNCOMMON_UUID = `Compendium.${PACK_ID}.Item.${UNCOMMON_ID}`;
 
 describe("minimal equipment catalogue", () => {
+  it("projects combat facts from indexes without document reads and invalidates damage, rune and AC changes", async () => {
+    let index = [
+      dagger({
+        system: {
+          damage: { dice: 1, die: "d8", modifier: 0, damageType: "slashing" },
+          runes: { potency: 0, striking: 0, property: [] },
+        },
+      }),
+      dagger({ _id: "shield", type: "shield", name: "Shield", system: { acBonus: 2 } }),
+    ];
+    const getIndex = vi.fn(async (_options: { fields: string[] }) => index);
+    const getDocument = vi.fn(async () => null);
+    const service = createEquipmentCatalogueService({
+      packs: new Map([[PACK_ID, { documentName: "Item", getIndex, getDocument }]]),
+      equipmentPackIds: [PACK_ID],
+    });
+    const first = await service.project(context());
+    const weapon = first.entries.find((entry) => entry.itemType === "weapon")!;
+    const shield = first.entries.find((entry) => entry.itemType === "shield")!;
+    expect(weapon.comparison).toMatchObject({
+      kind: "weapon",
+      primary: { dice: 1, die: "d8", damageType: "slashing" },
+    });
+    expect(shield.comparison).toEqual({ kind: "shield", acBonus: 2 });
+    expect(getIndex.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        fields: expect.arrayContaining([
+          "system.damage",
+          "system.acBonus",
+          "system.splashDamage.value",
+          "flags.pf2e.fixedAttack",
+        ]),
+      })
+    );
+    index = [
+      dagger({
+        system: {
+          damage: { dice: 1, die: "d12", modifier: 0, damageType: "slashing" },
+          runes: { potency: 0, striking: 2, property: [] },
+        },
+      }),
+      dagger({ _id: "shield", type: "shield", name: "Shield", system: { acBonus: 3 } }),
+    ];
+    service.invalidatePack(PACK_ID);
+    const updated = await service.project(context());
+    const changedWeapon = updated.entries.find((entry) => entry.itemType === "weapon")!;
+    const changedShield = updated.entries.find((entry) => entry.itemType === "shield")!;
+    expect(changedWeapon.comparison).toMatchObject({
+      kind: "weapon",
+      primary: { dice: 3, die: "d12" },
+      includesStriking: true,
+    });
+    expect(changedWeapon.previewIdentity).not.toBe(weapon.previewIdentity);
+    expect(changedShield.comparison).toEqual({ kind: "shield", acBonus: 3 });
+    expect(changedShield.previewIdentity).not.toBe(shield.previewIdentity);
+    expect(getDocument).not.toHaveBeenCalled();
+  });
+
+  it("reprocesses in-place source statistic updates for adapters without stable index identities", async () => {
+    const source = dagger({
+      system: {
+        damage: { dice: 1, die: "d6", modifier: 0, damageType: "piercing" },
+        runes: { potency: 0, striking: 0, property: [] },
+      },
+    });
+    const service = createEquipmentCatalogueService({
+      packs: new Map([
+        [
+          PACK_ID,
+          { documentName: "Item", getIndex: vi.fn(async () => [source]), getDocument: vi.fn(async () => null) },
+        ],
+      ]),
+      equipmentPackIds: [PACK_ID],
+    });
+    const first = await service.project(context());
+    const system = source.system as Record<string, unknown>;
+    (system.damage as Record<string, unknown>).die = "d10";
+    service.invalidatePack(PACK_ID);
+    const updated = await service.project(context());
+    expect(updated.entries[0]?.comparison).toMatchObject({ primary: { die: "d10" } });
+    expect(updated.entries[0]?.previewIdentity).not.toBe(first.entries[0]?.previewIdentity);
+  });
+
   it("bounds a production-sized cold projection task while preserving exact source diagnostics", async () => {
     const yieldTask = vi.fn(async () => undefined);
     vi.stubGlobal("scheduler", { yield: yieldTask });

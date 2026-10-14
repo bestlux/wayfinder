@@ -1818,6 +1818,7 @@ function toUiRecord(entry, preparedPrice) {
         bulkLabel: "See item details",
         handsLabel: null,
         traits: Object.freeze([...entry.traits]),
+        comparison: entry.comparison,
         available: entry.available,
         unavailableReason: entry.unavailableReasons[0]?.message ?? null,
         exceptionRequestable: entry.unavailableReasons.length > 0 &&

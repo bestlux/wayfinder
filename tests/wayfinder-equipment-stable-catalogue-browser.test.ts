@@ -66,7 +66,7 @@ browserIt("mounts real rows synchronously across jumps and pins the focused row"
         host,
         viewport,
         canvas,
-        rowHeightPx: 48,
+        rowHeightPx: 72,
         previousPageButton,
         nextPageButton,
         onPreview: (row) => {
@@ -86,6 +86,7 @@ browserIt("mounts real rows synchronously across jumps and pins the focused row"
         itemTypeLabel: index % 3 === 0 ? "Weapon" : "Equipment",
         typeIcon: "fa-box",
         sourceLabel: "Player Core",
+        comparisonLabel: index % 3 === 0 ? "Damage: 1d8 slashing" : null,
         unavailableReason: null,
         priceLabel: index === 5 ? "View for exact price" : `${index + 1} cp`,
         pricePending: index === 5,
@@ -167,7 +168,7 @@ browserIt("mounts real rows synchronously across jumps and pins the focused row"
       await nextFrame();
 
       const stableViewport = viewport;
-      viewport.scrollTop = 720 * 48;
+      viewport.scrollTop = 720 * 72;
       viewport.dispatchEvent(new Event("scroll"));
       const immediateGapPx = maximumVisibleGap(viewport);
       const immediateRows = viewport.querySelectorAll("[role='listitem']").length;
@@ -182,7 +183,7 @@ browserIt("mounts real rows synchronously across jumps and pins the focused row"
 
       const focusButton = viewport.querySelector<HTMLButtonElement>("[data-result-index='720'] button")!;
       focusButton.focus({ preventScroll: true });
-      viewport.scrollTop = 950 * 48;
+      viewport.scrollTop = 950 * 72;
       viewport.dispatchEvent(new Event("scroll"));
       const focusPinnedImmediately = document.activeElement === focusButton && focusButton.isConnected;
       await nextFrame();
@@ -233,7 +234,7 @@ browserIt("mounts real rows synchronously across jumps and pins the focused row"
       previewedSourceUuid: "Compendium.pf2e.equipment-srd.Item.720",
       stableViewport: true,
       stableOrderUpdate: { indexBuilds: "1", nodePreserved: true, updatedName: "Updated Equipment 0" },
-      totalCanvasHeight: `${1_138 * 48}px`,
+      totalCanvasHeight: `${1_138 * 72}px`,
     });
     expect(evidence.immediateRows).toBeLessThanOrEqual(20);
     expect(evidence.mountedAfterFrame).toBeLessThanOrEqual(48);
@@ -248,7 +249,7 @@ browserIt("mounts real rows synchronously across jumps and pins the focused row"
   }
 });
 
-browserIt("keeps long localized rows bounded across narrow layouts, text zoom, and restored scroll", async () => {
+browserIt("keeps comparison facts visible across widths, locales, and text zoom", async () => {
   const browser = await chromium.launch({ executablePath: chromePath, headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1200, height: 900 } });
@@ -261,6 +262,12 @@ browserIt("keeps long localized rows bounded across narrow layouts, text zoom, a
       const viewport = document.querySelector<HTMLElement>("[data-stable-list]")!;
       const canvas = document.querySelector<HTMLElement>("[data-stable-canvas]")!;
       const host = viewport.closest<HTMLElement>("[data-stable-host]")!;
+      const comparisons = [
+        "Damage: 3d12 bludgeoning · effects",
+        "伤害：3d12 钝击 · 附加效果",
+        "AC +2 when raised",
+        "Damage — see details",
+      ];
       const rows = Array.from({ length: 200 }, (_, index) => ({
         stepId: "starting-equipment-level-1",
         sourceUuid: `Compendium.pf2e.equipment-srd.Item.localized-${index}`,
@@ -268,14 +275,15 @@ browserIt("keeps long localized rows bounded across narrow layouts, text zoom, a
           index % 2 === 0
             ? `超长的中文装备名称用于验证在放大和狭窄布局中不会被无声裁切 ${index}`
             : `An extraordinarily long localized equipment name for narrow and magnified layouts ${index}`,
-        previewAriaLabel: `查看超长的中文装备名称 ${index}`,
+        previewAriaLabel: `查看超长的中文装备名称 ${index} · ${comparisons[index % comparisons.length]}`,
         previewFocusId: `localized-preview:${index}`,
         levelLabel: `等级 ${index % 21}`,
         rarity: "uncommon",
         rarityLabel: "罕见",
-        itemType: "equipment",
-        itemTypeLabel: "装备",
+        itemType: index % comparisons.length === 2 ? "shield" : "weapon",
+        itemTypeLabel: index % comparisons.length === 2 ? "Shield" : "Weapon",
         typeIcon: "fa-box",
+        comparisonLabel: comparisons[index % comparisons.length]!,
         sourceLabel:
           index % 2 === 0
             ? "极其冗长的规则书与补充资料来源名称"
@@ -318,18 +326,41 @@ browserIt("keeps long localized rows bounded across narrow layouts, text zoom, a
             const price = row.querySelector<HTMLElement>(".equipment-result-price")!;
             return getComputedStyle(price).overflowWrap === "anywhere" && price.scrollHeight <= price.clientHeight;
           }),
+          comparisonFactsVisible: mounted.every((row) => {
+            const index = Number(row.dataset.resultIndex);
+            const comparison = row.querySelector<HTMLElement>(".equipment-result-comparison")!;
+            const button = row.querySelector<HTMLElement>("button")!;
+            const comparisonBounds = comparison.getBoundingClientRect();
+            const buttonBounds = button.getBoundingClientRect();
+            return (
+              !comparison.hidden &&
+              comparison.textContent === rows[index]!.comparisonLabel &&
+              getComputedStyle(comparison).webkitLineClamp === "none" &&
+              comparison.scrollWidth <= comparison.clientWidth + 1 &&
+              comparison.scrollHeight <= comparison.clientHeight + 1 &&
+              comparisonBounds.width > 0 &&
+              comparisonBounds.height > 0 &&
+              comparisonBounds.top >= buttonBounds.top &&
+              comparisonBounds.bottom <= buttonBounds.bottom + 1 &&
+              comparisonBounds.left >= buttonBounds.left &&
+              comparisonBounds.right <= buttonBounds.right + 1
+            );
+          }),
+          maximumRowElements: Math.max(...mounted.map((row) => row.querySelectorAll("*").length + 1)),
         };
       };
 
-      const at980 = geometry();
-      stage.style.width = "760px";
-      await nextFrame();
-      await nextFrame();
-      controller.setProjection(projection);
-      const at760 = geometry();
-
-      document.documentElement.style.fontSize = "32px";
-      controller.setProjection(projection);
+      const layouts = [];
+      for (const fontSize of [16, 32]) {
+        document.documentElement.style.fontSize = `${fontSize}px`;
+        for (const stageWidth of [1240, 1180, 980, 761, 760]) {
+          stage.style.width = `${stageWidth}px`;
+          await nextFrame();
+          await nextFrame();
+          controller.setProjection(projection);
+          layouts.push({ fontSize, stageWidth, ...geometry() });
+        }
+      }
       const at200Percent = geometry();
       const restoredTarget = 80 * at200Percent.rowHeight;
       controller.restoreScrollTop(restoredTarget);
@@ -337,18 +368,33 @@ browserIt("keeps long localized rows bounded across narrow layouts, text zoom, a
       const restoredHasDestination = Boolean(viewport.querySelector(`[data-result-index='${restoredIndex}']`));
       const restoredScrollTop = viewport.scrollTop;
       controller.dispose();
-      return { at980, at760, at200Percent, restoredHasDestination, restoredIndex, restoredScrollTop };
+      return { layouts, at200Percent, restoredHasDestination, restoredIndex, restoredScrollTop };
     });
 
-    expect(evidence.at980).toMatchObject({ rowHeight: 72, rowsBounded: true, pricesBounded: true });
-    expect(evidence.at980.canvasHeight).toBe(200 * 72);
-    expect(evidence.at760).toMatchObject({ rowHeight: 80, rowsBounded: true, pricesBounded: true });
-    expect(evidence.at760.canvasHeight).toBe(200 * 80);
-    expect(evidence.at200Percent).toMatchObject({ rowHeight: 160, rowsBounded: true, pricesBounded: true });
-    expect(evidence.at200Percent.canvasHeight).toBe(200 * 160);
+    expect(evidence.layouts).toHaveLength(10);
+    for (const layout of evidence.layouts) {
+      expect(layout, `${layout.stageWidth}px stage at ${layout.fontSize}px text`).toMatchObject({
+        rowsBounded: true,
+        pricesBounded: true,
+        comparisonFactsVisible: true,
+        maximumRowElements: 12,
+      });
+      const expectedRowHeight =
+        layout.fontSize === 32
+          ? layout.stageWidth === 761
+            ? 272
+            : 224
+          : layout.stageWidth > 980
+            ? 72
+            : layout.stageWidth > 760
+              ? 88
+              : 96;
+      expect(layout.rowHeight).toBe(expectedRowHeight);
+      expect(layout.canvasHeight).toBe(200 * expectedRowHeight);
+    }
     expect(evidence.restoredIndex).toBe(80);
     expect(evidence.restoredHasDestination).toBe(true);
-    expect(evidence.restoredScrollTop).toBe(80 * 160);
+    expect(evidence.restoredScrollTop).toBe(80 * evidence.at200Percent.rowHeight);
   } finally {
     await browser.close();
   }
@@ -366,10 +412,10 @@ browserIt("preserves the durable host across projections and disposes it only af
       const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       const root = document.querySelector<HTMLElement>("[data-lifecycle-root]")!;
       const controllerHost = new window.EquipmentStableCatalogueHost();
-      const row = (sourceUuid: string, name = sourceUuid) => ({
+      const row = (sourceUuid: string, name = sourceUuid, comparisonLabel: string | null = null) => ({
         sourceUuid,
         name,
-        previewAriaLabel: `Preview ${name}`,
+        previewAriaLabel: `Preview ${name}${comparisonLabel ? ` · ${comparisonLabel}` : ""}`,
         previewFocusId: `preview:${sourceUuid}`,
         levelLabel: "Level 1",
         rarity: "common",
@@ -378,6 +424,7 @@ browserIt("preserves the durable host across projections and disposes it only af
         itemTypeLabel: "Equipment",
         typeIcon: "fa-box",
         sourceLabel: "Player Core",
+        comparisonLabel,
         unavailableReason: null,
         priceLabel: "1 gp",
         canAdd: true,
@@ -411,18 +458,30 @@ browserIt("preserves the durable host across projections and disposes it only af
         sourceUuids: rows.map((entry) => entry.sourceUuid),
         rowAt: (index: number) => rows[index]!,
       });
-      const initialRows = [row("a", "Alpha"), row("b", "Beta"), row("c", "Gamma")];
+      const initialRows = [row("a", "Alpha"), row("b", "Beta", "Damage: 1d8 slashing"), row("c", "Gamma")];
       controllerHost.update({ root, projection: projection("initial", "abc", initialRows) });
       await nextFrame();
       const initialHost = root.querySelector<HTMLElement>("[data-equipment-stable-host]")!;
       const initialViewport = root.querySelector<HTMLElement>("[data-wayfinder-equipment-virtual-list]")!;
       const initialCanvas = root.querySelector<HTMLElement>("[data-equipment-stable-canvas]")!;
       const betaButton = initialViewport.querySelector<HTMLButtonElement>("[data-source-uuid='b'] button")!;
+      const comparison = betaButton.querySelector<HTMLElement>(".equipment-result-comparison")!;
+      const ordinaryComparison = initialViewport.querySelector<HTMLElement>(
+        "[data-source-uuid='a'] .equipment-result-comparison"
+      )!;
+      const ordinaryItem = {
+        comparisonHidden: ordinaryComparison.hidden,
+        comparisonText: ordinaryComparison.textContent,
+      };
       betaButton.focus({ preventScroll: true });
 
       root.querySelector("[data-application-part='equipment-catalogue']")!.outerHTML =
         `<div data-application-part="equipment-catalogue"><button data-filter aria-pressed="true">Available <span data-count>2</span></button></div>`;
-      const updatedRows = [initialRows[0]!, row("b", "Beta revised"), initialRows[2]!];
+      const updatedRows = [
+        initialRows[0]!,
+        row("b", "Beta revised", "Damage: 3d12 slashing · effects"),
+        initialRows[2]!,
+      ];
       controllerHost.update({
         root,
         projection: projection("updated", "abc", updatedRows, {
@@ -440,6 +499,10 @@ browserIt("preserves the durable host across projections and disposes it only af
         focused: document.activeElement === betaButton,
         hostPreserved: root.querySelector("[data-equipment-stable-host]") === initialHost,
         name: betaButton.querySelector(".equipment-result-name")?.textContent,
+        comparison: comparison.textContent,
+        comparisonHidden: comparison.hidden,
+        comparisonNodePreserved: betaButton.querySelector(".equipment-result-comparison") === comparison,
+        ariaLabel: betaButton.ariaLabel,
         nodePreserved: initialViewport.querySelector("[data-source-uuid='b'] button") === betaButton,
         viewportPreserved: root.querySelector("[data-wayfinder-equipment-virtual-list]") === initialViewport,
       };
@@ -459,6 +522,26 @@ browserIt("preserves the durable host across projections and disposes it only af
         focused: document.activeElement === betaButton,
         index: betaButton.closest<HTMLElement>("[data-result-index]")?.dataset.resultIndex,
         nodePreserved: initialViewport.querySelector("[data-source-uuid='b'] button") === betaButton,
+      };
+
+      controllerHost.update({
+        root,
+        projection: projection(
+          "comparison-cleared",
+          "cab",
+          [initialRows[2]!, initialRows[0]!, row("b", "Beta ordinary")],
+          {
+            view: 9,
+            source: 6,
+          }
+        ),
+      });
+      const clearedComparison = {
+        focused: document.activeElement === betaButton,
+        nodePreserved: betaButton.querySelector(".equipment-result-comparison") === comparison,
+        hidden: comparison.hidden,
+        text: comparison.textContent,
+        ariaLabel: betaButton.ariaLabel,
       };
 
       controllerHost.update({ root, projection: projection("empty", "empty", [], { view: 9, criteria: 4 }) });
@@ -493,7 +576,17 @@ browserIt("preserves the durable host across projections and disposes it only af
         viewportReplaced: nextViewport !== initialViewport,
       };
       controllerHost.dispose();
-      return { empty, fullReplacement, hostDatasets, reordered, restored, sameOrder, viewportDatasets };
+      return {
+        clearedComparison,
+        empty,
+        fullReplacement,
+        hostDatasets,
+        ordinaryItem,
+        reordered,
+        restored,
+        sameOrder,
+        viewportDatasets,
+      };
     });
 
     expect(evidence.sameOrder).toEqual({
@@ -502,6 +595,10 @@ browserIt("preserves the durable host across projections and disposes it only af
       focused: true,
       hostPreserved: true,
       name: "Beta revised",
+      comparison: "Damage: 3d12 slashing · effects",
+      comparisonHidden: false,
+      comparisonNodePreserved: true,
+      ariaLabel: "Preview Beta revised · Damage: 3d12 slashing · effects",
       nodePreserved: true,
       viewportPreserved: true,
     });
@@ -529,6 +626,14 @@ browserIt("preserves the durable host across projections and disposes it only af
       wayfinderViewRevision: evidence.hostDatasets.wayfinderViewRevision,
     });
     expect(evidence.reordered).toEqual({ focused: true, index: "2", nodePreserved: true });
+    expect(evidence.ordinaryItem).toEqual({ comparisonHidden: true, comparisonText: "" });
+    expect(evidence.clearedComparison).toEqual({
+      focused: true,
+      nodePreserved: true,
+      hidden: true,
+      text: "",
+      ariaLabel: "Preview Beta ordinary",
+    });
     expect(evidence.empty).toEqual({ canvasChildren: 0, focusedViewport: true, total: "0" });
     expect(evidence.restored).toEqual({ hasAlpha: true, hasGamma: true, viewportPreserved: true });
     expect(evidence.fullReplacement).toEqual({
@@ -566,10 +671,15 @@ function responsiveFixture(): string {
   </style>
   <div class="wayfinder-stage" data-responsive-stage>
     <div class="wayfinder-app">
-      <div data-stable-host>
-        <div class="equipment-result-list" role="list" tabindex="-1" data-stable-list>
-          <div class="equipment-stable-catalogue-canvas" role="presentation" data-stable-canvas></div>
-        </div>
+      <div class="equipment-workspace">
+        <section class="equipment-catalogue">
+          <div data-stable-host>
+            <div class="equipment-result-list" role="list" tabindex="-1" data-stable-list>
+              <div class="equipment-stable-catalogue-canvas" role="presentation" data-stable-canvas></div>
+            </div>
+          </div>
+        </section>
+        <aside class="equipment-detail"></aside>
       </div>
     </div>
   </div>`;

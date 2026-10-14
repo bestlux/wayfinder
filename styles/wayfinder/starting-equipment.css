@@ -399,6 +399,7 @@
 }
 
 .wayfinder-app .equipment-catalogue {
+  container: equipment-catalogue / inline-size;
   grid-column: 1;
   grid-row: 1;
 }
@@ -628,7 +629,7 @@
 /* ── Result list ───────────────────────────────────────── */
 
 .wayfinder-app .equipment-result-list {
-  --wayfinder-equipment-result-row-height: 4rem;
+  --wayfinder-equipment-result-row-height: 4.5rem;
 
   position: relative;
   display: flex;
@@ -900,6 +901,14 @@
   overflow-wrap: anywhere;
 }
 
+.wayfinder-app .equipment-result-comparison {
+  min-width: 0;
+  flex-shrink: 0;
+  color: var(--wf-ink);
+  font: 600 0.7rem / 1.25 var(--sans-serif, sans-serif);
+  overflow-wrap: anywhere;
+}
+
 .wayfinder-app .equipment-result-meta i {
   font-size: 0.55rem;
   opacity: 0.7;
@@ -995,6 +1004,26 @@
   /* auto-fit so a lone stat spans the panel instead of leaving an orphaned half-row. */
   grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
   margin: 0;
+}
+
+.wayfinder-app .equipment-detail-comparison {
+  grid-column: 1 / -1;
+}
+
+.wayfinder-app .equipment-detail-comparison dd {
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.wayfinder-app .equipment-detail-comparison-explanation {
+  flex-shrink: 0;
+  min-width: 0;
+  margin: 0.3rem 0.5rem 0;
+  color: var(--wf-ink-soft);
+  font: 400 0.7rem / 1.4 var(--sans-serif, sans-serif);
+  overflow-wrap: anywhere;
 }
 
 .wayfinder-app .equipment-detail-traits {
@@ -1570,7 +1599,7 @@
 
 @container wayfinder-stage (max-width: 980px) {
   .wayfinder-app .equipment-result-list {
-    --wayfinder-equipment-result-row-height: 4.5rem;
+    --wayfinder-equipment-result-row-height: 5.5rem;
   }
 
   .wayfinder-app .equipment-workspace {
@@ -1584,7 +1613,7 @@
 
 @container wayfinder-stage (max-width: 760px) {
   .wayfinder-app .equipment-result-list {
-    --wayfinder-equipment-result-row-height: 5rem;
+    --wayfinder-equipment-result-row-height: 6rem;
   }
 
   .wayfinder-app .equipment-workspace {
@@ -1644,6 +1673,28 @@
 
   .wayfinder-app .equipment-purse-figures {
     justify-content: flex-start;
+  }
+}
+
+@container equipment-catalogue (max-width: 28rem) {
+  .wayfinder-app .equipment-result-list {
+    --wayfinder-equipment-result-row-height: 7rem;
+  }
+
+  .wayfinder-app .equipment-result {
+    grid-template-columns: 1.75rem minmax(0, 1fr);
+  }
+
+  .wayfinder-app .equipment-stable-result-row .equipment-result-price {
+    grid-column: 2;
+    max-width: none;
+    text-align: left;
+  }
+}
+
+@container equipment-catalogue (max-width: 14rem) {
+  .wayfinder-app .equipment-result-list {
+    --wayfinder-equipment-result-row-height: 8.5rem;
   }
 }
 

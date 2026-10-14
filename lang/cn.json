@@ -334,6 +334,18 @@
         "TraitSearchPlaceholder": "搜索特征…",
         "StartToLoad": "先开始上方步骤，装备列表将在这里加载。"
       },
+      "Comparison": {
+        "AccessibleName": "{name} · {comparison}",
+        "DetailHeading": "伤害与防护",
+        "Weapon": "伤害：{damage}",
+        "WithEffects": "{damage} · 额外效果",
+        "WeaponUnavailable": "伤害 — 查看详情",
+        "Shield": "举盾时 AC +{ac}",
+        "ShieldUnavailable": "AC 未知 — 查看详情",
+        "WeaponExplanation": "显示武器默认用法的伤害，包含强击符文。角色能力、变体规则和额外效果可能改变其伤害。",
+        "WeaponAbpExplanation": "此处显示物品列出的伤害。自动加值成长规则可能停用其符文；请在 PF2E 角色卡上查看角色的最终伤害。",
+        "ShieldExplanation": "盾牌列出的 AC 加值在举盾时生效。硬度与生命值是独立的数值。"
+      },
       "Corrupt": {
         "Body": "寻路仪无法读取保存的购物车，也不会猜测你拥有或花费了什么。请清除草稿后重新开始此步骤。",
         "Title": "装备草稿已损坏"

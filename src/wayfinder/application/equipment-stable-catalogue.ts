@@ -10,6 +10,7 @@ export interface EquipmentStableCatalogueRow {
   readonly itemTypeLabel: string;
   readonly typeIcon: string;
   readonly sourceLabel: string;
+  readonly comparisonLabel: string | null;
   readonly unavailableReason: string | null;
   readonly priceLabel: string;
   readonly pricePending?: boolean;
@@ -58,6 +59,7 @@ interface MountedEquipmentRow {
   readonly name: HTMLElement;
   readonly level: HTMLElement;
   readonly rarity: HTMLElement;
+  readonly comparison: HTMLElement;
   readonly meta: HTMLElement;
   readonly price: HTMLElement;
   readonly icon: HTMLElement;
@@ -65,7 +67,7 @@ interface MountedEquipmentRow {
   index: number;
 }
 
-const DEFAULT_ROW_HEIGHT_PX = 64;
+const DEFAULT_ROW_HEIGHT_PX = 72;
 const DEFAULT_ROWS_BEHIND = 12;
 const DEFAULT_ROWS_AHEAD = 24;
 const ROW_HEIGHT_CUSTOM_PROPERTY = "--wayfinder-equipment-result-row-height";
@@ -451,16 +453,18 @@ function createMountedRow(document: Document, row: EquipmentStableCatalogueRow, 
   level.className = "tag equipment-result-level";
   const rarity = document.createElement("span");
   title.append(name, level, rarity);
+  const comparison = document.createElement("span");
+  comparison.className = "equipment-result-comparison";
   const meta = document.createElement("span");
   meta.className = "equipment-result-meta";
-  copy.append(title, meta);
+  copy.append(title, comparison, meta);
 
   const price = document.createElement("span");
   price.className = "equipment-result-price";
   button.append(art, copy, price);
   root.append(button);
 
-  const mounted = { root, button, name, level, rarity, meta, price, icon, row, index };
+  const mounted = { root, button, name, level, rarity, comparison, meta, price, icon, row, index };
   patchMountedRow(mounted, row);
   return mounted;
 }
@@ -483,6 +487,8 @@ function patchMountedRow(mounted: MountedEquipmentRow, row: EquipmentStableCatal
   mounted.rarity.className = `tag rarity-${row.rarity}`;
   mounted.rarity.textContent = row.rarity === "common" ? "" : row.rarityLabel;
   mounted.rarity.hidden = row.rarity === "common";
+  mounted.comparison.textContent = row.comparisonLabel ?? "";
+  mounted.comparison.hidden = row.comparisonLabel === null;
   mounted.meta.textContent = `${row.itemTypeLabel} · ${row.sourceLabel}${row.unavailableReason ? ` · ${row.unavailableReason}` : ""}`;
   mounted.price.classList.toggle("is-unaffordable", visuallyBlocked);
   mounted.price.textContent = row.priceLabel;

@@ -12,6 +12,7 @@ const implementationCorpus = [
   "src/wayfinder/app-shell.ts",
   "src/wayfinder/application/acquisition-localization.ts",
   "src/wayfinder/panes/starting-equipment-pane.ts",
+  "src/wayfinder/panes/equipment-comparison-label.ts",
   "src/wayfinder/panes/acquisition-receipt.ts",
   "src/wayfinder/application/starting-equipment-command-service.ts",
   "templates/wayfinder/starting-equipment-pane.hbs",

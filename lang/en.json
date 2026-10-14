@@ -323,6 +323,18 @@
         "TraitSearchPlaceholder": "Search traits…",
         "LevelTag": "Lvl {level}"
       },
+      "Comparison": {
+        "AccessibleName": "{name} · {comparison}",
+        "DetailHeading": "Damage & protection",
+        "Weapon": "Damage: {damage}",
+        "WithEffects": "{damage} · effects",
+        "WeaponUnavailable": "Damage — see details",
+        "Shield": "AC +{ac} when raised",
+        "ShieldUnavailable": "AC unavailable — see details",
+        "WeaponExplanation": "Listed damage for the weapon's default use, including striking runes. Character abilities, table variants, and additional effects can change its damage.",
+        "WeaponAbpExplanation": "This is the item's listed damage. Automatic Bonus Progression can suppress its runes; check the PF2E sheet for your character's final damage.",
+        "ShieldExplanation": "The shield's listed AC bonus applies while it is raised. Hardness and Hit Points are separate statistics."
+      },
       "Corrupt": {
         "Body": "Wayfinder can't read the saved cart, and it won't guess at what you owned or spent. Clear the draft to start this step again.",
         "Title": "This equipment draft is damaged"

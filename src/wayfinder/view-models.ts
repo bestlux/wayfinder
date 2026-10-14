@@ -7,6 +7,7 @@ import type {
   PickerSuppressionNotice,
   SingletonChoiceMeta,
 } from "../types.js";
+import type { EquipmentComparisonFacts } from "./application/equipment-comparison-facts.js";
 import type { FeatTraitFilterPane } from "./panes/feat-trait-filters.js";
 
 export interface StepNavRow {
@@ -415,6 +416,8 @@ export interface SpellChoiceStepPane {
 }
 
 export interface StartingEquipmentCatalogueRecord {
+  /** Optional catalogue facts; cart-only metadata may not contain an item comparison. */
+  readonly comparison?: EquipmentComparisonFacts | null;
   readonly sourceUuid: string;
   readonly name: string;
   readonly itemType: string;
@@ -439,6 +442,8 @@ export interface StartingEquipmentCatalogueRecord {
 }
 
 export interface StartingEquipmentCataloguePaneRow extends StartingEquipmentCatalogueRecord {
+  readonly comparisonLabel: string | null;
+  readonly comparisonExplanation: string | null;
   readonly typeIcon: string;
   readonly levelLabel: string;
   readonly rarityLabel: string;
@@ -644,6 +649,8 @@ export interface StartingEquipmentStepPane {
     hasItems: boolean;
     preview:
       | (StartingEquipmentCatalogueRecord & {
+          comparisonLabel: string | null;
+          comparisonExplanation: string | null;
           description: string;
           typeIcon: string;
           currencyAffordable: boolean;

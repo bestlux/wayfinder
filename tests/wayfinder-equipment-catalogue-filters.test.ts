@@ -328,6 +328,7 @@ function entry(overrides: Partial<EquipmentCatalogueEntry> = {}): EquipmentCatal
     indexedBrowsePriceFacts: null,
     traits: [],
     ruleKeys: [],
+    comparison: null,
     previewIdentity: "preview",
     available: true,
     unavailableReasons: [],

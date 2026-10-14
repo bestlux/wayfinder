@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.0 - 2026-10-14
+
+- Added weapon damage and raised-shield AC to Starting Equipment rows and their detail previews, so players can compare ordinary gear before opening each item.
+- Comparisons describe the catalogue item's default use, including supported striking runes. Extra effects and uncertain item profiles are qualified rather than presented as a complete character attack; shields show their AC bonus separately from hardness and Hit Points.
+- Added localized comparison text and accessible row announcements in English and Simplified Chinese, with readable narrow layouts and text zoom. Browsing remains index-backed, preserving the current purchase rules and document-loading behavior.
+
 ## 0.10.5 - 2026-10-07
 
 - Fixed saved Starting Equipment opening with disabled search and review controls when its higher-level wealth confirmation was no longer valid for the current account or world policy. Wayfinder now offers the required owner confirmation or GM approval step instead of leaving the outfitter stuck.

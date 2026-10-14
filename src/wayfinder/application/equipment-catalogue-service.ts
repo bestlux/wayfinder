@@ -7,6 +7,7 @@ import {
   evaluateEquipmentItemAuthority,
   resolveEquipmentItemExceptionJudgmentIds,
 } from "../domain/equipment-policy.js";
+import { type EquipmentComparisonFacts, normalizeEquipmentComparisonFacts } from "./equipment-comparison-facts.js";
 import { profileEquipmentStage } from "./equipment-performance-profiler.js";
 import {
   type EquipmentSourceDiagnostic,
@@ -26,6 +27,7 @@ const INDEX_FIELDS = Object.freeze([
   "system.traits.value",
   "system.traits.otherTags",
   "system.traits.config.modular",
+  "system.traits.toggles.doubleBarrel.selected",
   "system.publication.title",
   "system.source.value",
   "system.price.value",
@@ -39,6 +41,13 @@ const INDEX_FIELDS = Object.freeze([
   "system.grade",
   "system.specific",
   "system.subitems",
+  "system.meleeUsage",
+  "system.damage",
+  "system.acBonus",
+  "system.splashDamage.value",
+  "system.slug",
+  "flags.pf2e.battleForm",
+  "flags.pf2e.fixedAttack",
 ]);
 const PHYSICAL_ITEM_TYPES = new Set(["ammo", "armor", "backpack", "consumable", "equipment", "shield", "weapon"]);
 const CONTAINER_ITEM_TYPES = new Set(["kit"]);
@@ -109,6 +118,7 @@ export interface NormalizedEquipmentCatalogueCandidate {
   readonly indexedBrowsePriceFacts: IndexedEquipmentBrowsePriceFacts | null;
   readonly traits: readonly string[];
   readonly ruleKeys: readonly string[];
+  readonly comparison: EquipmentComparisonFacts | null;
   readonly previewIdentity: string;
 }
 
@@ -998,6 +1008,7 @@ function indexNormalizationWitness(source: Readonly<Record<string, unknown>>): s
     traits.value,
     traits.otherTags,
     record(traits.config).modular,
+    record(record(traits.toggles).doubleBarrel).selected,
     publication.title,
     legacySource.value,
     price.value,
@@ -1011,6 +1022,13 @@ function indexNormalizationWitness(source: Readonly<Record<string, unknown>>): s
     system.grade,
     system.specific,
     system.subitems,
+    system.meleeUsage,
+    system.damage,
+    system.acBonus,
+    system.splashDamage,
+    system.slug,
+    record(record(source.flags).pf2e).battleForm,
+    record(record(source.flags).pf2e).fixedAttack,
   ]);
 }
 
@@ -1166,6 +1184,7 @@ function normalizeCandidate(
     indexedBrowsePriceFacts,
     traits: Object.freeze(uniqueSorted(stringArray(traitsRoot.value).map((trait) => trait.toLowerCase()))),
     ruleKeys: Object.freeze(ruleKeys),
+    comparison: normalizeEquipmentComparisonFacts(value),
   };
   const candidate: NormalizedEquipmentCatalogueCandidate = Object.freeze({
     ...candidateMaterial,
@@ -1374,6 +1393,7 @@ function stripEvaluation(entry: EquipmentCatalogueEntry): NormalizedEquipmentCat
     indexedBrowsePriceFacts: entry.indexedBrowsePriceFacts,
     traits: entry.traits,
     ruleKeys: entry.ruleKeys,
+    comparison: entry.comparison,
     previewIdentity: entry.previewIdentity,
   });
 }
@@ -1552,6 +1572,7 @@ function fingerprintEquipmentPreview(
   for (const trait of candidate.traits) hash = hashFingerprintPart(hash, trait);
   hash = hashFingerprintPart(hash, null);
   for (const ruleKey of candidate.ruleKeys) hash = hashFingerprintPart(hash, ruleKey);
+  hash = hashFingerprintPart(hash, canonicalJson(candidate.comparison));
   return `equipment-preview-v1-${(hash >>> 0).toString(16).padStart(8, "0")}`;
 }
 

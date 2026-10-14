@@ -1083,8 +1083,8 @@ function matrixChildren(): any[] {
         ? {
             ...manifest,
             classGrants: native.classGrants,
-            entries: [],
-            logicalLines: [],
+            entries: native.entries,
+            logicalLines: native.logicalLines,
             currency,
           }
         : manifest;

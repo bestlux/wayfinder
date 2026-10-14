@@ -325,8 +325,8 @@ describe("Foundry smoke evidence contract", () => {
       actorId: input.cases[0].actor.id,
       targetLevel: 5,
       disposition: "retain-all",
-      entries: [],
-      logicalLines: [],
+      entries: native.entries,
+      logicalLines: native.logicalLines,
       classGrants: native.classGrants,
       currency,
     };
@@ -359,8 +359,105 @@ describe("Foundry smoke evidence contract", () => {
     ]) {
       const drifted = structuredClone(input);
       mutate(drifted);
+      drifted.cases[0].actor.moduleStateAfterApply.completedAcquisitionManifest = structuredClone(
+        drifted.cases[0].evidence.acquisition.manifest
+      );
       expect(nativePhysicalGrantEvidenceFindings(drifted.cases[0], definition).length).toBeGreaterThan(0);
       expect(qualifySmokeResult(drifted, [definition]).qualification.passed).toBe(false);
+    }
+    const canonicalRows = structuredClone(input);
+    canonicalRows.cases[0].evidence.acquisition.manifest.logicalLines.reverse();
+    canonicalRows.cases[0].evidence.acquisition.manifest.entries.reverse();
+    canonicalRows.cases[0].actor.moduleStateAfterApply.completedAcquisitionManifest = structuredClone(
+      canonicalRows.cases[0].evidence.acquisition.manifest
+    );
+    expect(nativePhysicalGrantEvidenceFindings(canonicalRows.cases[0], definition)).toEqual([]);
+
+    // Keep the durable and reported manifests equal so row checks, rather than copy drift, reject these cases.
+    const rowMutations: [string, (manifest: any) => void][] = [
+      ["empty logical lines", (value) => (value.logicalLines = [])],
+      ["empty entries", (value) => (value.entries = [])],
+      ["missing logical line", (value) => value.logicalLines.pop()],
+      ["missing entry", (value) => value.entries.pop()],
+      ["extra logical line", (value) => value.logicalLines.push(structuredClone(value.logicalLines[0]))],
+      ["extra entry", (value) => value.entries.push(structuredClone(value.entries[0]))],
+      ["duplicate line ID", (value) => (value.logicalLines[1].lineId = value.logicalLines[0].lineId)],
+      ["duplicate entry ID", (value) => (value.entries[1].entryId = value.entries[0].entryId)],
+      [
+        "duplicate aggregation ID",
+        (value) => (value.entries[1].preAggregationKey = value.entries[0].preAggregationKey),
+      ],
+      ["foreign line source", (value) => (value.logicalLines[0].sourceUuid = value.logicalLines[1].sourceUuid)],
+      ["foreign entry source", (value) => (value.entries[0].sourceUuid = value.entries[1].sourceUuid)],
+      ["swapped line binding", (value) => (value.entries[0].lineIds = value.entries[1].lineIds)],
+      ["extra line binding", (value) => value.entries[0].lineIds.push(value.logicalLines[1].lineId)],
+      ["purchased logical line", (value) => (value.logicalLines[0].funding = { lane: "coin" })],
+      ["purchased entry", (value) => (value.entries[0].funding = { lane: "coin" })],
+      ["foreign line grant", (value) => (value.logicalLines[0].funding = value.logicalLines[1].funding)],
+      ["foreign entry grant", (value) => (value.entries[0].funding = value.entries[1].funding)],
+      ["missing document fingerprint", (value) => delete value.logicalLines[0].documentFingerprint],
+      ["mismatched price fingerprint", (value) => (value.entries[0].priceFingerprint = "changed")],
+      ["ineligible line", (value) => (value.logicalLines[0].policyDecision.eligible = false)],
+      ["mismatched policy", (value) => (value.entries[0].policyDecision.rarity = "rare")],
+      ["negative item level", (value) => (value.logicalLines[0].itemLevel = -1)],
+      ["extra logical quantity", (value) => (value.logicalLines[0].requestedQuantity = 2)],
+      ["extra entry quantity", (value) => (value.entries[0].quantity = 2)],
+      ["aggregated native line", (value) => (value.logicalLines[0].stackingIntent = "aggregate")],
+      ["consumable native line", (value) => (value.logicalLines[0].permanence = "consumable")],
+      ["non-baseline native line", (value) => (value.logicalLines[0].componentKind = "kit")],
+      ["charged logical allowance", (value) => (value.logicalLines[0].resolvedAllowanceId = "allowance")],
+      ["charged entry allowance", (value) => (value.entries[0].resolvedAllowanceId = "allowance")],
+      ["missing free price", (value) => delete value.entries[0].price],
+      ["nonzero base price", (value) => (value.entries[0].price.basePrice.value = { gp: 1 })],
+      ["nonzero configuration price", (value) => (value.entries[0].price.configurationPriceCopper = 1)],
+      ["nonzero unit price", (value) => (value.entries[0].price.unitPriceCopper = 1)],
+      ["nonzero line price", (value) => (value.entries[0].price.linePriceCopper = 1)],
+      ["missing price field", (value) => delete value.entries[0].price.sourceQuantity],
+      ["extra requested price quantity", (value) => (value.entries[0].price.requestedQuantity = 2)],
+      ["extra materialized quantity", (value) => (value.entries[0].price.materializedQuantity = 2)],
+      ["missing planned item", (value) => (value.entries[0].plannedItems = [])],
+      [
+        "extra planned item",
+        (value) => value.entries[0].plannedItems.push(structuredClone(value.entries[0].plannedItems[0])),
+      ],
+      [
+        "duplicate planned identity",
+        (value) => {
+          value.entries[1].plannedItems[0].plannedItemId = value.entries[0].plannedItems[0].plannedItemId;
+          value.entries[1].observedItems[0].plannedItemId = value.entries[0].plannedItems[0].plannedItemId;
+        },
+      ],
+      ["foreign planned source", (value) => (value.entries[0].plannedItems[0].sourceUuid = "foreign")],
+      ["extra planned quantity", (value) => (value.entries[0].plannedItems[0].quantity = 2)],
+      ["owned native container", (value) => (value.entries[0].plannedItems[0].ownedContainerId = "container")],
+      ["planned native container", (value) => (value.entries[0].plannedItems[0].plannedContainerId = "container")],
+      ["missing observed item", (value) => (value.entries[0].observedItems = [])],
+      [
+        "extra observed item",
+        (value) => value.entries[0].observedItems.push(structuredClone(value.entries[0].observedItems[0])),
+      ],
+      ["foreign observed planned ID", (value) => (value.entries[0].observedItems[0].plannedItemId = "foreign")],
+      [
+        "foreign observed actor ID",
+        (value) => (value.entries[0].observedItems[0].actualItemId = value.entries[1].observedItems[0].actualItemId),
+      ],
+      ["foreign observed source", (value) => (value.entries[0].observedItems[0].actualSourceUuid = "foreign")],
+      ["extra observed quantity", (value) => (value.entries[0].observedItems[0].actualQuantity = 2)],
+      ["observed native container", (value) => (value.entries[0].observedItems[0].actualContainerId = "container")],
+      ["malformed logical row", (value) => (value.logicalLines[0] = null)],
+      ["malformed entry", (value) => (value.entries[0] = null)],
+    ];
+    for (const [label, mutate] of rowMutations) {
+      const drifted = structuredClone(input);
+      mutate(drifted.cases[0].evidence.acquisition.manifest);
+      drifted.cases[0].actor.moduleStateAfterApply.completedAcquisitionManifest = structuredClone(
+        drifted.cases[0].evidence.acquisition.manifest
+      );
+      expect(
+        nativePhysicalGrantEvidenceFindings(drifted.cases[0], definition).map((entry: any) => entry.code),
+        label
+      ).toContain("native-physical-grant-completion-mismatch");
+      expect(qualifySmokeResult(drifted, [definition]).qualification.passed, label).toBe(false);
     }
     expect(
       nativePhysicalGrantEvidenceFindings(input.cases[0], {

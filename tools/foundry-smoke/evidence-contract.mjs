@@ -344,10 +344,7 @@ export function nativePhysicalGrantEvidenceFindings(smokeCase, definition = {}) 
     !structuredValueEquals(manifest, actor?.moduleStateAfterApply?.completedAcquisitionManifest) ||
     !Array.isArray(manifest?.classGrants) ||
     manifest.classGrants.length !== routes.length ||
-    !Array.isArray(manifest?.entries) ||
-    manifest.entries.length !== 0 ||
-    !Array.isArray(manifest?.logicalLines) ||
-    manifest.logicalLines.length !== 0
+    !nativePhysicalGrantManifestLinesMatch(manifest, routes, items)
   ) {
     findings.push(
       finding("native-physical-grant-completion-mismatch", subject, "Native fixed grants must complete Apply with an exact durable retain-all manifest and no pending rerun steps.")
@@ -409,6 +406,100 @@ export function nativePhysicalGrantEvidenceFindings(smokeCase, definition = {}) 
     }
   }
   return findings;
+}
+
+function nativePhysicalGrantManifestLinesMatch(manifest, routes, items) {
+  const lines = manifest?.logicalLines;
+  const entries = manifest?.entries;
+  if (
+    !Array.isArray(lines) ||
+    lines.length !== routes.length ||
+    !nonEmptyUniqueStringArray(lines.map((line) => line?.lineId)) ||
+    !Array.isArray(entries) ||
+    entries.length !== routes.length ||
+    !nonEmptyUniqueStringArray(entries.map((entry) => entry?.entryId)) ||
+    !nonEmptyUniqueStringArray(entries.map((entry) => entry?.preAggregationKey))
+  ) {
+    return false;
+  }
+  const plannedIds = [];
+  for (const route of routes) {
+    const expected = route.grant;
+    const funding = { lane: "class-grant", grant: { plannedGrantId: expected.grantId } };
+    const matchingLines = lines.filter((line) => line?.funding?.grant?.plannedGrantId === expected.grantId);
+    const matchingEntries = entries.filter((entry) => entry?.funding?.grant?.plannedGrantId === expected.grantId);
+    const sourceItems = items.filter((item) => item?.sourceId === expected.expectedSourceUuid);
+    if (matchingLines.length !== 1 || matchingEntries.length !== 1 || sourceItems.length !== 1) return false;
+    const line = matchingLines[0];
+    const entry = matchingEntries[0];
+    const price = entry.price;
+    if (
+      !exactObjectKeys(line, [
+        "lineId", "sourceUuid", "documentFingerprint", "priceFingerprint", "itemLevel", "requestedQuantity",
+        "stackingIntent", "permanence", "componentKind", "policyDecision", "funding", "resolvedAllowanceId",
+      ]) ||
+      line.sourceUuid !== expected.expectedSourceUuid ||
+      !nonEmptyString(line.documentFingerprint) ||
+      !nonEmptyString(line.priceFingerprint) ||
+      !Number.isSafeInteger(line.itemLevel) ||
+      line.itemLevel < 0 ||
+      line.requestedQuantity !== 1 ||
+      line.stackingIntent !== "separate" ||
+      line.permanence !== "permanent" ||
+      line.componentKind !== "baseline-item" ||
+      line.policyDecision?.eligible !== true ||
+      !structuredValueEquals(line.funding, funding) ||
+      line.resolvedAllowanceId !== null ||
+      !exactObjectKeys(entry, [
+        "entryId", "preAggregationKey", "lineIds", "sourceUuid", "documentFingerprint", "priceFingerprint",
+        "quantity", "stackingIntent", "funding", "resolvedAllowanceId", "policyDecision", "price", "plannedItems", "observedItems",
+      ]) ||
+      !structuredValueEquals(entry.lineIds, [line.lineId]) ||
+      entry.sourceUuid !== expected.expectedSourceUuid ||
+      entry.documentFingerprint !== line.documentFingerprint ||
+      entry.priceFingerprint !== line.priceFingerprint ||
+      entry.quantity !== 1 ||
+      entry.stackingIntent !== "separate" ||
+      !structuredValueEquals(entry.funding, funding) ||
+      entry.resolvedAllowanceId !== null ||
+      !structuredValueEquals(entry.policyDecision, line.policyDecision) ||
+      !exactObjectKeys(price, [
+        "basePrice", "size", "sizeSensitive", "preciousMaterial", "adjustedBulkPriceCopper", "configurationPriceCopper",
+        "pricePer", "sourceQuantity", "requestedQuantity", "materializedQuantity", "unitPriceCopper", "linePriceCopper",
+      ]) ||
+      !structuredValueEquals(price.basePrice, { kind: "priced", value: {} }) ||
+      !["tiny", "small", "medium", "large", "huge", "gargantuan"].includes(price.size) ||
+      typeof price.sizeSensitive !== "boolean" ||
+      price.preciousMaterial !== false ||
+      price.adjustedBulkPriceCopper !== null ||
+      price.configurationPriceCopper !== 0 ||
+      price.pricePer !== 1 ||
+      price.sourceQuantity !== 1 ||
+      price.requestedQuantity !== 1 ||
+      price.materializedQuantity !== 1 ||
+      price.unitPriceCopper !== 0 ||
+      price.linePriceCopper !== 0 ||
+      !Array.isArray(entry.plannedItems) ||
+      entry.plannedItems.length !== 1 ||
+      !nonEmptyString(entry.plannedItems[0]?.plannedItemId)
+    ) {
+      return false;
+    }
+    const plannedItemId = entry.plannedItems[0].plannedItemId;
+    plannedIds.push(plannedItemId);
+    if (
+      !structuredValueEquals(entry.plannedItems, [{
+        plannedItemId, ownedContainerId: null, sourceUuid: expected.expectedSourceUuid, quantity: 1, plannedContainerId: null,
+      }]) ||
+      !structuredValueEquals(entry.observedItems, [{
+        plannedItemId, actualItemId: sourceItems[0].id, actualSourceUuid: expected.expectedSourceUuid,
+        actualQuantity: 1, plannedContainerId: null, actualContainerId: null,
+      }])
+    ) {
+      return false;
+    }
+  }
+  return nonEmptyUniqueStringArray(plannedIds);
 }
 
 export function parseApplyCheckpointId(value) {

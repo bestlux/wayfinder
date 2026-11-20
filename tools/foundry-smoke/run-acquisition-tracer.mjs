@@ -175,6 +175,9 @@ async function main() {
     if (gmReviewCases.length > 0) {
       const gmReviewFixtures = fixturesForCases(setup.fixtures, gmReviewCases);
       await setEquipmentApplyAuthority(setupPage, MODULE_ID, "gm-review");
+      // Foundry disables active users on the join screen. Hand the GM login
+      // to the isolated review context, then return it for durability and cleanup.
+      await leaveWorld(setupPage);
       gmReviewContext = await browser.newContext({ viewport: { height: 1000, width: 1440 } });
       await gmReviewContext.addInitScript(
         (bootstrap) => {
@@ -217,8 +220,15 @@ async function main() {
         },
       );
       console.log("Acquisition tracer: GM review cases finished.");
+      await leaveWorld(gmReviewPage);
       await gmReviewContext.close();
       gmReviewContext = null;
+      await loginToFoundryWorld(setupPage, {
+        foundryUrl,
+        password: process.env.FOUNDRY_PASSWORD ?? "",
+        user: options.setupUser,
+      });
+      await loadAcquisitionBrowserSuite(setupPage);
     }
 
     result = mergeAcquisitionTracerResults(ownerResult, gmReviewResult, cases);
@@ -491,6 +501,13 @@ function mergeAcquisitionTracerResults(ownerResult, gmReviewResult, cases) {
       passed: orderedCases.filter((entry) => entry.status === "pass").length,
     },
   };
+}
+
+async function leaveWorld(page) {
+  await Promise.all([
+    page.waitForURL(/\/join(?:[/?#]|$)/u, { waitUntil: "networkidle" }),
+    page.evaluate(() => globalThis.game.logOut()),
+  ]);
 }
 
 function acquisitionReviewSession(setup, gmReviewResult, gmReviewCases, expectedWorldId) {

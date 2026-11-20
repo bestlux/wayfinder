@@ -20,7 +20,7 @@ const EMPTY_OPTION_CONTEXT = {
 export async function getOptionsForStep(step, context = EMPTY_OPTION_CONTEXT) {
     return (await getOptionQueryForStep(step, context)).options;
 }
-export async function getOptionQueryForStep(step, context = EMPTY_OPTION_CONTEXT) {
+export async function getOptionQueryForStep(step, context = EMPTY_OPTION_CONTEXT, candidate) {
     if ((step.kind !== "pick-item" && step.kind !== "class-branch" && step.kind !== "spell-choice") || !step.filters) {
         return { options: [], suppressedOptions: [] };
     }
@@ -30,12 +30,16 @@ export async function getOptionQueryForStep(step, context = EMPTY_OPTION_CONTEXT
     const results = [];
     const suppressedOptions = [];
     for (const packId of packIds) {
+        if (candidate && candidate.packId !== packId)
+            continue;
         const pack = getGamePack(packId);
         if (!pack) {
             continue;
         }
         const index = await getPackIndex(pack, packId);
         for (const entry of index) {
+            if (candidate && candidate.documentId !== String(entry._id))
+                continue;
             const filterDecision = classifyFilterDecision(entry, packId, step, context, traitCatalog);
             if (filterDecision.kind === "exclude" && filterDecision.category === "ordinary-legality") {
                 continue;

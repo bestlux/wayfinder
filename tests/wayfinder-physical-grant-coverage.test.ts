@@ -45,6 +45,28 @@ describe("physical-grant coverage", () => {
     }
   });
 
+  it("hands off Absalom Street Preacher before its native token is created", () => {
+    const draft = createEmptyDraft(1);
+    const slot = "background-level-1";
+    const uuid = "Compendium.pf2e.backgrounds.Item.UC1jVssliK30AoCQ";
+    const step = { slotId: slot } as PendingStep;
+    draft.selections[slot] = selection(slot, uuid, "background");
+    const expected = [
+      expect.objectContaining({
+        routeId: "absalom-street-preacher-pilgrims-token",
+        reasonCode: "semantic-prerequisite-mismatch",
+        sourceSlotId: slot,
+        sourceUuid: uuid,
+      }),
+    ];
+    expect(physicalGrantCoverageBlockers(draft, [step])).toEqual(expected);
+    expect(physicalGrantCoverageBlockers(draft, [])).toEqual([]);
+    draft.applyAttemptStepIds = [slot];
+    expect(physicalGrantCoverageBlockers(draft, [])).toEqual(expected);
+    draft.selections[slot] = selection(slot, uuid.replace("pf2e.backgrounds", "world.backgrounds"), "background");
+    expect(physicalGrantCoverageBlockers(draft, [step])).toEqual([]);
+  });
+
   it("ignores inactive and malformed persisted selections", () => {
     const draft = createEmptyDraft(1);
     draft.selections.orphaned = selection("orphaned-feat", "Compendium.pf2e.feats-srd.Item.LvVg83ZDj8mabcWF");

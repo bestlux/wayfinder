@@ -2781,6 +2781,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 message: problem.message,
             }));
             const physicalGrantBlockers = physicalGrantCoverageIssues(draft, steps);
+            const validateSelectionEligibility = (selection, step) => this.#validateSelectionEligibility(selection, step, draft, steps, snapshot.skillRanks, this.#applySpellRarityCeiling(draft, step, recovering), skillProgression);
             result = await applyDraftLifecycle({
                 actorName: this.actor.name,
                 currentLevel: snapshot.level,
@@ -2790,6 +2791,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 appliedSpellRarityAttestations,
                 steps,
                 evaluateStep: (step) => this.#evaluateStep(step, effectiveBuildState, draft, steps, snapshot.skillRanks, skillProgression),
+                validateSelectionEligibility,
                 additionalBlockers: [
                     ...spellRarityBlockers,
                     ...physicalGrantBlockers,
@@ -2876,7 +2878,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                         spellRarityCeiling,
                         validSkillSlugs: new Set(Object.keys(CONFIG.PF2E?.skills ?? {})),
                         skillProgression,
-                        validateSelectionEligibility: (selection, step) => this.#validateSelectionEligibility(selection, step, draft, steps, snapshot.skillRanks, this.#applySpellRarityCeiling(draft, step, recovering), skillProgression),
+                        validateSelectionEligibility,
                         prepareClassGrantPlan: (actor, currentDraft, currentSteps) => prepareCurrentClassGrantPlan(actor, currentDraft, currentSteps, currentClassGrantProjectionOptions(actor, currentDraft)),
                         executeAcquisitionItems: acquisitionSession?.executeAcquisitionItems,
                         executeAcquisitionCurrency: acquisitionSession?.executeAcquisitionCurrency,
@@ -3062,9 +3064,15 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         }
         if (result.kind === "warning") {
             this.#draftPersistence.resume();
-            const warningMessage = result.blockers[0]?.code === "equipment-review"
+            const blocker = result.blockers[0];
+            if (blocker?.code === "selection-ineligible") {
+                this.#activeStepId = blocker.stepId;
+                this.#pendingStepFocusId = blocker.stepId;
+                this.#pendingActiveStepVisibility = true;
+            }
+            const warningMessage = blocker?.code === "equipment-review"
                 ? localizeAcquisition("wayfinder-pf2e.StartingEquipment.Apply.NotReady")
-                : (result.blockers[0]?.message ?? null);
+                : (blocker?.message ?? null);
             if (warningMessage) {
                 this.#setStartingEquipmentFailure(warningMessage);
             }
@@ -3157,7 +3165,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         const optionStep = step.kind === "spell-choice"
             ? withRestrictedSpellRarityAccess(step, spellRarityCeiling, evaluateSpellRarityAttestation(this.actor.id, draft, step, spellRarityCeiling).granted)
             : step;
-        const options = await getOptionsForStep(optionStep, optionContext);
+        const { options } = await getOptionQueryForStep(optionStep, optionContext, selection);
         return options.some((option) => option.uuid.trim().toLowerCase() === normalizedUuid);
     }
     async #importExistingHistory() {

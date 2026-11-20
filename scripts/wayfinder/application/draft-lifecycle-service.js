@@ -5,6 +5,7 @@ import { normalizeAcquisitionCurrencyConvergenceWitness } from "../domain/acquis
 import { recordAcquisitionCurrencyConvergenceWitness, recordClassGrantReconciliations, } from "../domain/acquisition-draft.js";
 import { assertPreparedAcquisitionIdentityPlanMatches } from "../domain/acquisition-identity.js";
 import { assertCompletedAcquisitionManifestMatchesIdentityPlan, completedClassGrantsMatchFinalReconciliation, manifestsDescribeSameOutcome, normalizeCompletedAcquisitionManifest, } from "../domain/completed-acquisition-manifest.js";
+import { readDraftStepSelection } from "../domain/draft-decisions.js";
 import { evaluateWayfinderDraftReadiness, } from "../domain/step-evaluation.js";
 export async function applyDraftLifecycle(args) {
     if (args.draft.acquisitionCorrupt) {
@@ -92,6 +93,28 @@ export async function applyDraftLifecycle(args) {
         return {
             kind: "cancelled",
         };
+    }
+    // A saved pick can become ineligible when its compendium changes. Check before
+    // persisting attempt IDs, which lock the player's choices for partial-Apply recovery.
+    if (args.validateSelectionEligibility && !hasApplyRecoveryState(args.draft)) {
+        for (const step of args.steps) {
+            const selection = readDraftStepSelection(args.draft, step);
+            if (selection && !(await args.validateSelectionEligibility(selection, step))) {
+                return {
+                    kind: "warning",
+                    warning: "draft-not-ready",
+                    blockers: [
+                        {
+                            code: "selection-ineligible",
+                            stepId: step.id,
+                            slotId: step.slotId,
+                            title: step.title,
+                            message: `${selection.name} is no longer eligible for ${step.title}. Review that choice before applying.`,
+                        },
+                    ],
+                };
+            }
+        }
     }
     const applyAttemptDraft = buildApplyAttemptDraft(args.draft, args.steps, args.appliedSpellRarityAttestations ?? []);
     await args.beforeApply?.(applyAttemptDraft);

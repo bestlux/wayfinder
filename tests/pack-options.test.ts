@@ -1,10 +1,11 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createEmptyDraft } from "../src/draft-service";
 import { clearPackServiceCache } from "../src/pack/access";
 import { projectedArchetypeFeat as projectArchetypeFeat } from "../src/pack/archetype-legality";
 import { getOptionQueryForStep, getOptionsForStep, resolveSelection } from "../src/pack/options";
 import { buildSteps } from "../src/progression";
 import type { ActorSnapshot, OptionContext, PendingStep, PickItemSlotKind, SelectionRef } from "../src/types";
+import { applyDraftLifecycle, hasApplyRecoveryState } from "../src/wayfinder/application/draft-lifecycle-service";
 import { buildOptionContext } from "../src/wayfinder/application/option-context-service";
 import {
   THAUMATURGE_FIXED_IMPLEMENTS,
@@ -56,6 +57,71 @@ describe("pack options dependency filtering", () => {
         get: () => "",
       },
     } as any;
+  });
+
+  it("keeps a saved Hedge Mage pick editable when upgraded PF2E rules require an unsupported choice", async () => {
+    const packId = "pf2e.feats-srd";
+    const hedgeMage = featEntry("hedge-mage-dedication", "Hedge Mage Dedication", "class", ["archetype", "dedication"]);
+    const replacement = featEntry("fighter-feat", "Fighter Feat", "class", ["fighter"]);
+    setPack(packId, [hedgeMage, replacement]);
+    const step = createPickItemStep("class-feat", 2, "Class feat", "", {
+      itemType: "feat",
+      featTypes: ["class"],
+      maxLevel: 2,
+    });
+    const context = { ...EMPTY_CONTEXT, classSlug: "fighter" };
+    const saved = await resolveSelection(`${packId}:${hedgeMage._id}`, step, context);
+    expect(saved).toBeTruthy();
+    const draft = createEmptyDraft(2);
+    draft.selections[step.slotId] = saved!;
+
+    const confirmApply = vi.fn(() => {
+      // 8.6.1 had no rules here. 8.7.1 stores the chosen skill and rank in a single object.
+      hedgeMage.system.rules = [
+        {
+          key: "ChoiceSet",
+          flag: "hedgeMage",
+          choices: [
+            { label: "Arcana", predicate: [{ gte: ["skill:arcana:rank", 1] }], value: { skill: "arcana", rank: 2 } },
+          ],
+        },
+      ];
+      clearPackServiceCache();
+      return true;
+    });
+    const beforeApply = vi.fn();
+    const applyDraftToActor = vi.fn();
+    const apply = () =>
+      applyDraftLifecycle({
+        actorName: "Fighter",
+        currentLevel: 1,
+        draft,
+        steps: [step],
+        evaluateStep: async () => ({ state: "complete", complete: true, status: "Ready", issue: null }),
+        validateSelectionEligibility: async (selection, sourceStep) => {
+          const result = await getOptionQueryForStep(sourceStep, context, selection);
+          // The eligible replacement in this pack must not make the old pick eligible.
+          return result.options.some((option) => option.uuid === selection.uuid);
+        },
+        confirmApply,
+        beforeApply,
+        applyDraftToActor,
+      });
+
+    expect(await apply()).toMatchObject({
+      kind: "warning",
+      warning: "draft-not-ready",
+      blockers: [{ code: "selection-ineligible", slotId: step.slotId }],
+    });
+    expect(confirmApply).toHaveBeenCalledOnce();
+    expect(beforeApply).not.toHaveBeenCalled();
+    expect(applyDraftToActor).not.toHaveBeenCalled();
+    expect(hasApplyRecoveryState(draft)).toBe(false);
+
+    draft.selections[step.slotId] = (await resolveSelection(`${packId}:${replacement._id}`, step, context))!;
+    expect((await apply()).kind).toBe("applied");
+    expect(beforeApply).toHaveBeenCalledOnce();
+    expect(applyDraftToActor).toHaveBeenCalledOnce();
   });
 
   it("keeps indexed player-facing feat traits separate from internal policy tags", async () => {

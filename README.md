@@ -43,7 +43,7 @@ https://github.com/bestlux/wayfinder/releases/latest/download/module.json
 
 Foundry's package updater will follow it for future versions. Older releases stay installable from their own [release pages](https://github.com/bestlux/wayfinder/releases).
 
-**Requirements:** Foundry VTT v14 with the PF2E system 8.4.1 or newer. Wayfinder supports Foundry VTT 14.367 and PF2E 8.4.1; the [live smoke log](docs/coverage/beta-readiness-smoke.md) records exact release evidence.
+Wayfinder requires Foundry VTT v14 and PF2E 8.4.1 or newer. Version 0.11.2 targets Foundry 14.370 and PF2E 8.7.1. See the [live smoke log](docs/coverage/beta-readiness-smoke.md) for the tested flows.
 
 ## Using Wayfinder
 

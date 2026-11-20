@@ -50,7 +50,8 @@ export interface OptionQueryResult {
 
 export async function getOptionQueryForStep(
   step: PendingStep,
-  context: OptionContext = EMPTY_OPTION_CONTEXT
+  context: OptionContext = EMPTY_OPTION_CONTEXT,
+  candidate?: Pick<SelectionRef, "packId" | "documentId">
 ): Promise<OptionQueryResult> {
   if ((step.kind !== "pick-item" && step.kind !== "class-branch" && step.kind !== "spell-choice") || !step.filters) {
     return { options: [], suppressedOptions: [] };
@@ -63,6 +64,7 @@ export async function getOptionQueryForStep(
   const suppressedOptions: SuppressedPickerOption[] = [];
 
   for (const packId of packIds) {
+    if (candidate && candidate.packId !== packId) continue;
     const pack = getGamePack(packId);
     if (!pack) {
       continue;
@@ -70,6 +72,7 @@ export async function getOptionQueryForStep(
 
     const index = await getPackIndex(pack, packId);
     for (const entry of index) {
+      if (candidate && candidate.documentId !== String(entry._id)) continue;
       const filterDecision = classifyFilterDecision(entry, packId, step, context, traitCatalog);
       if (filterDecision.kind === "exclude" && filterDecision.category === "ordinary-legality") {
         continue;

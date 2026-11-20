@@ -121,6 +121,25 @@ export function findUnsupportedPhysicalGrantRoutes(
       },
     ];
   });
+  // This background was added after the pinned physical-grant audit. Its embedded
+  // Pilgrim's Token feat grants an item as soon as PF2E creates the background.
+  const background = draft.selections["background-level-1"];
+  if (
+    activeSlotIds.has("background-level-1") &&
+    background?.slotId === "background-level-1" &&
+    background.itemType === "background" &&
+    background.uuid === "Compendium.pf2e.backgrounds.Item.UC1jVssliK30AoCQ"
+  ) {
+    blockers.push({
+      code: "unsupported-physical-grant",
+      routeId: "absalom-street-preacher-pilgrims-token",
+      reasonCode: "semantic-prerequisite-mismatch",
+      sourceSlotId: background.slotId,
+      sourceUuid: background.uuid,
+      message:
+        "Absalom Street Preacher grants Pilgrim's Token. Wayfinder cannot verify its religion and follower requirements. Use the PF2E sheet for this build.",
+    });
+  }
   const root = draft.selections["class-level-1"];
   if (root?.uuid === CLASS_GRANT_PROFILE_UUIDS.thaumaturgeClass && root.itemType === "class") {
     for (const origin of THAUMATURGE_IMPLEMENT_ORIGINS) {

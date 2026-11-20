@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.2 - 2026-11-20
+
+- Keep saved level-up drafts editable when a PF2E update changes a selected feat. For example, an older draft containing Hedge Mage Dedication can now be revised before Apply enters recovery.
+- Direct Absalom Street Preacher builds to the PF2E sheet before Apply. The background's native Pilgrim's Token has prerequisites that Wayfinder cannot verify.
+- Update compatibility for Foundry VTT 14.370 and PF2E 8.7.1. The PF2E minimum remains 8.4.1.
+
 ## 0.11.1 - 2026-10-14
 
 - Restore Thaumaturge creation with the Amulet, Bell, Chalice, Lantern, Mirror, Regalia, Tome, and Wand implements. First and second implements use reviewed native grants without spending starting coin or duplicating equipment during Apply recovery.

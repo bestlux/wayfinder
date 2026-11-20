@@ -21,9 +21,9 @@ export async function loginToFoundryWorld(page, { foundryUrl, password, user }) 
       throw new Error("FOUNDRY_USER is required when the browser is not already logged in.");
     }
 
-    const legacyUserSelect = page.locator('select[name="userid"]');
-    if ((await legacyUserSelect.count()) > 0) {
-      await legacyUserSelect.selectOption({ label: user });
+    const userSelect = page.locator('select[name="userid" i]');
+    if ((await userSelect.count()) > 0) {
+      await userSelect.selectOption({ label: user });
     } else {
       await page.locator('input[name="username"]').fill(user);
     }

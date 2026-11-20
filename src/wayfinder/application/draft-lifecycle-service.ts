@@ -7,6 +7,7 @@ import type {
   ExistingCharacterHistory,
   ModuleState,
   PendingStep,
+  SelectionRef,
 } from "../../types.js";
 import { normalizeAcquisitionCurrencyConvergenceWitness } from "../domain/acquisition-currency-convergence.js";
 import {
@@ -22,6 +23,7 @@ import {
   manifestsDescribeSameOutcome,
   normalizeCompletedAcquisitionManifest,
 } from "../domain/completed-acquisition-manifest.js";
+import { readDraftStepSelection } from "../domain/draft-decisions.js";
 import {
   evaluateWayfinderDraftReadiness,
   type WayfinderStepEvaluation,
@@ -37,6 +39,7 @@ export interface ApplyDraftLifecycleArgs {
   appliedSpellRarityAttestations?: AppliedSpellRarityAttestation[];
   steps: PendingStep[];
   evaluateStep: (step: PendingStep) => Promise<WayfinderStepEvaluation>;
+  validateSelectionEligibility?: (selection: SelectionRef, step: PendingStep) => Promise<boolean>;
   additionalBlockers?: WayfinderStepIssue[];
   acquisitionExecutionAvailable?: boolean;
   assertAcquisitionApplyAuthority?: () => void;
@@ -163,6 +166,29 @@ export async function applyDraftLifecycle(args: ApplyDraftLifecycleArgs): Promis
     return {
       kind: "cancelled",
     };
+  }
+
+  // A saved pick can become ineligible when its compendium changes. Check before
+  // persisting attempt IDs, which lock the player's choices for partial-Apply recovery.
+  if (args.validateSelectionEligibility && !hasApplyRecoveryState(args.draft)) {
+    for (const step of args.steps) {
+      const selection = readDraftStepSelection(args.draft, step);
+      if (selection && !(await args.validateSelectionEligibility(selection, step))) {
+        return {
+          kind: "warning",
+          warning: "draft-not-ready",
+          blockers: [
+            {
+              code: "selection-ineligible",
+              stepId: step.id,
+              slotId: step.slotId,
+              title: step.title,
+              message: `${selection.name} is no longer eligible for ${step.title}. Review that choice before applying.`,
+            },
+          ],
+        };
+      }
+    }
   }
 
   const applyAttemptDraft = buildApplyAttemptDraft(args.draft, args.steps, args.appliedSpellRarityAttestations ?? []);

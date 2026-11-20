@@ -1,6 +1,6 @@
 # Beta Readiness Foundry Smoke
 
-Last updated: 2026-10-14.
+Last updated: 2026-11-20.
 
 This is the launch-readiness live smoke layer for Wayfinder. It complements unit tests by exercising the built module inside a real Foundry world against live PF2E compendia.
 
@@ -46,6 +46,18 @@ The companion static class audit checks the maintained smoke matrix against the 
 ```powershell
 npm run audit:classes
 ```
+
+## 2026-11-20 Foundry 14.370 and PF2E 8.7.1
+
+The [Foundry stable release](https://foundryvtt.com/releases/14.370) and [PF2E 8.7.1](https://github.com/foundryvtt/pf2e/releases/tag/pf2e-8.7.1) work together. The installed PF2E manifest specifies a minimum of 14.361, verifies 14.370 and supports generation 14. Wayfinder retains its existing support floors of Foundry 14 and PF2E 8.4.1. The physical-grant source audit remains pinned to PF2E 8.4.1.
+
+Published 0.11.1 was installed from the public ZIP in a disposable local world. All 304 installed files matched the archive, SHA-256 `8692dfa54eadc75fadedccb6a6ac0063bab07684390a12309509e453d7783b98`. On 14.370 / 8.7.1, the Fighter, Commander, Thaumaturge and Wizard level 1–5 cases passed, along with the existing-character Wizard advancement case. Wizard Dedication's new school selection produced one native school grant and an empty rerun. The indexed and loaded compendium records agreed, and the Feybound Faun ancestry and Horned Faun heritage resolved in the picker.
+
+Two saved level-up selections were reconstructed from tagged PF2E 8.6.1 records and opened on a real level-1 Fighter in 8.7.1. Wizard Dedication correctly requested its new school. Hedge Mage Dedication's new conditional skill and rank placed it outside guided coverage. Published Wayfinder rejected the feat after recording an Apply attempt, leaving the actor unchanged and the saved pick locked. The candidate rechecks the selected entry after confirmation and before recording an attempt. Existing partial attempts retain their recovery protections.
+
+The corrected Absalom Street Preacher background offers Constitution or Wisdom and a free boost. Its longstanding native Pilgrim's Token chain exposed a separate creation failure on 0.11.1. The live actor had already received the token when the starting-equipment check rejected it. The candidate recognizes that exact background and directs the player to the native sheet before Apply. Wizard Dedication was also tested with Acolyte to isolate its spell-school behavior.
+
+Both fixes passed live on 0.11.2. The saved Hedge Mage pick could be replaced with Intimidating Strike after confirmation, with no recovery marker or actor changes. With Absalom Street Preacher, the otherwise-complete draft displayed the native-sheet handoff and disabled Apply. Actor data, inventory and coin matched the pre-render snapshot. A non-GM owner also opened Wayfinder from the character sheet and used the changed background boost controls. The compatibility probes and public baseline results are recorded locally under `.tmp/compat-20261120/` in the primary checkout.
 
 ## 2026-10-14 Issue 47 Thaumaturge implements
 

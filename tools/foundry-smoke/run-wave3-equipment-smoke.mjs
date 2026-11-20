@@ -152,6 +152,7 @@ async function main() {
             expectedWorldId: options.expectedWorldId,
             fixtures: setup.fixtures,
             judgmentSetting: JUDGMENT_SETTING,
+            judgmentSnapshot: setup.judgmentSnapshot,
             moduleId: MODULE_ID,
             policySetting: POLICY_SETTING,
             policySnapshot: setup.policySnapshot,
@@ -184,10 +185,11 @@ async function main() {
   if (
     cleanup?.actorsMissingAfterCleanup !== true ||
     cleanup?.fixtureJudgmentsRemoved !== true ||
+    cleanup?.judgmentsRestored !== true ||
     cleanup?.policyRestored !== true
   ) {
     qualification.ok = false;
-    qualification.failures.push("Guarded cleanup did not prove actor deletion, judgment removal, and policy restoration.");
+    qualification.failures.push("Guarded cleanup did not prove actor deletion and restoration of judgments and policy.");
   }
   await writeWave3EquipmentArtifacts(outDir, result, qualification);
   console.log(`Wave 3 equipment artifacts: ${path.relative(repoRoot, outDir)}`);

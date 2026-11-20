@@ -192,6 +192,7 @@ globalThis.__prepareWayfinderWave3EquipmentSmoke = async function prepareWave3Eq
   cases,
   expectedWorldId,
   fixturePrefix,
+  judgmentSetting,
   moduleId,
   playerName,
   policySetting,
@@ -204,6 +205,7 @@ globalThis.__prepareWayfinderWave3EquipmentSmoke = async function prepareWave3Eq
   if (!player) throw new Error("The configured distinct non-GM player is unavailable.");
   const modules = await loadWave3Modules(moduleId);
   const policySnapshot = structuredClone(game.settings.get(moduleId, policySetting));
+  const judgmentSnapshot = structuredClone(game.settings.get(moduleId, judgmentSetting));
   const guardedPolicy = {
     ...policySnapshot,
     version: 1,
@@ -274,6 +276,7 @@ globalThis.__prepareWayfinderWave3EquipmentSmoke = async function prepareWave3Eq
   return {
     fixtures,
     gm: userEvidence(),
+    judgmentSnapshot,
     playerId: player.id,
     policySnapshot,
     runtime: runtimeEvidence(moduleId, expectedWorldId),
@@ -588,6 +591,7 @@ globalThis.__cleanupWayfinderWave3EquipmentSmoke = async function cleanupWave3Eq
   expectedWorldId,
   fixtures,
   judgmentSetting,
+  judgmentSnapshot,
   moduleId,
   policySetting,
   policySnapshot,
@@ -602,12 +606,20 @@ globalThis.__cleanupWayfinderWave3EquipmentSmoke = async function cleanupWave3Eq
   const retainedJudgments = Array.isArray(store?.judgments)
     ? store.judgments.filter((entry) => !actorIds.has(entry.actorId))
     : [];
-  await game.settings.set(moduleId, judgmentSetting, { version: 1, judgments: retainedJudgments });
+  const retainedStore = { ...store, judgments: retainedJudgments };
+  if (Array.isArray(store.requestDecisions)) {
+    retainedStore.requestDecisions = store.requestDecisions.filter((entry) => !actorIds.has(entry.request?.facts?.actorId));
+    if (!Object.hasOwn(judgmentSnapshot, "requestDecisions") && retainedStore.requestDecisions.length === 0) {
+      delete retainedStore.requestDecisions;
+    }
+  }
+  await game.settings.set(moduleId, judgmentSetting, retainedStore);
   await game.settings.set(moduleId, policySetting, policySnapshot);
   for (const actor of actors) await actor.delete();
   return {
     actorsDeleted: actors.length,
     actorsMissingAfterCleanup: actors.every((actor) => !game.actors.has(actor.id)),
+    judgmentsRestored: canonicalJson(game.settings.get(moduleId, judgmentSetting)) === canonicalJson(judgmentSnapshot),
     fixtureJudgmentsRemoved: retainedJudgments.length === (store?.judgments?.length ?? 0) - countFixtureJudgments(store, actorIds),
     policyRestored: canonicalJson(game.settings.get(moduleId, policySetting)) === canonicalJson(policySnapshot),
   };
